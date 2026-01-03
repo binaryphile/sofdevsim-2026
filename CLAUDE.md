@@ -141,6 +141,46 @@ Our development workflow follows this sequence:
 
 Each phase produces artifacts that inform the next, ensuring traceability from user needs to code.
 
+## Branching Strategy: Trunk-Based Development
+
+We use trunk-based development (TBD) to minimize merge complexity and enable continuous integration.
+
+### Core Principles
+
+- **Single trunk**: `main` is the only long-lived branch
+- **Short-lived feature branches**: If used, live < 1-2 days max
+- **Small, frequent commits**: Commit directly to main when safe
+- **Feature flags over branches**: Hide incomplete work behind flags, not branches
+- **Always releasable**: Main should always be in a deployable state
+
+### When to Use a Branch
+
+| Situation | Approach |
+|-----------|----------|
+| Small change (< 1 day) | Commit directly to main |
+| Larger feature (1-2 days) | Short-lived branch, merge quickly |
+| Experimental/risky | Feature flag on main |
+| Multi-day work | Break into smaller pieces that can merge daily |
+
+### Practices
+
+- **No long-lived feature branches**: They create merge hell
+- **No release branches**: Tag releases on main instead
+- **Continuous integration**: All commits trigger CI on main
+- **Code review**: Use small PRs or pair programming
+- **Revert over rollback**: If main breaks, revert the commit
+
+### Feature Flags
+
+For incomplete features that span multiple commits:
+```go
+if config.EnableDataExport {
+    // new feature code
+}
+```
+
+This lets us merge to main continuously without exposing unfinished work.
+
 ## Data Output Requirements
 
 The simulation must produce sufficient data output to:
