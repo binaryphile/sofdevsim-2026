@@ -139,14 +139,14 @@ Total ticket effort is distributed across phases:
 
 | Phase | % of Total Effort |
 |-------|-------------------|
-| Research | 10% |
-| Sizing | 5% |
-| Planning | 10% |
-| Implement | 40% |
-| Verify | 15% |
+| Research | 5% |
+| Sizing | 2% |
+| Planning | 3% |
+| Implement | 55% |
+| Verify | 20% |
 | CI/CD | 5% |
 | Review | 10% |
-| Done | 5% |
+| Done | 0% |
 
 ### Decomposition Algorithm
 

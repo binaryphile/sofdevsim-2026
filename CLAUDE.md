@@ -25,6 +25,11 @@ activeTickets := slice.From(tickets).KeepIf(func(t Ticket) bool {
 ticketIDs := slice.From(tickets).ToString(func(t Ticket) string {
     return t.ID
 })
+
+// Filter and count:
+completedCount := slice.From(tickets).KeepIf(func(t Ticket) bool {
+    return t.CompletedTick >= startDay
+}).Len()
 ```
 
 ### Option Type (for nullable values)
@@ -64,47 +69,89 @@ status := ternary.If[string](ticket.Phase == PhaseDone).Then("complete").Else("i
 
 ## Testing: Red/Green TDD + Khorikov Principles
 
-### TDD Cycle
-1. **Red**: Write a failing test first
+Reference: Khorikov, Vladimir. "Unit Testing: Principles, Practices, and Patterns." Manning, 2020.
+Summary available at: `/home/ted/projects/urma-obsidian/sources/tier2-silver/practitioner-blogs/khorikov-unit-testing-olano-summary.md`
+
+### TDD Cycle (MANDATORY)
+
+**CRITICAL**: Never implement before writing a failing test. If caught implementing first, STOP and revert.
+
+1. **Red**: Write a failing test first - NO EXCEPTIONS
 2. **Green**: Write minimal code to make it pass
 3. **Refactor**: Clean up while keeping tests green
-4. **Prune**: After refactoring, evaluate if test should be kept (see below)
+4. **Prune**: After refactoring, evaluate if test should be kept (see quadrants below)
 
-### Khorikov's Test Value Framework
+### Khorikov's Four Quadrants
 
-Categorize code before testing:
+Categorize code BEFORE deciding what to test:
 
-| Code Type | Complexity | Collaborators | Test Strategy |
-|-----------|------------|---------------|---------------|
-| **Domain/Algorithms** | High | Few | Unit test heavily |
-| **Controllers** | Low | Many | Integration test only |
-| **Trivial** | Low | Few | Don't test |
+| Quadrant | Complexity | Collaborators | Test Strategy |
+|----------|------------|---------------|---------------|
+| **Domain/Algorithms** | High | Few | Unit test heavily (edge cases) |
+| **Controllers** | Low | Many | ONE integration test per happy path |
+| **Trivial** | Low | Few | **Don't test at all** |
 | **Overcomplicated** | High | Many | Refactor first, then test |
 
-### What to Unit Test
-- **Domain models** with business logic (e.g., `Ticket.CalculatePhaseEffort()`)
-- **Algorithms** with significant complexity (e.g., variance calculation, decomposition)
-- **Pure functions** with meaningful behavior
+### Domain/Algorithms: Unit Test Heavily
+- Pure functions with business logic (e.g., `GetVarianceBounds()`, `IsWithinExpected()`)
+- Domain models with calculations (e.g., `Sprint.AvgWIP()`)
+- Test all edge cases with table-driven tests
 
-### What NOT to Unit Test (Prune After TDD)
-- Trivial getters/setters and constructors
-- Code that just delegates to collaborators
-- Implementation details that don't represent business behavior
-- Tests that break on every refactor (coupled to internals)
+### Controllers: ONE Integration Test
+- **One happy path** per major workflow - not multiple!
+- Plus edge cases that **cannot** be covered by unit tests
+- Example: `Export()` gets ONE test that verifies files created, not separate tests for each file
+
+**Anti-pattern**: Writing TestWriteMetrics, TestWriteTickets, TestWriteSprints separately - these are all ONE controller operation.
+
+### Trivial Code: Don't Test
+Examples of trivial code to **skip**:
+- `ExportResult.Summary()` - just string formatting
+- Simple getters/setters
+- Constructors with no logic
+- Code that just delegates
+
+### What Makes a Test Bad (Delete It)
+- Tests implementation details (e.g., checking for specific string ",5," in CSV)
+- Breaks on every refactor but functionality still works
+- Redundant with other tests (multiple controller tests for same operation)
+- Tests trivial code that can't meaningfully fail
 
 ### Test Behavior, Not Implementation
-- Test **units of behavior**, not units of code
-- A "unit" may span multiple functions/structs if they form one behavior
-- Black-box testing by default: verify outputs, not internal steps
-- Mocks only for **external boundaries** (DB, HTTP, filesystem), never for internal collaborators
+- Test **observable outcomes**: "file exists", "has 5 lines", "returns error"
+- Don't test **how**: checking specific string formats, column order, internal state
+- Black-box by default: verify outputs, not steps
+- Mocks only for **external boundaries** (filesystem, HTTP), never internal collaborators
 
-### Integration Tests
-- One happy path per major workflow
-- Edge cases that can't be covered by unit tests
-- Test the full engine simulation loop
+### Coverage: Diagnostic Only
+
+**How we track:**
+1. Run `go test -cover ./...` at end of each phase
+2. Update baseline in this file
+3. Investigate any package that drops significantly or falls below 60%
+4. Note: Low coverage is fine IF the code is trivial (see quadrants)
+
+```bash
+go test -cover ./...
+```
+
+**Current baseline (2026-01-03):**
+| Package | Coverage | Notes |
+|---------|----------|-------|
+| engine | 79.1% | Domain + controller logic |
+| export | 69.8% | Controller with domain helpers |
+| metrics | 60.8% | Domain calculations |
+| model | 28.4% | Mostly data structures (trivial) - acceptable |
+| tui | 0.0% | UI controller - test via manual/integration |
+
+Per Khorikov: Coverage is a "good negative indicator, bad positive one."
+- **Below 60%**: Investigate - unless code is trivial/controller
+- **High coverage**: Means nothing about quality
+- **Don't target a number**: Creates perverse incentive for useless tests
+- **Drops matter more than absolutes**: If a package drops 20%, investigate
 
 ### Go Test Style
-- Prefer **table-driven tests** for testing multiple cases
+- Prefer **table-driven tests** for domain algorithms
 - Use descriptive test names that explain the behavior being tested
 - Group related assertions in subtests with `t.Run()`
 
@@ -130,6 +177,7 @@ func TestFoo(t *testing.T) {
 ```
 
 Run tests: `go test ./...`
+Run with coverage: `go test -cover ./...`
 
 ## Development Process
 

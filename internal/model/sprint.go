@@ -15,6 +15,11 @@ type Sprint struct {
 
 	// Tickets committed to sprint
 	Tickets []string // Ticket IDs
+
+	// WIP tracking for export
+	MaxWIP   int // Maximum WIP observed during sprint
+	WIPSum   int // Accumulator for average WIP
+	WIPTicks int // Count of ticks for average
 }
 
 // NewSprint creates a sprint with buffer calculated as percentage of duration
@@ -108,4 +113,12 @@ func (s *Sprint) AddTicket(ticketID string) {
 // TicketCount returns the number of tickets in the sprint
 func (s *Sprint) TicketCount() int {
 	return len(s.Tickets)
+}
+
+// AvgWIP returns the average WIP over the sprint
+func (s *Sprint) AvgWIP() float64 {
+	if s.WIPTicks == 0 {
+		return 0
+	}
+	return float64(s.WIPSum) / float64(s.WIPTicks)
 }

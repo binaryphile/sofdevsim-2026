@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/binaryphile/sofdevsim-2026/internal/engine"
+	"github.com/binaryphile/sofdevsim-2026/internal/export"
 	"github.com/binaryphile/sofdevsim-2026/internal/metrics"
 	"github.com/binaryphile/sofdevsim-2026/internal/model"
 	tea "github.com/charmbracelet/bubbletea"
@@ -47,6 +48,10 @@ type App struct {
 
 	// Tick timer
 	tickInterval time.Duration
+
+	// Status message (for export feedback)
+	statusMessage string
+	statusExpiry  time.Time
 }
 
 // tickMsg is sent on each simulation tick
@@ -192,6 +197,24 @@ func (a *App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		a.runComparison()
 		a.currentView = ViewComparison
 		return a, nil
+
+	case "e":
+		// Export simulation data
+		if len(a.sim.CompletedTickets) == 0 {
+			a.statusMessage = "Nothing to export - no completed tickets"
+			a.statusExpiry = time.Now().Add(3 * time.Second)
+			return a, nil
+		}
+		exporter := export.New(a.sim, a.tracker, a.comparisonResult)
+		result, err := exporter.Export()
+		if err != nil {
+			a.statusMessage = fmt.Sprintf("Export failed: %v", err)
+			a.statusExpiry = time.Now().Add(5 * time.Second)
+			return a, nil
+		}
+		a.statusMessage = result.Summary()
+		a.statusExpiry = time.Now().Add(5 * time.Second)
+		return a, nil
 	}
 
 	return a, nil
@@ -316,6 +339,12 @@ func (a *App) View() string {
 	header := a.headerView()
 	help := a.helpView()
 
+	// Add status message if present and not expired
+	if a.statusMessage != "" && time.Now().Before(a.statusExpiry) {
+		status := lipgloss.NewStyle().Foreground(lipgloss.Color("10")).Render(a.statusMessage)
+		return lipgloss.JoinVertical(lipgloss.Left, header, content, status, help)
+	}
+
 	return lipgloss.JoinVertical(lipgloss.Left, header, content, help)
 }
 
@@ -349,6 +378,7 @@ func (a *App) helpView() string {
 		{"Space", "pause/resume"},
 		{"+/-", "speed"},
 		{"c", "compare policies"},
+		{"e", "export"},
 		{"q", "quit"},
 	}
 

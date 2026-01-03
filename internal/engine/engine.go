@@ -68,7 +68,10 @@ func (e *Engine) Tick() []model.Event {
 	// 4. Update sprint buffer
 	e.updateBuffer()
 
-	// 5. Check sprint end
+	// 5. Track WIP for export
+	e.trackWIP()
+
+	// 6. Check sprint end
 	if e.sim.CurrentSprint != nil && e.sim.CurrentTick >= e.sim.CurrentSprint.EndDay {
 		endEvents := e.endSprint()
 		allEvents = append(allEvents, endEvents...)
@@ -145,6 +148,20 @@ func (e *Engine) updateBuffer() {
 		bufferConsumption := (expectedComplete - float64(completedInSprint)) * 0.1
 		e.sim.CurrentSprint.ConsumeBuffer(bufferConsumption)
 	}
+}
+
+// trackWIP records work-in-progress metrics for export
+func (e *Engine) trackWIP() {
+	if e.sim.CurrentSprint == nil {
+		return
+	}
+
+	currentWIP := len(e.sim.ActiveTickets)
+	if currentWIP > e.sim.CurrentSprint.MaxWIP {
+		e.sim.CurrentSprint.MaxWIP = currentWIP
+	}
+	e.sim.CurrentSprint.WIPSum += currentWIP
+	e.sim.CurrentSprint.WIPTicks++
 }
 
 // endSprint handles sprint completion

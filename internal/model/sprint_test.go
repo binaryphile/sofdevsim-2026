@@ -104,3 +104,51 @@ func TestSprint_ProgressPct(t *testing.T) {
 		}
 	}
 }
+
+// Test WIP tracking for export
+func TestSprint_AvgWIP(t *testing.T) {
+	tests := []struct {
+		name     string
+		wipSum   int
+		wipTicks int
+		want     float64
+	}{
+		{
+			name:     "no ticks returns zero",
+			wipSum:   0,
+			wipTicks: 0,
+			want:     0,
+		},
+		{
+			name:     "single tick",
+			wipSum:   3,
+			wipTicks: 1,
+			want:     3.0,
+		},
+		{
+			name:     "average over multiple ticks",
+			wipSum:   15, // 3+3+4+5 over 4 ticks
+			wipTicks: 4,
+			want:     3.75,
+		},
+		{
+			name:     "zero WIP sum with ticks",
+			wipSum:   0,
+			wipTicks: 5,
+			want:     0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sprint := model.NewSprint(1, 0, 10, 0.2)
+			sprint.WIPSum = tt.wipSum
+			sprint.WIPTicks = tt.wipTicks
+
+			got := sprint.AvgWIP()
+			if got != tt.want {
+				t.Errorf("AvgWIP() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}

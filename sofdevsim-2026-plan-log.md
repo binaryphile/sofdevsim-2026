@@ -2659,3 +2659,162 @@ Phase 3 complete: Data export use cases and design documentation added.
 **Grade:** A (100/100)
 
 **Next:** Implementation of data export feature
+---
+
+2026-01-03T06:17:53Z | Phase 4 Contract: Data Export Implementation
+
+# Phase 4 Contract: Data Export Implementation
+
+**Created:** 2026-01-03
+
+## Step 1 Checklist
+- [x] 1a: Presented understanding
+- [x] 1b: Asked clarifying questions
+- [x] 1b-answer: Received answers (sprint history: current only, WIP: add to model, phase distribution: use code values)
+- [x] 1c: Contract created (this file)
+- [x] 1d: Approval received
+
+## Objective
+
+Implement UC7: Export Simulation Data - CSV export functionality enabling hypothesis validation, TOC teaching, and reproducible experiments.
+
+## Success Criteria
+
+- [x] 'e' keybind triggers export
+- [x] Creates timestamped directory: `sofdevsim-export-YYYYMMDD-HHMMSS/`
+- [x] Writes 6 CSV files (5 always, comparison.csv if comparison was run)
+- [x] tickets.csv includes theoretical bounds columns (expected_var_min, expected_var_max, within_expected)
+- [x] tickets.csv includes 8 phase timing columns
+- [x] sprints.csv includes WIP tracking (max_wip, avg_wip)
+- [x] Shows confirmation with path and row counts
+- [x] Shows "Nothing to export" if no completed tickets
+- [x] Handles file write errors gracefully
+
+## Approach
+
+### Step 1: Model changes (WIP tracking)
+- Modify `internal/model/sprint.go` - add MaxWIP, WIPSum, WIPTicks fields + AvgWIP() method
+- Modify `internal/engine/engine.go` - track WIP in Tick() loop
+
+### Step 2: Export package
+- Create `internal/export/schema.go` - headers, row formatters, bounds helpers
+- Create `internal/export/writers.go` - individual CSV writers
+- Create `internal/export/export.go` - Exporter struct, Export() orchestration
+
+### Step 3: TUI integration
+- Modify `internal/tui/app.go` - add 'e' keybinding, call exporter, show result
+
+### Step 4: Documentation fix
+- Modify `docs/design.md` - correct phase effort percentages to match code
+
+### Step 5: Tests
+- Create `internal/export/export_test.go` - unit tests for formatters, integration test
+
+## Files to Create/Modify
+
+| File | Action | Lines (est) |
+|------|--------|-------------|
+| internal/export/schema.go | Create | ~100 |
+| internal/export/writers.go | Create | ~150 |
+| internal/export/export.go | Create | ~80 |
+| internal/model/sprint.go | Modify | +10 |
+| internal/engine/engine.go | Modify | +10 |
+| internal/tui/app.go | Modify | +30 |
+| docs/design.md | Modify | Fix phase % table |
+| internal/export/export_test.go | Create | ~100 |
+
+**Total new code:** ~440 lines (3 new files) + ~50 lines modifications
+
+## Token Budget
+
+Estimated: 15-20K tokens
+
+---
+
+## Actual Results
+
+**Completed:** 2026-01-03
+
+### Success Criteria Status
+- [x] 'e' keybind triggers export - COMPLETE (app.go:201-217)
+- [x] Creates timestamped directory: `sofdevsim-export-YYYYMMDD-HHMMSS/` - COMPLETE (export.go:57-60)
+- [x] Writes 6 CSV files (5 always, comparison.csv if comparison was run) - COMPLETE (writers.go)
+- [x] tickets.csv includes theoretical bounds columns - COMPLETE (schema.go:85-86)
+- [x] tickets.csv includes 8 phase timing columns - COMPLETE (schema.go:105-112)
+- [x] sprints.csv includes WIP tracking (max_wip, avg_wip) - COMPLETE (sprint.go:19-22, schema.go:127-129)
+- [x] Shows confirmation with path and row counts - COMPLETE (export.go:28-39)
+- [x] Shows "Nothing to export" if no completed tickets - COMPLETE (app.go:203-206)
+- [x] Handles file write errors gracefully - COMPLETE (app.go:210-213)
+
+### Deliverables
+
+| File | Action | Lines |
+|------|--------|-------|
+| internal/export/schema.go | Created | 151 |
+| internal/export/writers.go | Created | 220 |
+| internal/export/export.go | Created | 107 |
+| internal/export/export_test.go | Created | 158 |
+| internal/model/sprint.go | Modified | +12 |
+| internal/engine/engine.go | Modified | +17 |
+| internal/tui/app.go | Modified | +25 |
+| docs/design.md | Modified | 8 lines fixed |
+| internal/model/sprint_test.go | Modified | +47 |
+| internal/engine/engine_integration_test.go | Modified | +39 |
+
+**Total new code:** ~636 lines (4 new files) + ~148 lines modifications
+
+### Quality Verification
+- All tests pass: `go test ./...` - 5 packages tested
+- Build succeeds: `go build ./...`
+- TDD approach followed: tests written before implementation
+
+### Self-Assessment
+Grade: A (95/100)
+
+**Khorikov Alignment (after refactoring):**
+
+| Quadrant | Code | Tests | Khorikov Rule |
+|----------|------|-------|---------------|
+| Domain/Algorithms | `GetVarianceBounds`, `IsWithinExpected` | 2 unit tests with edge cases | "Unit test heavily" ✅ |
+| Controllers | `Export()`, all writers | 1 happy path + 1 edge case | "One integration test per happy path" ✅ |
+| Trivial | `Summary()` | None | "Don't test trivial code" ✅ |
+
+**Test count: 11 → 4** (per Khorikov's guidance)
+
+What went well:
+- TDD approach caught issues early (reverted initial implementation)
+- FluentFP patterns applied where appropriate
+- Refactored tests per Khorikov: removed trivial tests, removed redundant controller tests
+- Tests now verify observable outcomes only, not implementation details
+
+Deductions:
+- Initial implementation without tests: -5 points (caught and corrected)
+
+## Step 4 Checklist
+- [x] 4a: Results presented to user
+- [x] 4b: Approval received
+
+## Approval
+✅ APPROVED BY USER - 2026-01-03
+
+Final deliverables:
+- Export package with 6 CSV files (metadata, tickets, sprints, incidents, metrics, comparison)
+- 'e' keybind in TUI triggers export
+- Tests aligned with Khorikov principles (4 tests, down from 11)
+- CLAUDE.md updated with testing guidance and coverage baseline
+---
+
+2026-01-03T06:18:06Z | Phase 4 Complete - 2026-01-03 01:18
+
+## Phase 4 Complete - 2026-01-03 01:18
+
+UC7: Export Simulation Data - IMPLEMENTED
+
+Deliverables:
+- internal/export/ package (schema.go, writers.go, export.go, export_test.go)
+- 'e' keybind in TUI triggers export
+- 6 CSV files: metadata, tickets, sprints, incidents, metrics, comparison
+- Tests aligned with Khorikov (4 tests)
+- CLAUDE.md updated with testing guidance + coverage baseline
+
+Coverage baseline: engine 79.1%, export 69.8%, metrics 60.8%, model 28.4%

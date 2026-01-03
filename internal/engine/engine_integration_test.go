@@ -110,6 +110,47 @@ func TestEngine_DecompositionIntegration(t *testing.T) {
 	}
 }
 
+// Integration test: WIP tracking during sprint
+func TestEngine_WIPTracking(t *testing.T) {
+	sim := model.NewSimulation(model.PolicyNone, 12345)
+
+	sim.AddDeveloper(model.NewDeveloper("dev-1", "Alice", 1.0))
+	sim.AddDeveloper(model.NewDeveloper("dev-2", "Bob", 1.0))
+
+	// Add tickets that will create WIP
+	sim.AddTicket(model.NewTicket("TKT-001", "Task 1", 3, model.HighUnderstanding))
+	sim.AddTicket(model.NewTicket("TKT-002", "Task 2", 5, model.HighUnderstanding))
+
+	eng := engine.NewEngine(sim)
+
+	// Assign both tickets - creates WIP of 2
+	eng.AssignTicket("TKT-001", "dev-1")
+	eng.AssignTicket("TKT-002", "dev-2")
+
+	// Run sprint
+	eng.RunSprint()
+
+	sprint := sim.CurrentSprint
+	if sprint == nil {
+		t.Fatal("Expected sprint to exist")
+	}
+
+	// WIP should have been tracked
+	if sprint.WIPTicks == 0 {
+		t.Error("Expected WIPTicks > 0 after running sprint")
+	}
+
+	if sprint.MaxWIP < 1 {
+		t.Error("Expected MaxWIP >= 1 after running with active tickets")
+	}
+
+	// Average should be calculable
+	avgWIP := sprint.AvgWIP()
+	if avgWIP < 0 {
+		t.Error("Expected non-negative AvgWIP")
+	}
+}
+
 // Integration test: reproducibility with same seed
 func TestEngine_Reproducibility(t *testing.T) {
 	seed := int64(42)
