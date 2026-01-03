@@ -141,7 +141,9 @@ func (e *Engine) updateBuffer() {
 	completedInCurrentSprint := func(t model.Ticket) bool {
 		return t.CompletedTick >= e.sim.CurrentSprint.StartDay
 	}
-	completedInSprint := slice.From(e.sim.CompletedTickets).KeepIf(completedInCurrentSprint).Len()
+	completedInSprint := slice.From(e.sim.CompletedTickets).
+		KeepIf(completedInCurrentSprint).
+		Len()
 
 	// If behind schedule, consume buffer
 	if float64(completedInSprint) < expectedComplete {

@@ -101,7 +101,9 @@ func (s *Simulation) IdleDevelopers() []Developer {
 
 // TotalOpenIncidents returns count of unresolved incidents
 func (s *Simulation) TotalOpenIncidents() int {
-	return slice.From(s.OpenIncidents).KeepIf(func(i Incident) bool { return i.IsOpen() }).Len()
+	return slice.From(s.OpenIncidents).
+		KeepIf(func(i Incident) bool { return i.IsOpen() }).
+		Len()
 }
 
 // TotalIncidents returns count of all incidents

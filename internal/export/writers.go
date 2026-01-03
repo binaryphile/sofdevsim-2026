@@ -113,9 +113,13 @@ func (e *Exporter) writeSprints(outputDir string) (int, error) {
 	if e.sim.CurrentSprint != nil {
 		startDay := e.sim.CurrentSprint.StartDay
 		ticketsStarted := len(e.sim.CurrentSprint.Tickets)
-		ticketsCompleted := slice.From(e.sim.CompletedTickets).KeepIf(func(t model.Ticket) bool {
+		// completedInSprint returns true if ticket was completed after sprint start.
+		completedInSprint := func(t model.Ticket) bool {
 			return t.CompletedTick >= startDay
-		}).Len()
+		}
+		ticketsCompleted := slice.From(e.sim.CompletedTickets).
+			KeepIf(completedInSprint).
+			Len()
 		incidents := len(e.sim.ResolvedIncidents) + len(e.sim.OpenIncidents)
 
 		row := formatSprintRow(*e.sim.CurrentSprint, ticketsStarted, ticketsCompleted, incidents)

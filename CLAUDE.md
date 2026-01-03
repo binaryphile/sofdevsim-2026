@@ -47,10 +47,12 @@ slice.MapTo[R](ts []T) MapperTo[R,T]   // For mapping to arbitrary type R
 ### slice Patterns
 
 ```go
-// Count matching elements
-count := slice.From(tickets).KeepIf(Ticket.IsActive).Len()
+// Count matching elements (2 operations = multiline)
+count := slice.From(tickets).
+    KeepIf(Ticket.IsActive).
+    Len()
 
-// Extract field to strings
+// Extract field to strings (1 operation = single line)
 ids := slice.From(tickets).ToString(Ticket.GetID)
 
 // Method expressions for clean chains
@@ -58,6 +60,22 @@ actives := slice.From(users).
     Convert(User.Normalize).
     KeepIf(User.IsValid)
 ```
+
+### Chain Formatting
+
+**Single operation** - one line:
+```go
+names := slice.From(users).ToString(User.Name)
+```
+
+**Two+ operations** - each on indented line, trailing dot:
+```go
+count := slice.From(tickets).
+    KeepIf(completedAfterCutoff).
+    Len()
+```
+
+Setup (`slice.From`, `slice.MapTo[R]`) doesn't count—only chained methods count. This applies to all fluent-style calls.
 
 ### option Package
 

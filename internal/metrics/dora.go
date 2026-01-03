@@ -102,7 +102,9 @@ func (m *DORAMetrics) updateDeployFrequency(sim *model.Simulation) {
 	completedAfterCutoff := func(t model.Ticket) bool {
 		return t.CompletedTick >= cutoff
 	}
-	m.DeploysLast7Days = slice.From(sim.CompletedTickets).KeepIf(completedAfterCutoff).Len()
+	m.DeploysLast7Days = slice.From(sim.CompletedTickets).
+		KeepIf(completedAfterCutoff).
+		Len()
 
 	// Frequency per day
 	if sim.CurrentTick > 0 {
