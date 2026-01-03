@@ -2818,3 +2818,759 @@ Deliverables:
 - CLAUDE.md updated with testing guidance + coverage baseline
 
 Coverage baseline: engine 79.1%, export 69.8%, metrics 60.8%, model 28.4%
+---
+
+2026-01-03T17:48:29Z | Phase 5: FluentFP Deep Dive & Aggressive Refactoring
+
+# Phase 5: FluentFP Deep Dive & Aggressive Refactoring
+
+## Objective
+
+Deep dive on FluentFP packages and patterns, then aggressively refactor sofdevsim-2026 codebase to employ them wherever they improve clarity.
+
+---
+
+## FluentFP Full API Reference
+
+### 1. slice Package (Well Documented)
+```go
+import "github.com/binaryphile/fluentfp/slice"
+
+slice.From(ts []T) Mapper[T]           // Create fluent slice
+  .KeepIf(fn func(T) bool) Mapper[T]   // Filter: keep matching
+  .RemoveIf(fn func(T) bool) Mapper[T] // Filter: remove matching
+  .Convert(fn func(T) T) Mapper[T]     // Map to same type
+  .TakeFirst(n int) Mapper[T]          // First n elements
+  .Each(fn func(T))                    // Side-effect iteration
+  .Len() int                           // Count
+  .ToString(fn func(T) string) Mapper[string]  // Map to strings
+  .ToInt(fn func(T) int) Mapper[int]           // Map to ints
+  // Also: ToAny, ToBool, ToByte, ToError, ToRune
+```
+
+### 2. option Package (Underutilized)
+```go
+import "github.com/binaryphile/fluentfp/option"
+
+option.Of(t T) Basic[T]                // Wrap as "ok" option
+option.New(t T, ok bool) Basic[T]      // Explicit ok status
+option.IfProvided(t T) Basic[T]        // Ok only if non-zero
+option.FromOpt(t *T) Basic[T]          // Pointer to option
+option.Getenv(key string) String       // Env var as option
+
+Basic[T] methods:
+  .Get() (T, bool)                     // Comma-ok unwrap
+  .IsOk() bool                         // Check status
+  .MustGet() T                         // Get or panic
+  .Or(t T) T                           // Get or default
+  .OrCall(fn func() T) T               // Get or call
+  .OrZero() T                          // Get or zero value
+  .OrEmpty() T                         // Alias (readable for strings)
+  .Call(fn func(T))                    // Side-effect if ok
+  .KeepOkIf(fn func(T) bool) Basic[T]  // Filter option
+  .ToNotOkIf(fn func(T) bool) Basic[T] // Make not-ok if condition
+  .ToString(fn func(T) string) Basic[string]  // Map option
+```
+
+### 3. must Package (Well Documented)
+```go
+import "github.com/binaryphile/fluentfp/must"
+
+must.Get(t T, err error) T             // Return or panic
+must.Get2(t T, t2 T2, err error) (T, T2)
+must.BeNil(err error)                  // Panic if error
+must.Getenv(key string) string         // Env var or panic
+must.Of(fn func(T) (R, error)) func(T) R  // Wrap fallible func
+```
+
+### 4. ternary Package (Well Documented)
+```go
+import "github.com/binaryphile/fluentfp/ternary"
+
+ternary.If[R](condition bool) Ternary[R]
+  .Then(t R) Ternary[R]                // Eager evaluation
+  .ThenCall(fn func() R) Ternary[R]    // Lazy evaluation
+  .Else(e R) R                         // Complete ternary
+  .ElseCall(fn func() R) R             // Lazy else
+```
+
+### 5. lof Package (NOT DOCUMENTED - Add to CLAUDE.md)
+Lower-order functions for composition:
+```go
+import "github.com/binaryphile/fluentfp/lof"
+
+lof.Len(ts []T) int                    // Wraps len for slices
+lof.StringLen(s string) int            // Wraps len for strings
+lof.Println(s string)                  // Wraps fmt.Println
+```
+
+### 6. tuple/pair Package (NOT DOCUMENTED - Add to CLAUDE.md)
+```go
+import "github.com/binaryphile/fluentfp/tuple/pair"
+
+pair.Of(v V, v2 V2) X[V, V2]           // Create pair
+pair.Zip(v1s []V1, v2s []V2) []X[V1, V2]  // Zip slices
+```
+
+---
+
+## Refactoring Opportunities (Priority Order)
+
+### HIGH PRIORITY - Clear Wins
+
+#### 1. tui/metrics.go:31-36 - Field Extraction Loop
+**Current:**
+```go
+var leadTimes, deployFreqs, mttrs, cfrs []float64
+for _, h := range dora.History {
+    leadTimes = append(leadTimes, h.LeadTimeAvg)
+    deployFreqs = append(deployFreqs, h.DeployFrequency)
+    mttrs = append(mttrs, h.MTTR)
+    cfrs = append(cfrs, h.ChangeFailRate)
+}
+```
+**FluentFP:**
+```go
+history := slice.From(dora.History)
+leadTimes := history.To(func(h HistoryPoint) float64 { return h.LeadTimeAvg })
+deployFreqs := history.To(func(h HistoryPoint) float64 { return h.DeployFrequency })
+// etc.
+```
+
+#### 2. metrics/fever.go:85-90 - History Values Extraction
+**Current:**
+```go
+func (f *FeverChart) HistoryValues() []float64 {
+    values := make([]float64, len(f.History))
+    for i, snap := range f.History {
+        values[i] = snap.PercentUsed
+    }
+    return values
+}
+```
+**FluentFP:**
+```go
+func (f *FeverChart) HistoryValues() []float64 {
+    return slice.MapTo[float64](f.History).To(func(s Snapshot) float64 {
+        return s.PercentUsed
+    })
+}
+```
+
+#### 3. engine/engine.go:140-144 - Count Completed in Sprint
+**Current:**
+```go
+completedInSprint := 0
+for _, t := range e.sim.CompletedTickets {
+    if t.CompletedTick >= e.sim.CurrentSprint.StartDay {
+        completedInSprint++
+    }
+}
+```
+**FluentFP:**
+```go
+completedInSprint := slice.From(e.sim.CompletedTickets).KeepIf(func(t model.Ticket) bool {
+    return t.CompletedTick >= e.sim.CurrentSprint.StartDay
+}).Len()
+```
+
+### MEDIUM PRIORITY - option.Of() for Nil Checks
+
+#### 4. engine/engine.go:40-44 - Nil Ticket Check
+**Current:**
+```go
+ticket := e.sim.FindTicketByID(dev.CurrentTicket)
+if ticket == nil {
+    dev.Unassign()
+    continue
+}
+```
+**FluentFP (if pattern fits):**
+```go
+if ticket, ok := option.FromOpt(e.sim.FindTicketByID(dev.CurrentTicket)).Get(); !ok {
+    dev.Unassign()
+    continue
+}
+```
+*Note: This may not be cleaner - evaluate case by case*
+
+#### 5. export/writers.go:113-126, 193-208 - Nil Checks on Sprint/Tracker
+**Current:**
+```go
+if e.sim.CurrentSprint != nil {
+    // process
+}
+if e.tracker != nil && e.tracker.DORA != nil {
+    // use tracker
+}
+```
+**Evaluate:** option.Of() chains may improve readability here
+
+#### 6. tui/comparison.go:11-22 - Nil Check with Default
+**Current:**
+```go
+if a.comparisonResult == nil {
+    return BoxStyle.Width(a.width - 2).Render("No comparison...")
+}
+```
+**FluentFP (evaluate):**
+```go
+// Might use option.FromOpt().Or() pattern
+```
+
+### LOW PRIORITY - Minor Improvements
+
+#### 7. metrics/tracker.go:30-37 - Sum Loop
+Manual sum loop for average - no direct FluentFP fold/reduce, keep as-is
+
+#### 8. tui/execution.go:74-79 - Conditional Calc
+Could use ternary but current if/else is clear enough
+
+---
+
+## Files to Modify
+
+| File | Changes | Priority |
+|------|---------|----------|
+| internal/tui/metrics.go | Field extraction → slice.MapTo | HIGH |
+| internal/metrics/fever.go | HistoryValues → slice.MapTo | HIGH |
+| internal/engine/engine.go | Count loops → slice.KeepIf.Len | HIGH |
+| internal/export/writers.go | Evaluate nil checks → option | MEDIUM |
+| internal/tui/comparison.go | Evaluate nil check → option | MEDIUM |
+| internal/engine/engine.go | Evaluate nil checks → option | MEDIUM |
+| CLAUDE.md | Add lof, tuple/pair docs | HIGH |
+
+---
+
+## Implementation Order
+
+### Step 1: Update CLAUDE.md
+- Add `lof` package documentation
+- Add `tuple/pair` package documentation
+- Add `slice.MapTo` pattern example
+
+### Step 2: HIGH Priority Refactors
+- tui/metrics.go - field extraction
+- metrics/fever.go - HistoryValues
+- engine/engine.go - count loops (lines 140-144)
+
+### Step 3: MEDIUM Priority - Evaluate option.Of()
+- Review each nil check location
+- Only apply if it genuinely improves readability
+- Skip if it makes code more complex
+
+### Step 4: Update Coverage Baseline
+- Run `go test -cover ./...`
+- Update CLAUDE.md baseline
+
+---
+
+## Success Criteria
+
+- [ ] CLAUDE.md includes lof and tuple/pair docs
+- [ ] All HIGH priority refactors applied
+- [ ] MEDIUM priority evaluated (apply where beneficial)
+- [ ] All tests pass
+- [ ] Code is more readable, not less
+- [ ] No performance regressions in hot paths
+
+---
+
+## User Decisions (Already Captured)
+
+1. **option.Of() adoption**: **Selective** - only where it clearly improves readability
+2. **slice patterns**: **Use simpler patterns** - prefer direct methods over complex generics
+
+---
+
+## avwob2drm Patterns (Reference Examples)
+
+These patterns from charybdis/tools/avwob2drm demonstrate tightly written FluentFP code:
+
+### Pattern 1: Type Alias for Fluent Slices
+```go
+// avwob_device.go:23-25
+type SliceOfAVWOBDevices = fluent.SliceOf[AVWOBDevice]
+
+// Usage - enables direct chaining:
+devices = devices.
+    Convert(AVWOBDevice.ToNormalizedAVWOBDevice).
+    KeepIf(AVWOBDevice.HasValidHostOrMgmtHost)
+```
+
+### Pattern 2: Option Wrapping for Domain Types
+```go
+// avwob_device.go:86-98
+type AVWOBDeviceOption struct {
+    option.Basic[AVWOBDevice]
+}
+
+func AVWOBDeviceOptionOf(device AVWOBDevice) AVWOBDeviceOption {
+    return AVWOBDeviceOption{Basic: option.Of(device)}
+}
+
+// Methods delegate with ok check:
+func (o AVWOBDeviceOption) IsConnected(now time.Time) (_ option.Bool) {
+    device, ok := o.Get()
+    if !ok {
+        return  // returns not-ok option
+    }
+    return option.BoolOf(device.IsConnected(now))
+}
+```
+
+### Pattern 3: option.Bool for Tri-State Values
+```go
+// drm_scan.go:55-62
+type Result struct {
+    AVWOBConnectedOption option.Bool  // true/false/unknown
+    DRMMigratedOption    option.Bool
+}
+
+// Usage with default:
+avwobMigrated := r.AVWOBMigratedOption.OrFalse()
+```
+
+### Pattern 4: must.Get for Init Errors
+```go
+// avwob_store.go:33-35
+sqlDB := must.Get(sql.Open("mysql", dbURI(c)))
+must.BeNil(err)
+
+// cfg.go:82
+err := viper.Unmarshal(&config)
+must.BeNil(err)
+```
+
+### Pattern 5: fluent.SliceOfStrings with .Each()
+```go
+// avwob_store.go:333-334
+var ms fluent.SliceOfStrings = macs
+ms.Each(s.UpdateDeviceAsMigrated)
+```
+
+### Pattern 6: IfProvided for Nullable Strings
+```go
+// avwob_device.go:27-29
+func (d AVWOBDevice) GetHostOption() option.String {
+    return option.IfProvided(d.NullableHost.String)
+}
+```
+
+### Pattern 7: Counting with KeepIf + Len
+```go
+// Count without intermediate allocation
+activeCount := slice.From(users).KeepIf(User.IsActive).Len()
+```
+
+### Pattern 8: Field Extraction with ToStrings
+```go
+// Extract single field from structs
+macs := devices.ToStrings(Device.GetMAC)
+```
+
+### Pattern 9: Ternary Factory Alias
+```go
+// Alias factory for repeated use with same return type
+If := ternary.If[string]
+status := If(done).Then("complete").Else("pending")
+```
+
+### Pattern 10: Embed Files with must.Get
+```go
+//go:embed README.md
+var files embed.FS
+readme := string(must.Get(files.ReadFile("README.md")))
+```
+
+---
+
+## Revised Approach Based on avwob2drm
+
+Given the patterns above, the **highest value changes** for sofdevsim are:
+
+| Pattern | Apply Where | Benefit |
+|---------|------------|---------|
+| `.KeepIf().Len()` | Count loops | Direct, clear, less code |
+| `fluent.SliceOf[T]` type alias | If we have repeated slice ops | Enables method chaining |
+| `must.Get/BeNil` | Already using - continue | Fatal error handling |
+
+**Lower priority** (per user decision "selective"):
+- option wrappers for domain types (overkill for this codebase)
+- option.Bool tri-state (not needed here)
+---
+
+2026-01-03T17:48:29Z | Phase 5: FluentFP Knowledge Update
+
+# Phase 5: FluentFP Knowledge Update
+
+## Task
+Update CLAUDE.md with comprehensive FluentFP patterns learned from avwob2drm analysis.
+
+## Content to Add to CLAUDE.md
+
+Replace the current "Code Style: FluentFP" section (lines 11-68) with:
+
+---
+
+## Code Style: FluentFP
+
+Use `github.com/binaryphile/fluentfp` for fluent, functional patterns where they afford concise but clear code.
+
+### slice Package - Complete API
+
+```go
+import "github.com/binaryphile/fluentfp/slice"
+
+// Factory functions
+slice.From(ts []T) Mapper[T]           // For mapping to built-in types
+slice.MapTo[R](ts []T) MapperTo[R,T]   // For mapping to arbitrary type R
+
+// Mapper[T] methods (also on MapperTo)
+.KeepIf(fn func(T) bool) Mapper[T]     // Filter: keep matching
+.RemoveIf(fn func(T) bool) Mapper[T]   // Filter: remove matching
+.Convert(fn func(T) T) Mapper[T]       // Map to same type
+.TakeFirst(n int) Mapper[T]            // First n elements
+.Each(fn func(T))                      // Side-effect iteration
+.Len() int                             // Count elements
+
+// Mapping methods (return Mapper of target type)
+.ToAny(fn func(T) any) Mapper[any]
+.ToBool(fn func(T) bool) Mapper[bool]
+.ToByte(fn func(T) byte) Mapper[byte]
+.ToError(fn func(T) error) Mapper[error]
+.ToInt(fn func(T) int) Mapper[int]
+.ToRune(fn func(T) rune) Mapper[rune]
+.ToString(fn func(T) string) Mapper[string]
+
+// MapperTo[R,T] additional method
+.To(fn func(T) R) Mapper[R]            // Map to type R
+```
+
+**Note:** No `ToFloat64` exists. For float64 operations, use plain loops for now.
+**Future:** Add ToFloat64/ToFloat32 to fluentfp package (tracked in sofdevsim project).
+
+### slice Patterns
+
+```go
+// Count matching elements
+count := slice.From(tickets).KeepIf(Ticket.IsActive).Len()
+
+// Extract field to strings
+ids := slice.From(tickets).ToString(Ticket.GetID)
+
+// Method expressions for clean chains
+actives := slice.From(users).
+    Convert(User.Normalize).
+    KeepIf(User.IsValid)
+```
+
+### option Package
+
+```go
+import "github.com/binaryphile/fluentfp/option"
+
+// Creating options
+option.Of(t T) Basic[T]                // Always ok
+option.New(t T, ok bool) Basic[T]      // Conditional ok
+option.IfProvided(t T) Basic[T]        // Ok if non-zero value
+option.FromOpt(ptr *T) Basic[T]        // From pointer (nil = not-ok)
+
+// Using options
+.Get() (T, bool)                       // Comma-ok unwrap
+.Or(t T) T                             // Value or default
+.OrZero() T                            // Value or zero
+.OrEmpty() T                           // Alias for strings
+.OrFalse() bool                        // For option.Bool
+.Call(fn func(T))                      // Side-effect if ok
+
+// Pre-defined types
+option.String, option.Int, option.Bool, option.Error
+```
+
+### option Patterns
+
+```go
+// Nullable database field
+func (r Record) GetHost() option.String {
+    return option.IfProvided(r.NullableHost.String)
+}
+
+// Tri-state boolean (true/false/unknown)
+type Result struct {
+    IsConnected option.Bool  // OrFalse() gives default
+}
+connected := result.IsConnected.OrFalse()
+```
+
+### must Package
+
+```go
+import "github.com/binaryphile/fluentfp/must"
+
+must.Get(t T, err error) T             // Return or panic
+must.BeNil(err error)                  // Panic if error
+must.Getenv(key string) string         // Env var or panic
+must.Of(fn func(T) (R, error)) func(T) R  // Wrap fallible func
+```
+
+### must Patterns
+
+```go
+// Initialization sequences
+db := must.Get(sql.Open("postgres", dsn))
+must.BeNil(db.Ping())
+
+// Validation-only (discard result, just validate)
+_ = must.Get(strconv.Atoi(configID))
+
+// Inline in expressions
+devices = append(devices, must.Get(store.GetDevices(chunk))...)
+
+// Time parsing
+timestamp := must.Get(time.Parse("2006-01-02 15:04:05", s.ScannedAt))
+
+// With slice operations
+atoi := must.Of(strconv.Atoi)
+ints := slice.From(strings).ToInt(atoi)
+```
+
+### ternary Package
+
+```go
+import "github.com/binaryphile/fluentfp/ternary"
+
+ternary.If[R](cond bool).Then(t R).Else(e R) R
+ternary.If[R](cond bool).ThenCall(fn).ElseCall(fn) R  // Lazy
+```
+
+### ternary Patterns
+
+```go
+// Factory alias for repeated use
+If := ternary.If[string]
+status := If(done).Then("complete").Else("pending")
+```
+
+### lof Package (Lower-Order Functions)
+
+```go
+import "github.com/binaryphile/fluentfp/lof"
+
+lof.Println(s string)      // Wraps fmt.Println for Each
+lof.Len(ts []T) int        // Wraps len
+```
+
+### Why Always Prefer FluentFP Over Loops
+Loops are 3+ lines; FluentFP is 1 conceptual operation per line.
+- Loops have multiple forms → mental load
+- Loops force wasted syntax (discarded `_` values)
+- Loops nest; FluentFP chains
+- Loops describe *how*; FluentFP describes *what*
+
+### When Loops Are Still Necessary
+(From avwob2drm analysis - these patterns lack FluentFP equivalents)
+
+1. **Index correlation across parallel slices** - need `pair.Zip` (add to fluentfp)
+   ```go
+   for i, mac := range macs {
+       device := devices[i]  // correlating by index
+   }
+   ```
+
+2. **Channel consumption** - `for r := range chan` has no FP equivalent
+
+3. **Reduce/accumulate** - building maps, running sums (no `Fold` yet)
+   ```go
+   bagOfDevices := make(map[string]Device)
+   for _, d := range devices {
+       bagOfDevices[d.MAC] = d
+   }
+   ```
+
+4. **Complex control flow** - break/continue/early return within loop
+
+---
+
+## Files to Modify
+- `/home/ted/projects/sofdevsim-2026/CLAUDE.md` - Replace FluentFP section with comprehensive guidance
+- `/home/ted/projects/fluentfp/slice/README.md` - Add "When Loops Are Still Necessary" section
+- `/home/ted/projects/fluentfp/README.md` - Add future enhancements wishlist
+
+## Success Criteria
+- [ ] CLAUDE.md updated with complete API
+- [ ] Patterns documented
+- [ ] lof package documented
+- [ ] Future enhancement noted (ToFloat64)
+
+## Future Enhancements (to add to CLAUDE.md)
+Add this section after FluentFP docs:
+
+```markdown
+### FluentFP Enhancements Wanted
+- [ ] Add `ToFloat64` and `ToFloat32` methods to slice package
+- [ ] Add `Zip` method or function for parallel slice iteration
+- [ ] Add `Fold`/`Reduce` for accumulating operations
+```
+---
+
+2026-01-03T17:48:29Z | Phase 5 Contract: Add Float64/Float32 Methods to FluentFP
+
+# Phase 5 Contract: Add Float64/Float32 Methods to FluentFP
+
+**Created:** 2026-01-03
+
+## Step 1 Checklist
+- [x] 1a: Presented understanding
+- [x] 1b: Asked clarifying questions
+- [x] 1b-answer: Received answers (PR to main, bump version)
+- [x] 1c: Contract created (this file)
+- [ ] 1d: Approval received
+
+## Objective
+Add ToFloat64 and ToFloat32 methods to fluentfp/slice package, create PR, merge, bump version to v0.5, update sofdevsim dependencies.
+
+## Verified State
+- Neither vendored nor public fluentfp has float methods (new feature, not port)
+- fluentfp repo is on develop branch, clean
+- Current version: v0.4
+- types.go pattern: `type Float64 = Mapper[float64]`
+
+## Success Criteria
+- [ ] ToFloat64 method added to Mapper[T] in mapper.go
+- [ ] ToFloat64 method added to MapperTo[R,T] in mapper_to.go
+- [ ] ToFloat32 method added to Mapper[T] in mapper.go
+- [ ] ToFloat32 method added to MapperTo[R,T] in mapper_to.go
+- [ ] Float64 type alias added to types.go
+- [ ] Float32 type alias added to types.go
+- [ ] Tests pass
+- [ ] Committed to develop branch
+- [ ] PR created: develop → main
+- [ ] PR merged
+- [ ] Tagged v0.5
+- [ ] sofdevsim go.mod updated
+- [ ] sofdevsim tests pass
+
+## Approach
+1. Add to mapper.go (after ToError, before ToInt to maintain alphabetical order):
+   ```go
+   // ToFloat32 returns the result of applying fn to each member of ts.
+   func (ts Mapper[T]) ToFloat32(fn func(T) float32) Mapper[float32] {
+       results := make([]float32, len(ts))
+       for i, t := range ts {
+           results[i] = fn(t)
+       }
+       return results
+   }
+
+   // ToFloat64 returns the result of applying fn to each member of ts.
+   func (ts Mapper[T]) ToFloat64(fn func(T) float64) Mapper[float64] {
+       results := make([]float64, len(ts))
+       for i, t := range ts {
+           results[i] = fn(t)
+       }
+       return results
+   }
+   ```
+
+2. Add equivalent methods to mapper_to.go (same pattern, returns MapperTo[R, float64])
+
+3. Add to types.go:
+   ```go
+   type Float32 = Mapper[float32]
+   type Float64 = Mapper[float64]
+   ```
+
+4. Run `go test ./...` in fluentfp
+5. Commit and push to develop
+6. Create PR (develop → main)
+7. Merge PR
+8. Tag v0.5
+9. In sofdevsim: `go get github.com/binaryphile/fluentfp@v0.5 && go mod tidy`
+10. Run sofdevsim tests
+
+## Token Budget
+Estimated: 15-20K tokens
+---
+
+2026-01-03T17:54:04Z | Phase 5 Contract: Add Float64/Float32 Methods to FluentFP
+
+# Phase 5 Contract: Add Float64/Float32 Methods to FluentFP
+
+**Created:** 2026-01-03
+
+## Step 1 Checklist
+- [x] 1a: Presented understanding
+- [x] 1b: Asked clarifying questions
+- [x] 1b-answer: Received answers (PR to main, bump version)
+- [x] 1c: Contract created (this file)
+- [x] 1d: Approval received
+
+## Objective
+Add ToFloat64 and ToFloat32 methods to fluentfp/slice package, create PR, merge, bump version to v0.5.0, update sofdevsim dependencies.
+
+## Verified State
+- Neither vendored nor public fluentfp has float methods (new feature, not port)
+- fluentfp repo is on develop branch, clean
+- Current version: v0.4
+- types.go pattern: `type Float64 = Mapper[float64]`
+
+## Success Criteria
+- [x] ToFloat64 method added to Mapper[T] in mapper.go
+- [x] ToFloat64 method added to MapperTo[R,T] in mapper_to.go
+- [x] ToFloat32 method added to Mapper[T] in mapper.go
+- [x] ToFloat32 method added to MapperTo[R,T] in mapper_to.go
+- [x] Float64 type alias added to types.go
+- [x] Float32 type alias added to types.go
+- [x] Tests pass
+- [x] Committed to develop branch
+- [x] PR created: develop → main
+- [x] PR merged
+- [x] Tagged v0.5.0
+- [x] sofdevsim go.mod updated
+- [x] sofdevsim tests pass
+
+## Actual Results
+
+**Completed:** 2026-01-03
+
+### Deliverables
+- fluentfp/slice/mapper.go: Added ToFloat32 (lines 108-116), ToFloat64 (lines 118-126)
+- fluentfp/slice/mapper_to.go: Added ToFloat32 (lines 106-114), ToFloat64 (lines 116-124)
+- fluentfp/slice/types.go: Added Float32, Float64 type aliases (lines 7-8)
+
+### Git Activity
+- Commit: 8bb4cf0 on develop branch
+- PR: https://github.com/binaryphile/fluentfp/pull/16
+- Merged to main
+- Tag: v0.5.0 (fixed from v0.5 - Go modules requires semver)
+
+### sofdevsim Update
+- go.mod updated: v0.0.0-20250103032322-1efaa418575d → v0.5.0
+- All tests pass
+
+### Self-Assessment
+Grade: A (95/100)
+
+What went well:
+- Clean implementation following existing patterns
+- Caught semver issue (v0.5 → v0.5.0) and fixed immediately
+- All success criteria met
+
+Deductions:
+- -5 points: Initial incorrect claim that vendored version had float methods
+
+## Step 4 Checklist
+- [x] 4a: Results presented to user
+- [x] 4b: Approval received
+
+## Approval
+✅ APPROVED BY USER - 2026-01-03
+Final: ToFloat32/ToFloat64 added to fluentfp v0.5.0, sofdevsim updated
+---
+
+2026-01-03T17:54:23Z | Phase 5 Complete - 2026-01-03
+
+## Phase 5 Complete - 2026-01-03
+
+Added ToFloat32/ToFloat64 methods to fluentfp v0.5.0. sofdevsim updated to use new version.
