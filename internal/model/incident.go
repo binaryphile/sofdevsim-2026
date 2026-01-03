@@ -23,7 +23,7 @@ func NewIncident(id, ticketID string, severity Severity) Incident {
 }
 
 // IsOpen returns true if the incident hasn't been resolved
-func (i *Incident) IsOpen() bool {
+func (i Incident) IsOpen() bool {
 	return i.ResolvedAt == nil
 }
 

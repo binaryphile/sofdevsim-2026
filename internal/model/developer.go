@@ -23,7 +23,7 @@ func NewDeveloper(id, name string, velocity float64) Developer {
 }
 
 // IsIdle returns true if the developer has no assigned ticket
-func (d *Developer) IsIdle() bool {
+func (d Developer) IsIdle() bool {
 	return d.CurrentTicket == ""
 }
 

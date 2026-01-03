@@ -96,13 +96,13 @@ func (s *Simulation) FindDeveloperByID(id string) *Developer {
 
 // IdleDevelopers returns developers without assigned tickets
 func (s *Simulation) IdleDevelopers() []Developer {
-	return slice.From(s.Developers).KeepIf(func(d Developer) bool { return d.IsIdle() })
+	return slice.From(s.Developers).KeepIf(Developer.IsIdle)
 }
 
 // TotalOpenIncidents returns count of unresolved incidents
 func (s *Simulation) TotalOpenIncidents() int {
 	return slice.From(s.OpenIncidents).
-		KeepIf(func(i Incident) bool { return i.IsOpen() }).
+		KeepIf(Incident.IsOpen).
 		Len()
 }
 
