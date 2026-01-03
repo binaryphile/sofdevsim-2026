@@ -1,6 +1,7 @@
 package metrics
 
 import (
+	"github.com/binaryphile/fluentfp/slice"
 	"github.com/binaryphile/sofdevsim-2026/internal/model"
 )
 
@@ -29,10 +30,11 @@ func (t *Tracker) GetResult(policy model.SizingPolicy, sim *model.Simulation) Si
 	// Calculate average fever status from history
 	avgFever := 0.0
 	if len(t.Fever.History) > 0 {
-		sum := 0.0
-		for _, snap := range t.Fever.History {
-			sum += float64(snap.Status)
+		// sumFeverStatus accumulates fever status values as float64.
+		sumFeverStatus := func(acc float64, s FeverSnapshot) float64 {
+			return acc + float64(s.Status)
 		}
+		sum := slice.Fold(t.Fever.History, 0.0, sumFeverStatus)
 		avgFever = sum / float64(len(t.Fever.History))
 	}
 

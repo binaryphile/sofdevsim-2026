@@ -3574,3 +3574,78 @@ Final: ToFloat32/ToFloat64 added to fluentfp v0.5.0, sofdevsim updated
 ## Phase 5 Complete - 2026-01-03
 
 Added ToFloat32/ToFloat64 methods to fluentfp v0.5.0. sofdevsim updated to use new version.
+---
+
+2026-01-03T20:06:18Z | Phase 6 Contract: FluentFP Refactoring
+
+# Phase 6 Contract: FluentFP Refactoring
+
+**Created:** 2026-01-03
+
+## Step 1 Checklist
+- [x] 1a: Presented understanding
+- [x] 1b: Asked clarifying questions (researched Unzip pattern)
+- [x] 1b-answer: Received answers
+- [x] 1c: Contract created (this file)
+- [x] 1d: Approval received
+
+## Objective
+Refactor sofdevsim-2026 to use FluentFP v0.6.0 patterns (now includes Fold, Unzip2-4).
+
+## Success Criteria
+
+- [x] engine/engine.go:139-144 → `KeepIf().Len()` with named predicate
+- [x] metrics/fever.go:85-91 → `ToFloat64()` (inline - trivial)
+- [x] tui/metrics.go:31-36 → `Unzip4()` (inline - trivial field access)
+- [x] metrics/tracker.go:32-36 → `Fold()` with named reducer
+- [x] ~~model/ticket.go:134-136 → `Fold()`~~ SKIPPED - map iteration, not slice
+- [x] metrics/dora.go:88-91 → `Fold()` with named reducer
+- [x] metrics/dora.go:128-131 → `Fold()` with named reducer
+- [x] metrics/dora.go:101-103 → Named predicate (bonus - captures outer var)
+- [x] All tests pass
+- [x] go.mod updated to v0.6.0
+
+## Actual Results
+
+**Completed:** 2026-01-03
+
+### Files Modified
+- `internal/engine/engine.go` - Added slice import, refactored count loop with named predicate
+- `internal/metrics/fever.go` - Added slice import, refactored HistoryValues
+- `internal/tui/metrics.go` - Added slice/metrics imports, refactored with Unzip4
+- `internal/metrics/tracker.go` - Added slice import, refactored with Fold and named reducer
+- `internal/metrics/dora.go` - Refactored 2 sum loops with Fold, 1 predicate named
+
+### Named Functions Applied (per CLAUDE.md guidance)
+All functions that capture outer variables or have domain meaning were named:
+- `completedInCurrentSprint` - engine/engine.go (captures e.sim.CurrentSprint.StartDay)
+- `sumFeverStatus` - metrics/tracker.go (domain: accumulating fever status)
+- `sumDuration` - metrics/dora.go file-level var (domain: accumulating time.Duration, DRY)
+- `completedAfterCutoff` - metrics/dora.go (captures cutoff)
+
+### Inline Functions (trivial per CLAUDE.md)
+- `ToFloat64` extractors - single field access
+- `Unzip4` extractors - single field access
+
+### Skipped
+- `model/ticket.go` - PhaseEffortSpent is `map[WorkflowPhase]float64`, not slice
+
+### Self-Assessment
+Grade: A (95/100)
+
+What went well:
+- Applied named function guidance correctly
+- Caught map vs slice issue during testing
+- All refactoring targets completed (except map iteration)
+- Improved: Extracted duplicate `sumDuration` to file-level var (DRY)
+
+Deductions:
+- -5 points: Initially used wrong type name (HistoryPoint vs DORASnapshot)
+
+## Step 4 Checklist
+- [x] 4a: Results presented to user
+- [x] 4b: Approval received
+
+## Approval
+✅ APPROVED BY USER - 2026-01-03
+Final results: FluentFP v0.6.0 patterns applied across 5 files with named functions per CLAUDE.md guidance.

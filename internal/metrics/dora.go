@@ -9,6 +9,9 @@ import (
 	"github.com/binaryphile/sofdevsim-2026/internal/model"
 )
 
+// sumDuration adds two time.Duration values for use with slice.Fold.
+var sumDuration = func(acc, d time.Duration) time.Duration { return acc + d }
+
 // DORAMetrics tracks the four key DORA metrics
 type DORAMetrics struct {
 	// Lead Time: time from first commit to deploy
@@ -84,10 +87,7 @@ func (m *DORAMetrics) updateLeadTime(sim *model.Simulation) {
 	sort.Slice(sorted, func(i, j int) bool { return sorted[i] < sorted[j] })
 
 	// Calculate average
-	var total time.Duration
-	for _, lt := range m.LeadTimes {
-		total += lt
-	}
+	total := slice.Fold(m.LeadTimes, time.Duration(0), sumDuration)
 	m.LeadTimeAvg = total / time.Duration(len(m.LeadTimes))
 
 	// Calculate percentiles
@@ -98,9 +98,11 @@ func (m *DORAMetrics) updateLeadTime(sim *model.Simulation) {
 func (m *DORAMetrics) updateDeployFrequency(sim *model.Simulation) {
 	// Count deploys in last 7 days (using simulation ticks)
 	cutoff := sim.CurrentTick - 7
-	m.DeploysLast7Days = slice.From(sim.CompletedTickets).KeepIf(func(t model.Ticket) bool {
+	// completedAfterCutoff returns true if ticket was completed after the cutoff tick.
+	completedAfterCutoff := func(t model.Ticket) bool {
 		return t.CompletedTick >= cutoff
-	}).Len()
+	}
+	m.DeploysLast7Days = slice.From(sim.CompletedTickets).KeepIf(completedAfterCutoff).Len()
 
 	// Frequency per day
 	if sim.CurrentTick > 0 {
@@ -124,10 +126,7 @@ func (m *DORAMetrics) updateMTTR(sim *model.Simulation) {
 		return
 	}
 
-	var total time.Duration
-	for _, mttr := range m.MTTRs {
-		total += mttr
-	}
+	total := slice.Fold(m.MTTRs, time.Duration(0), sumDuration)
 	m.MTTRAvg = total / time.Duration(len(m.MTTRs))
 }
 

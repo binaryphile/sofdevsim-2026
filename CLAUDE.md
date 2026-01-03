@@ -155,6 +155,115 @@ lof.Println(s string)      // Wraps fmt.Println for Each
 lof.Len(ts []T) int        // Wraps len
 ```
 
+### pair Package (Tuples)
+
+```go
+import "github.com/binaryphile/fluentfp/tuple/pair"
+
+// Pair type
+pair.X[V1, V2]             // Struct with V1, V2 fields
+
+// Creating pairs
+pair.Of(v1, v2) X[V1,V2]   // Construct a pair
+
+// Zipping slices
+pair.Zip(as, bs) []X[A,B]           // Combine into pairs (panics if unequal length)
+pair.ZipWith(as, bs, fn) []R        // Combine and transform (panics if unequal length)
+```
+
+### pair Patterns
+
+```go
+// Parallel slice iteration
+pairs := pair.Zip(names, ages)
+for _, p := range pairs {
+    fmt.Printf("%s is %d\n", p.V1, p.V2)
+}
+
+// Direct transformation without intermediate pairs
+users := pair.ZipWith(names, ages, NewUserFromNameAge)
+
+// Chain with slice.From for filtering
+adults := slice.From(pair.Zip(names, ages)).KeepIf(NameAgePairIsAdult)
+```
+
+### Fold and Unzip (v0.6.0)
+
+```go
+// Fold - reduce slice to single value
+total := slice.Fold(amounts, 0.0, func(acc, x float64) float64 { return acc + x })
+
+// Build map from slice
+byMAC := slice.Fold(devices, make(map[string]Device), func(m map[string]Device, d Device) map[string]Device {
+    m[d.MAC] = d
+    return m
+})
+
+// Unzip - extract multiple fields in one pass (avoids N iterations)
+leadTimes, deployFreqs, mttrs, cfrs := slice.Unzip4(history,
+    func(h HistoryPoint) float64 { return h.LeadTimeAvg },
+    func(h HistoryPoint) float64 { return h.DeployFrequency },
+    func(h HistoryPoint) float64 { return h.MTTR },
+    func(h HistoryPoint) float64 { return h.ChangeFailRate },
+)
+```
+
+### Named vs Inline Functions
+
+**Preference hierarchy** (best to worst):
+1. **Method expressions** - `User.IsActive`, `Device.GetMAC` (cleanest, no function body)
+2. **Named functions** - `isActive := func(u User) bool {...}` (readable, debuggable)
+3. **Inline anonymous** - `func(u User) bool {...}` (only when trivial)
+
+**When to name (vs inline):**
+
+| Name when... | Inline when... |
+|--------------|----------------|
+| Reused (called 2+ times) | Trivial wrapper (single forwarding expression) |
+| Complex (multiple statements) | Standard idiom (t.Run, http.HandlerFunc) |
+| Has domain meaning | Context already explains intent |
+| Stored for later use | |
+| Captures outer variables | |
+
+**Locality:** Define named functions close to first usage, not at package level.
+
+#### Method Expressions (preferred)
+
+When a type has a method matching the required signature, use it directly:
+```go
+// Best: method expression
+actives := users.KeepIf(User.IsActive)
+names := users.ToString(User.Name)
+```
+
+#### Named Functions (when method expressions don't apply)
+
+When you need custom logic or the type lacks an appropriate method. **Include godoc-style comments**:
+```go
+// isRecentlyActive returns true if user is active and was seen after cutoff.
+isRecentlyActive := func(u User) bool {
+    return u.IsActive() && u.LastSeen.After(cutoff)
+}
+actives := users.KeepIf(isRecentlyActive)
+```
+
+#### Predicate Naming Patterns
+
+| Pattern | When to use | Example |
+|---------|-------------|---------|
+| `Is[Condition]` | Simple check, subject obvious | `IsValidMAC` |
+| `[Subject]Is[Condition]` | State check on specific type | `SliceOfScansIsEmpty` |
+| `[Subject]Has[Condition](params)` | Parameterized predicate factory | `DeviceHasHWVersion("EX12")` |
+| `Type.Is[Condition]` | Method expression | `Device.IsActive` |
+
+#### Reducer Naming
+
+```go
+// sumFloat64 adds two float64 values.
+sumFloat64 := func(acc, x float64) float64 { return acc + x }
+total := slice.Fold(amounts, 0.0, sumFloat64)
+```
+
 ### Why Always Prefer FluentFP Over Loops
 
 Loops are 3+ lines; FluentFP is 1 conceptual operation per line.
@@ -165,18 +274,17 @@ Loops are 3+ lines; FluentFP is 1 conceptual operation per line.
 
 ### When Loops Are Still Necessary
 
-1. **Index correlation across parallel slices** - need to access multiple slices by index
-2. **Channel consumption** - `for r := range chan` has no FP equivalent
-3. **Reduce/accumulate** - building maps, running sums (no `Fold` yet)
-4. **Complex control flow** - break/continue/early return within loop
+1. **Channel consumption** - `for r := range chan` has no FP equivalent
+2. **Complex control flow** - break/continue/early return within loop
 
 See [fluentfp/slice/README.md](https://github.com/binaryphile/fluentfp/blob/develop/slice/README.md#when-loops-are-still-necessary) for detailed examples.
 
 ### FluentFP Enhancements Wanted
 
 - [x] Add `ToFloat64` and `ToFloat32` methods to slice package (v0.5.0)
-- [ ] Add `Zip` method or function for parallel slice iteration
-- [ ] Add `Fold`/`Reduce` for accumulating operations
+- [x] Add `Fold`/`Reduce` for accumulating operations (v0.6.0)
+- [x] Add `Unzip2`/`Unzip3`/`Unzip4` for multi-field extraction (v0.6.0)
+- [x] Add `Zip`/`ZipWith` for parallel slice iteration (v0.6.0)
 
 ## Testing: Red/Green TDD + Khorikov Principles
 

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/binaryphile/fluentfp/slice"
 	"github.com/binaryphile/sofdevsim-2026/internal/model"
 )
 
@@ -136,12 +137,11 @@ func (e *Engine) updateBuffer() {
 	progressPct := e.sim.CurrentSprint.ProgressPct(e.sim.CurrentTick)
 	expectedComplete := progressPct * float64(len(e.sim.ActiveTickets))
 
-	completedInSprint := 0
-	for _, t := range e.sim.CompletedTickets {
-		if t.CompletedTick >= e.sim.CurrentSprint.StartDay {
-			completedInSprint++
-		}
+	// completedInCurrentSprint returns true if ticket was completed after sprint started.
+	completedInCurrentSprint := func(t model.Ticket) bool {
+		return t.CompletedTick >= e.sim.CurrentSprint.StartDay
 	}
+	completedInSprint := slice.From(e.sim.CompletedTickets).KeepIf(completedInCurrentSprint).Len()
 
 	// If behind schedule, consume buffer
 	if float64(completedInSprint) < expectedComplete {

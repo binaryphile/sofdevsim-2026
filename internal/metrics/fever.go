@@ -1,6 +1,7 @@
 package metrics
 
 import (
+	"github.com/binaryphile/fluentfp/slice"
 	"github.com/binaryphile/sofdevsim-2026/internal/model"
 )
 
@@ -83,9 +84,5 @@ func (f *FeverChart) IsRed() bool {
 
 // HistoryValues returns buffer percentages for sparkline
 func (f *FeverChart) HistoryValues() []float64 {
-	values := make([]float64, len(f.History))
-	for i, snap := range f.History {
-		values[i] = snap.PercentUsed
-	}
-	return values
+	return slice.From(f.History).ToFloat64(func(s FeverSnapshot) float64 { return s.PercentUsed })
 }

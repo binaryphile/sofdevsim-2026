@@ -5,6 +5,8 @@ import (
 	"strings"
 
 	"github.com/NimbleMarkets/ntcharts/sparkline"
+	"github.com/binaryphile/fluentfp/slice"
+	"github.com/binaryphile/sofdevsim-2026/internal/metrics"
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -27,13 +29,12 @@ func (a *App) doraPanel() string {
 	dora := a.tracker.DORA
 
 	// Extract values for sparklines
-	var leadTimes, deployFreqs, mttrs, cfrs []float64
-	for _, h := range dora.History {
-		leadTimes = append(leadTimes, h.LeadTimeAvg)
-		deployFreqs = append(deployFreqs, h.DeployFrequency)
-		mttrs = append(mttrs, h.MTTR)
-		cfrs = append(cfrs, h.ChangeFailRate)
-	}
+	leadTimes, deployFreqs, mttrs, cfrs := slice.Unzip4(dora.History,
+		func(h metrics.DORASnapshot) float64 { return h.LeadTimeAvg },
+		func(h metrics.DORASnapshot) float64 { return h.DeployFrequency },
+		func(h metrics.DORASnapshot) float64 { return h.MTTR },
+		func(h metrics.DORASnapshot) float64 { return h.ChangeFailRate },
+	)
 
 	leadTimeSparkline := a.sparkline(leadTimes)
 	deployFreqSparkline := a.sparkline(deployFreqs)
