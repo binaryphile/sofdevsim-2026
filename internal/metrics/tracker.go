@@ -31,9 +31,7 @@ func (t *Tracker) GetResult(policy model.SizingPolicy, sim *model.Simulation) Si
 	avgFever := 0.0
 	if len(t.Fever.History) > 0 {
 		// sumFeverStatus accumulates fever status values as float64.
-		sumFeverStatus := func(acc float64, s FeverSnapshot) float64 {
-			return acc + float64(s.Status)
-		}
+		sumFeverStatus := func(acc float64, s FeverSnapshot) float64 { return acc + float64(s.Status) }
 		sum := slice.Fold(t.Fever.History, 0.0, sumFeverStatus)
 		avgFever = sum / float64(len(t.Fever.History))
 	}

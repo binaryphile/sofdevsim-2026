@@ -270,13 +270,22 @@ names := users.ToString(User.Name)
 
 #### Named Functions (when method expressions don't apply)
 
-When you need custom logic or the type lacks an appropriate method. **Include godoc-style comments**:
+When you need custom logic or the type lacks an appropriate method. **Single-expression predicates go on one line:**
 ```go
-// isRecentlyActive returns true if user is active and was seen after cutoff.
-isRecentlyActive := func(u User) bool {
-    return u.IsActive() && u.LastSeen.After(cutoff)
+// completedAfterCutoff returns true if ticket was completed after the cutoff tick.
+completedAfterCutoff := func(t Ticket) bool { return t.CompletedTick >= cutoff }
+count := slice.From(tickets).KeepIf(completedAfterCutoff).Len()
+```
+
+For multi-statement bodies, use standard formatting:
+```go
+// complexCheck performs multiple validations.
+complexCheck := func(u User) bool {
+    if u.IsDeleted() {
+        return false
+    }
+    return u.IsActive() && u.HasPermission("read")
 }
-actives := users.KeepIf(isRecentlyActive)
 ```
 
 #### Predicate Naming Patterns

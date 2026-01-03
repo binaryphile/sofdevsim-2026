@@ -114,9 +114,7 @@ func (e *Exporter) writeSprints(outputDir string) (int, error) {
 		startDay := e.sim.CurrentSprint.StartDay
 		ticketsStarted := len(e.sim.CurrentSprint.Tickets)
 		// completedInSprint returns true if ticket was completed after sprint start.
-		completedInSprint := func(t model.Ticket) bool {
-			return t.CompletedTick >= startDay
-		}
+		completedInSprint := func(t model.Ticket) bool { return t.CompletedTick >= startDay }
 		ticketsCompleted := slice.From(e.sim.CompletedTickets).
 			KeepIf(completedInSprint).
 			Len()

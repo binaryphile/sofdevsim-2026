@@ -138,9 +138,7 @@ func (e *Engine) updateBuffer() {
 	expectedComplete := progressPct * float64(len(e.sim.ActiveTickets))
 
 	// completedInCurrentSprint returns true if ticket was completed after sprint started.
-	completedInCurrentSprint := func(t model.Ticket) bool {
-		return t.CompletedTick >= e.sim.CurrentSprint.StartDay
-	}
+	completedInCurrentSprint := func(t model.Ticket) bool { return t.CompletedTick >= e.sim.CurrentSprint.StartDay }
 	completedInSprint := slice.From(e.sim.CompletedTickets).
 		KeepIf(completedInCurrentSprint).
 		Len()
