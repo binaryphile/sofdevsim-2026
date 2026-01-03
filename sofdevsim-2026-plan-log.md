@@ -2266,3 +2266,396 @@ Create documentation for the Phase 1 MVP: use cases, design document, and README
 
 ### Next Phase
 - Data output for comparing runs to theoretical results
+---
+
+2026-01-03T05:20:52Z | Phase 3 Contract: Data Export Use Cases
+
+# Phase 3 Contract: Data Export Use Cases
+
+**Created:** 2026-01-03
+
+## Step 1 Checklist
+- [x] 1a: Presented understanding
+- [x] 1b: Asked clarifying questions
+- [x] 1b-answer: Received answers (CSV, manual keybind, raw data, use cases + design)
+- [x] 1c: Contract created (this file)
+- [x] 1d: Approval received
+
+## Objective
+
+Add data export use cases to documentation and update design.md with CSV data model. The export enables:
+1. **Teaching TOC principles** - Buffer consumption, constraint identification, flow efficiency
+2. **Demonstrating DORA integration** - How the four metrics connect to delivery outcomes
+3. **Validating the Unified Ticket Workflow Rubric** - Does the 8-phase model with variance by understanding hold up experimentally?
+4. **Testing the sizing hypothesis** - MVP focus: does TameFlow-Cognitive beat DORA-Strict?
+
+## Success Criteria
+
+- [ ] UC7 "Export Simulation Data" added to docs/use-cases.md
+- [ ] Actor-Goal List updated with new goal #11
+- [ ] System-in-Use Stories #3 and #4 added (researcher + educator scenarios)
+- [ ] docs/design.md updated with CSV export data model (6 files)
+- [ ] CSV schema includes theoretical validation columns (expected_var_min/max, within_expected)
+- [ ] CSV schema includes 8-phase timing columns (validates Unified Ticket Workflow Rubric)
+- [ ] CSV schema includes WIP tracking (max_wip, avg_wip for TOC)
+- [ ] CSV schema includes incidents.csv with per-incident MTTR detail
+- [ ] Seed captured for reproducibility
+- [ ] Keybinding 'e' documented for export
+
+## Approach
+
+### 1. Update docs/use-cases.md
+
+**New System-in-Use Story #3: The Data-Driven Researcher**
+> Pat, a process researcher at a consultancy, hypothesizes that TameFlow-Cognitive outperforms DORA-Strict. Pat runs 20 policy comparisons with different seeds, pressing 'e' after each to export. In R, Pat merges the CSVs, groups tickets by understanding level, and plots actual variance against the theoretical bounds (High ±5%, Medium ±20%, Low ±50%). The data shows 94% of tickets fell within expected ranges—validating the variance model. A t-test on lead times confirms TameFlow wins with p<0.01. Pat now has evidence, not just theory.
+
+**New System-in-Use Story #4: The TOC Educator**
+> Morgan, a Lean/TOC coach, uses the simulation to teach a workshop. After a simulated sprint, Morgan exports the data and projects the CSV. "Look at the buffer consumption column—see how Low-understanding tickets consumed 3x more buffer than High? That's the Theory of Constraints in action. The constraint isn't developer speed; it's uncertainty. Now look at the variance_ratio versus expected bounds—the model predicted this." The export transforms abstract theory into concrete, discussable data.
+
+**Updated Actor-Goal List:**
+| # | Goal | Level | "Lunch Test" | Stakeholder Interest |
+|---|------|-------|--------------|---------------------|
+| 11 | Export simulation data to CSV | Blue | Yes - have file for analysis | Researcher - validate hypotheses; Educator - teach with data |
+
+**New Use Case UC7: Export Simulation Data**
+
+Main Success Scenario:
+1. Operator runs simulation (completes sprints or comparison)
+2. Operator presses 'e' to export
+3. System creates timestamped export directory
+4. System writes CSV files (tickets, sprints, metrics, comparison if applicable)
+5. System confirms export with path and row counts
+6. Operator analyzes data in external tool (spreadsheet, R, Python)
+
+Extensions:
+- 2a. No completed tickets: System shows "Nothing to export" message
+- 3a. Export directory exists: System appends sequence number
+- 4a. No comparison run: System omits comparison.csv, notes in confirmation
+- 5a. Write error: System shows error with path attempted
+
+### 2. Update docs/design.md
+
+**New Section: Data Export**
+
+**Purpose:** Enable external validation of simulation hypotheses and teaching of TOC/DORA principles.
+
+**Output Structure:**
+```
+sofdevsim-export-20260103-143052/
+├── metadata.csv      # Seed, policy, export timestamp
+├── tickets.csv       # Per-ticket data with theoretical validation + phase timing
+├── sprints.csv       # Per-sprint buffer/flow/WIP data (TOC concepts)
+├── incidents.csv     # Per-incident MTTR detail
+├── metrics.csv       # DORA metrics summary
+└── comparison.csv    # Policy A vs B results (if comparison run)
+```
+
+**CSV Schemas:**
+
+```csv
+# metadata.csv - Reproducibility and context
+seed,policy,sprints_run,export_timestamp,simulation_version,phase_effort_distribution
+
+# tickets.csv - Core hypothesis validation + 8-phase effort distribution
+ticket_id,title,understanding,estimated_days,actual_days,variance_ratio,expected_var_min,expected_var_max,within_expected,policy,sprint_number,started_tick,completed_tick,lead_time_days,phase_research_days,phase_sizing_days,phase_planning_days,phase_implement_days,phase_verify_days,phase_cicd_days,phase_review_days,phase_done_days
+
+# sprints.csv - TOC concepts (buffer, flow, WIP)
+sprint_number,duration_days,buffer_days,buffer_used,buffer_pct,fever_status,tickets_started,tickets_completed,incidents_generated,max_wip,avg_wip
+
+# incidents.csv - MTTR detail
+incident_id,ticket_id,severity,created_tick,resolved_tick,mttr_days,sprint_number
+
+# metrics.csv - DORA integration
+policy,lead_time_avg,lead_time_stddev,deploy_frequency,mttr_avg,change_fail_rate,total_tickets,total_incidents
+
+# comparison.csv - Sizing hypothesis test
+seed,sprints_run,metric,dora_strict_value,tameflow_value,winner,difference,difference_pct
+```
+
+**Theoretical Bounds (for `expected_var_min`, `expected_var_max`):**
+| Understanding | Min Multiplier | Max Multiplier |
+|---------------|----------------|----------------|
+| High | 0.95 | 1.05 |
+| Medium | 0.80 | 1.20 |
+| Low | 0.50 | 1.50 |
+
+**Phase Effort Distribution (stored in metadata.csv as JSON string):**
+```json
+{"research":0.10,"sizing":0.05,"planning":0.10,"implement":0.40,"verify":0.15,"cicd":0.05,"review":0.10,"done":0.05}
+```
+This enables validation: compare actual phase_*_days columns against estimated_days × distribution.
+
+**Export Algorithm:**
+1. Create directory: `sofdevsim-export-{YYYYMMDD-HHMMSS}/`
+2. Write metadata.csv (seed, policy, timestamp)
+3. Write tickets.csv with theoretical bounds + phase timing per-row
+4. Write sprints.csv with buffer/flow/WIP metrics
+5. Write incidents.csv with per-incident MTTR detail
+6. Write metrics.csv with DORA summary
+7. If comparison exists, write comparison.csv with seed
+8. Return path and per-file row counts
+
+### 3. Update README.md
+
+Add to keybindings table:
+| **e** | Export data to CSV | All (after sprints complete) |
+
+Add to "Understanding the Results" section:
+> **Data Export:** Press 'e' to export simulation data for external analysis. Files include per-ticket variance (for validating the cognitive load hypothesis), sprint buffer consumption (Theory of Constraints), and DORA metrics. Each export captures the random seed for reproducibility.
+
+## Token Budget
+
+Estimated: 10-15K tokens
+
+## Files to Modify
+
+1. `docs/use-cases.md` - Add UC7, update Actor-Goal List, add Stories #3 and #4
+2. `docs/design.md` - Add Data Export section with full CSV schema
+3. `README.md` - Add 'e' keybind, add export explanation to results section
+
+## Decisions
+
+- **CSV format only** - Simpler, spreadsheet-friendly, sufficient for analysis
+- **Manual export via 'e' keybind** - User controls when to save
+- **Raw data with theoretical bounds** - Include expected_var_min/max so user can validate without recalculating
+- **Directory output with multiple files** - Logical separation, prevents single-file bloat
+- **Seed in every relevant file** - Critical for reproducibility and correlating runs
+- **within_expected boolean** - Pre-computed for easy filtering/counting
+
+## Long-Term Context
+
+This MVP focuses on the sizing hypothesis (DORA-Strict vs TameFlow-Cognitive), but the data export schema fully supports the broader goals:
+
+| Goal | How Schema Supports It |
+|------|------------------------|
+| **Teaching TOC** | sprints.csv: buffer_pct, fever_status, max_wip, avg_wip |
+| **DORA integration** | metrics.csv: all 4 metrics; incidents.csv: MTTR detail |
+| **Unified Ticket Workflow Rubric validation** | tickets.csv: 8 phase timing columns enable testing effort distribution (10%/5%/10%/40%/15%/5%/10%/5%) |
+| **Sizing hypothesis** | comparison.csv + tickets.csv: variance by understanding, policy comparison |
+
+The schema is now complete for all stated long-term goals.
+---
+
+2026-01-03T05:28:37Z | Phase 3 Contract: Data Export Use Cases
+
+# Phase 3 Contract: Data Export Use Cases
+
+**Created:** 2026-01-03
+
+## Step 1 Checklist
+- [x] 1a: Presented understanding
+- [x] 1b: Asked clarifying questions
+- [x] 1b-answer: Received answers (CSV, manual keybind, raw data, use cases + design)
+- [x] 1c: Contract created (this file)
+- [x] 1d: Approval received
+
+## Objective
+
+Add data export use cases to documentation and update design.md with CSV data model. The export enables:
+1. **Teaching TOC principles** - Buffer consumption, constraint identification, flow efficiency
+2. **Demonstrating DORA integration** - How the four metrics connect to delivery outcomes
+3. **Validating the Unified Ticket Workflow Rubric** - Does the 8-phase model with variance by understanding hold up experimentally?
+4. **Testing the sizing hypothesis** - MVP focus: does TameFlow-Cognitive beat DORA-Strict?
+
+## Success Criteria
+
+- [x] UC7 "Export Simulation Data" added to docs/use-cases.md (lines 274-298)
+- [x] Actor-Goal List updated with new goal #11 (line 107)
+- [x] System-in-Use Stories #3 and #4 added (researcher + educator scenarios) (lines 81-87)
+- [x] docs/design.md updated with CSV export data model (6 files) (lines 301-387)
+- [x] CSV schema includes theoretical validation columns (expected_var_min/max, within_expected)
+- [x] CSV schema includes 8-phase timing columns (validates Unified Ticket Workflow Rubric)
+- [x] CSV schema includes WIP tracking (max_wip, avg_wip for TOC)
+- [x] CSV schema includes incidents.csv with per-incident MTTR detail
+- [x] Seed captured for reproducibility (metadata.csv, comparison.csv)
+- [x] Keybinding 'e' documented for export (README.md line 156, keybindings mockup line 112)
+
+## Approach
+
+### 1. Update docs/use-cases.md
+
+**New System-in-Use Story #3: The Data-Driven Researcher**
+> Pat, a process researcher at a consultancy, hypothesizes that TameFlow-Cognitive outperforms DORA-Strict. Pat runs 20 policy comparisons with different seeds, pressing 'e' after each to export. In R, Pat merges the CSVs, groups tickets by understanding level, and plots actual variance against the theoretical bounds (High ±5%, Medium ±20%, Low ±50%). The data shows 94% of tickets fell within expected ranges—validating the variance model. A t-test on lead times confirms TameFlow wins with p<0.01. Pat now has evidence, not just theory.
+
+**New System-in-Use Story #4: The TOC Educator**
+> Morgan, a Lean/TOC coach, uses the simulation to teach a workshop. After a simulated sprint, Morgan exports the data and projects the CSV. "Look at the buffer consumption column—see how Low-understanding tickets consumed 3x more buffer than High? That's the Theory of Constraints in action. The constraint isn't developer speed; it's uncertainty. Now look at the variance_ratio versus expected bounds—the model predicted this." The export transforms abstract theory into concrete, discussable data.
+
+**Updated Actor-Goal List:**
+| # | Goal | Level | "Lunch Test" | Stakeholder Interest |
+|---|------|-------|--------------|---------------------|
+| 11 | Export simulation data to CSV | Blue | Yes - have file for analysis | Researcher - validate hypotheses; Educator - teach with data |
+
+**New Use Case UC7: Export Simulation Data**
+
+Main Success Scenario:
+1. Operator runs simulation (completes sprints or comparison)
+2. Operator presses 'e' to export
+3. System creates timestamped export directory
+4. System writes CSV files (tickets, sprints, metrics, comparison if applicable)
+5. System confirms export with path and row counts
+6. Operator analyzes data in external tool (spreadsheet, R, Python)
+
+Extensions:
+- 2a. No completed tickets: System shows "Nothing to export" message
+- 3a. Export directory exists: System appends sequence number
+- 4a. No comparison run: System omits comparison.csv, notes in confirmation
+- 5a. Write error: System shows error with path attempted
+
+### 2. Update docs/design.md
+
+**New Section: Data Export**
+
+**Purpose:** Enable external validation of simulation hypotheses and teaching of TOC/DORA principles.
+
+**Output Structure:**
+```
+sofdevsim-export-20260103-143052/
+├── metadata.csv      # Seed, policy, export timestamp
+├── tickets.csv       # Per-ticket data with theoretical validation + phase timing
+├── sprints.csv       # Per-sprint buffer/flow/WIP data (TOC concepts)
+├── incidents.csv     # Per-incident MTTR detail
+├── metrics.csv       # DORA metrics summary
+└── comparison.csv    # Policy A vs B results (if comparison run)
+```
+
+**CSV Schemas:**
+
+```csv
+# metadata.csv - Reproducibility and context
+seed,policy,sprints_run,export_timestamp,simulation_version,phase_effort_distribution
+
+# tickets.csv - Core hypothesis validation + 8-phase effort distribution
+ticket_id,title,understanding,estimated_days,actual_days,variance_ratio,expected_var_min,expected_var_max,within_expected,policy,sprint_number,started_tick,completed_tick,lead_time_days,phase_research_days,phase_sizing_days,phase_planning_days,phase_implement_days,phase_verify_days,phase_cicd_days,phase_review_days,phase_done_days
+
+# sprints.csv - TOC concepts (buffer, flow, WIP)
+sprint_number,duration_days,buffer_days,buffer_used,buffer_pct,fever_status,tickets_started,tickets_completed,incidents_generated,max_wip,avg_wip
+
+# incidents.csv - MTTR detail
+incident_id,ticket_id,severity,created_tick,resolved_tick,mttr_days,sprint_number
+
+# metrics.csv - DORA integration
+policy,lead_time_avg,lead_time_stddev,deploy_frequency,mttr_avg,change_fail_rate,total_tickets,total_incidents
+
+# comparison.csv - Sizing hypothesis test
+seed,sprints_run,metric,dora_strict_value,tameflow_value,winner,difference,difference_pct
+```
+
+**Theoretical Bounds (for `expected_var_min`, `expected_var_max`):**
+| Understanding | Min Multiplier | Max Multiplier |
+|---------------|----------------|----------------|
+| High | 0.95 | 1.05 |
+| Medium | 0.80 | 1.20 |
+| Low | 0.50 | 1.50 |
+
+**Phase Effort Distribution (stored in metadata.csv as JSON string):**
+```json
+{"research":0.10,"sizing":0.05,"planning":0.10,"implement":0.40,"verify":0.15,"cicd":0.05,"review":0.10,"done":0.05}
+```
+This enables validation: compare actual phase_*_days columns against estimated_days × distribution.
+
+**Export Algorithm:**
+1. Create directory: `sofdevsim-export-{YYYYMMDD-HHMMSS}/`
+2. Write metadata.csv (seed, policy, timestamp)
+3. Write tickets.csv with theoretical bounds + phase timing per-row
+4. Write sprints.csv with buffer/flow/WIP metrics
+5. Write incidents.csv with per-incident MTTR detail
+6. Write metrics.csv with DORA summary
+7. If comparison exists, write comparison.csv with seed
+8. Return path and per-file row counts
+
+### 3. Update README.md
+
+Add to keybindings table:
+| **e** | Export data to CSV | All (after sprints complete) |
+
+Add to "Understanding the Results" section:
+> **Data Export:** Press 'e' to export simulation data for external analysis. Files include per-ticket variance (for validating the cognitive load hypothesis), sprint buffer consumption (Theory of Constraints), and DORA metrics. Each export captures the random seed for reproducibility.
+
+## Token Budget
+
+Estimated: 10-15K tokens
+
+## Files to Modify
+
+1. `docs/use-cases.md` - Add UC7, update Actor-Goal List, add Stories #3 and #4
+2. `docs/design.md` - Add Data Export section with full CSV schema
+3. `README.md` - Add 'e' keybind, add export explanation to results section
+
+## Decisions
+
+- **CSV format only** - Simpler, spreadsheet-friendly, sufficient for analysis
+- **Manual export via 'e' keybind** - User controls when to save
+- **Raw data with theoretical bounds** - Include expected_var_min/max so user can validate without recalculating
+- **Directory output with multiple files** - Logical separation, prevents single-file bloat
+- **Seed in every relevant file** - Critical for reproducibility and correlating runs
+- **within_expected boolean** - Pre-computed for easy filtering/counting
+
+## Long-Term Context
+
+This MVP focuses on the sizing hypothesis (DORA-Strict vs TameFlow-Cognitive), but the data export schema fully supports the broader goals:
+
+| Goal | How Schema Supports It |
+|------|------------------------|
+| **Teaching TOC** | sprints.csv: buffer_pct, fever_status, max_wip, avg_wip |
+| **DORA integration** | metrics.csv: all 4 metrics; incidents.csv: MTTR detail |
+| **Unified Ticket Workflow Rubric validation** | tickets.csv: 8 phase timing columns enable testing effort distribution (10%/5%/10%/40%/15%/5%/10%/5%) |
+| **Sizing hypothesis** | comparison.csv + tickets.csv: variance by understanding, policy comparison |
+
+The schema is now complete for all stated long-term goals.
+
+---
+
+## Actual Results
+
+**Completed:** 2026-01-03
+
+### Files Modified
+
+| File | Changes |
+|------|---------|
+| `docs/use-cases.md` | +2 System-in-Use Stories, +1 stakeholder (Educator), updated Researcher interest, +goal #11, +UC7 with 4 extensions |
+| `docs/design.md` | +Data Export section with 6 CSV schemas, theoretical bounds table, phase distribution JSON, export algorithm flowchart |
+| `README.md` | +keybind 'e' in table and ASCII mockup, +Data Export section with directory tree, sample CSV row, spreadsheet tip |
+
+### Deliverable Details
+
+- docs/use-cases.md: 310 lines (+37 lines added)
+- docs/design.md: 387 lines (+89 lines added)
+- README.md: 260 lines (+27 lines added)
+
+### Self-Assessment
+
+**Grade: A (100/100)**
+
+What went well:
+- Schema fully supports all 4 long-term goals (TOC, DORA, Rubric validation, sizing hypothesis)
+- Phase timing columns enable Unified Ticket Workflow Rubric validation
+- Theoretical bounds included for easy hypothesis validation
+- Phase effort distribution in metadata.csv enables effort distribution validation
+- README includes concrete example (directory tree, sample CSV row, spreadsheet formula tip)
+
+No deductions.
+
+## Step 4 Checklist
+- [x] 4a: Results presented to user
+- [x] 4b: Approval received
+
+## Approval
+
+APPROVED BY USER - 2026-01-03
+
+Phase 3 complete: Data export use cases and design documentation added.
+---
+
+2026-01-03T05:28:50Z | Phase 3 Complete - 2026-01-03
+
+## Phase 3 Complete - 2026-01-03
+
+**Deliverables:**
+- docs/use-cases.md: +UC7, Stories #3-4, Goal #11, Educator stakeholder
+- docs/design.md: +Data Export section (6 CSV schemas, flowchart)
+- README.md: +keybind 'e', Data Export section with examples
+
+**Grade:** A (100/100)
+
+**Next:** Implementation of data export feature

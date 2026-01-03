@@ -109,7 +109,7 @@ This is why TameFlow-Cognitive often beats DORA-Strict: decomposing by *uncertai
 │ • Understanding level is a stronger discriminant than time estimate         │
 └──────────────────────────────────────────────────────────────────────────────┘
 
-Keybindings: [a]ssign [d]ecompose [p]olicy [s]tart sprint | Tab:view Space:pause +/-:speed [c]ompare [q]uit
+Keybindings: [a]ssign [d]ecompose [p]olicy [s]tart sprint | Tab:view Space:pause +/-:speed [c]ompare [e]xport [q]uit
 ```
 
 ## Quick Start
@@ -153,6 +153,7 @@ Press **Tab** to switch between views:
 | **a** | Assign selected ticket to developer | Planning |
 | **d** | Decompose selected ticket | Planning |
 | **c** | Run policy comparison | All |
+| **e** | Export data to CSV | All (after sprints complete) |
 | **j/k** or **↑/↓** | Navigate backlog | Planning |
 | **q** | Quit | All |
 
@@ -192,6 +193,33 @@ When you press **c**, the simulation:
 3. Runs 3 sprints with TameFlow-Cognitive policy (same seed)
 4. Compares the four DORA metrics
 5. Declares a winner and explains why
+
+### Data Export
+
+Press **e** to export simulation data for external analysis. Creates a timestamped directory with CSV files:
+
+```
+sofdevsim-export-20260103-143052/
+├── metadata.csv      # Seed, policy, timestamp
+├── tickets.csv       # Per-ticket variance vs theoretical bounds
+├── sprints.csv       # Buffer consumption, WIP (TOC)
+├── incidents.csv     # Per-incident MTTR detail
+├── metrics.csv       # DORA metrics summary
+└── comparison.csv    # Policy comparison (if run)
+```
+
+**Sample tickets.csv row:**
+```csv
+ticket_id,understanding,estimated_days,actual_days,variance_ratio,expected_var_min,expected_var_max,within_expected,...
+TKT-001,Medium,4.5,5.2,1.16,0.80,1.20,true,...
+```
+
+The `within_expected` column shows whether actual variance fell within theoretical bounds—making hypothesis validation as simple as `=COUNTIF(within_expected, "true")`.
+
+**Use cases:**
+- **Validate the variance model**: Check if actual variance falls within theoretical bounds (High ±5%, Medium ±20%, Low ±50%)
+- **Test the sizing hypothesis**: Run multiple comparisons, export each, analyze statistically
+- **Teach TOC principles**: Project the CSV in a workshop to show buffer consumption patterns
 
 ## Architecture
 

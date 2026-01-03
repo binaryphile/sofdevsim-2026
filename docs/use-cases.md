@@ -64,7 +64,8 @@ None (self-contained simulation, no external services)
 | Team Lead | Wants data to justify sizing policy to management |
 | Scrum Master | Wants to understand buffer consumption patterns |
 | Developer | Wants to see how understanding level affects outcomes |
-| Researcher | Wants reproducible experiments (same seed = same results) |
+| Researcher | Wants reproducible experiments (same seed = same results); wants exportable data to validate hypotheses statistically |
+| Educator | Wants concrete data to teach TOC principles and demonstrate DORA metrics in action |
 
 ---
 
@@ -77,6 +78,14 @@ None (self-contained simulation, no external services)
 ### Story 2: The Process Experimenter
 
 > Sam, a new engineering manager, inherits a team that estimates in t-shirt sizes. They run the simulation with PolicyNone to see what unmanaged flow looks like—lead times are all over the place. Then they try DORA-Strict (decompose anything >5 days) and see improvement. Finally, TameFlow-Cognitive (decompose low-understanding tickets) produces the best MTTR. Sam runs 10 comparisons with different seeds to confirm the pattern holds. They now have data to propose a "spike first, then estimate" policy.
+
+### Story 3: The Data-Driven Researcher
+
+> Pat, a process researcher at a consultancy, hypothesizes that TameFlow-Cognitive outperforms DORA-Strict. Pat runs 20 policy comparisons with different seeds, pressing 'e' after each to export. In R, Pat merges the CSVs, groups tickets by understanding level, and plots actual variance against the theoretical bounds (High ±5%, Medium ±20%, Low ±50%). The data shows 94% of tickets fell within expected ranges—validating the variance model. A t-test on lead times confirms TameFlow wins with p<0.01. Pat now has evidence, not just theory.
+
+### Story 4: The TOC Educator
+
+> Morgan, a Lean/TOC coach, uses the simulation to teach a workshop. After a simulated sprint, Morgan exports the data and projects the CSV. "Look at the buffer consumption column—see how Low-understanding tickets consumed 3x more buffer than High? That's the Theory of Constraints in action. The constraint isn't developer speed; it's uncertainty. Now look at the variance_ratio versus expected bounds—the model predicted this." The export transforms abstract theory into concrete, discussable data.
 
 ---
 
@@ -96,8 +105,9 @@ None (self-contained simulation, no external services)
 | 8 | Switch between views | Indigo | No - navigation | - |
 | 9 | Change sizing policy | Indigo | No - configuration | - |
 | 10 | Pause/resume simulation | Indigo | No - control | - |
+| 11 | Export simulation data to CSV | Blue | Yes - have file for analysis | Researcher - validate hypotheses; Educator - teach with data |
 
-**Use Cases Written:** Goals 1-6 (Blue level)
+**Use Cases Written:** Goals 1-7 (Blue level)
 
 ---
 
@@ -258,6 +268,34 @@ None (self-contained simulation, no external services)
 
 - 3a. *No idle developers:* Assignment fails silently; all developers are busy
 - 3b. *Multiple idle developers:* System assigns to first available (Alice, Bob, Carol order)
+
+---
+
+### UC7: Export Simulation Data
+
+**Primary Actor:** Simulation Operator
+
+**Goal in Context:** Export simulation data to CSV files for external analysis, hypothesis validation, or teaching demonstrations.
+
+**Scope:** Software Development Simulation
+
+**Level:** User Goal (Blue)
+
+**Main Success Scenario:**
+
+1. Operator runs simulation (completes sprints or comparison)
+2. Operator presses 'e' to export
+3. System creates timestamped export directory
+4. System writes CSV files (metadata, tickets, sprints, incidents, metrics, comparison if applicable)
+5. System confirms export with path and row counts
+6. Operator analyzes data in external tool (spreadsheet, R, Python)
+
+**Extensions:**
+
+- 2a. *No completed tickets:* System shows "Nothing to export" message; no files created
+- 3a. *Export directory exists:* System appends sequence number to directory name
+- 4a. *No comparison run:* System omits comparison.csv; notes in confirmation message
+- 5a. *Write error:* System shows error message with path attempted
 
 ---
 

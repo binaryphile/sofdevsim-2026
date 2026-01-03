@@ -295,3 +295,93 @@ flowchart LR
 | Seed-based RNG | Enables reproducible experiments |
 | In-memory only | MVP simplicity; no persistence complexity |
 | Bubbletea TUI | Elm architecture, well-maintained, ntcharts compatible |
+
+---
+
+## Data Export
+
+### Purpose
+
+Enable external validation of simulation hypotheses and teaching of TOC/DORA principles. The export provides raw data for:
+
+| Goal | How Export Supports It |
+|------|------------------------|
+| **Teaching TOC** | sprints.csv: buffer_pct, fever_status, max_wip, avg_wip |
+| **DORA integration** | metrics.csv: all 4 metrics; incidents.csv: MTTR detail |
+| **Unified Ticket Workflow Rubric validation** | tickets.csv: 8 phase timing columns enable testing effort distribution |
+| **Sizing hypothesis** | comparison.csv + tickets.csv: variance by understanding, policy comparison |
+
+### Output Structure
+
+```
+sofdevsim-export-20260103-143052/
+├── metadata.csv      # Seed, policy, export timestamp, phase distribution
+├── tickets.csv       # Per-ticket data with theoretical validation + phase timing
+├── sprints.csv       # Per-sprint buffer/flow/WIP data (TOC concepts)
+├── incidents.csv     # Per-incident MTTR detail
+├── metrics.csv       # DORA metrics summary
+└── comparison.csv    # Policy A vs B results (if comparison run)
+```
+
+### CSV Schemas
+
+```csv
+# metadata.csv - Reproducibility and context
+seed,policy,sprints_run,export_timestamp,simulation_version,phase_effort_distribution
+
+# tickets.csv - Core hypothesis validation + 8-phase effort distribution
+ticket_id,title,understanding,estimated_days,actual_days,variance_ratio,expected_var_min,expected_var_max,within_expected,policy,sprint_number,started_tick,completed_tick,lead_time_days,phase_research_days,phase_sizing_days,phase_planning_days,phase_implement_days,phase_verify_days,phase_cicd_days,phase_review_days,phase_done_days
+
+# sprints.csv - TOC concepts (buffer, flow, WIP)
+sprint_number,duration_days,buffer_days,buffer_used,buffer_pct,fever_status,tickets_started,tickets_completed,incidents_generated,max_wip,avg_wip
+
+# incidents.csv - MTTR detail
+incident_id,ticket_id,severity,created_tick,resolved_tick,mttr_days,sprint_number
+
+# metrics.csv - DORA integration
+policy,lead_time_avg,lead_time_stddev,deploy_frequency,mttr_avg,change_fail_rate,total_tickets,total_incidents
+
+# comparison.csv - Sizing hypothesis test
+seed,sprints_run,metric,dora_strict_value,tameflow_value,winner,difference,difference_pct
+```
+
+### Theoretical Bounds
+
+For hypothesis validation, tickets.csv includes expected variance bounds:
+
+| Understanding | expected_var_min | expected_var_max |
+|---------------|------------------|------------------|
+| High | 0.95 | 1.05 |
+| Medium | 0.80 | 1.20 |
+| Low | 0.50 | 1.50 |
+
+The `within_expected` column is `true` if `expected_var_min <= variance_ratio <= expected_var_max`.
+
+### Phase Effort Distribution
+
+Stored in metadata.csv as JSON for Unified Ticket Workflow Rubric validation:
+
+```json
+{"research":0.10,"sizing":0.05,"planning":0.10,"implement":0.40,"verify":0.15,"cicd":0.05,"review":0.10,"done":0.05}
+```
+
+Compare actual `phase_*_days` columns against `estimated_days × distribution` to validate the 8-phase model.
+
+### Export Algorithm
+
+```mermaid
+flowchart TD
+    A[User presses 'e'] --> B{Completed tickets?}
+    B -->|No| C[Show 'Nothing to export']
+    B -->|Yes| D[Create directory<br/>sofdevsim-export-YYYYMMDD-HHMMSS]
+    D --> E[Write metadata.csv]
+    E --> F[Write tickets.csv<br/>with theoretical bounds]
+    F --> G[Write sprints.csv<br/>with WIP metrics]
+    G --> H[Write incidents.csv]
+    H --> I[Write metrics.csv]
+    I --> J{Comparison run?}
+    J -->|Yes| K[Write comparison.csv]
+    J -->|No| L[Skip comparison.csv]
+    K --> M[Show confirmation<br/>path + row counts]
+    L --> M
+```
