@@ -35,7 +35,7 @@ func (i *Incident) Resolve() {
 
 // TimeToResolve returns the duration from creation to resolution
 // Returns 0 if still open
-func (i *Incident) TimeToResolve() time.Duration {
+func (i Incident) TimeToResolve() time.Duration {
 	if i.ResolvedAt == nil {
 		return 0
 	}
@@ -43,6 +43,6 @@ func (i *Incident) TimeToResolve() time.Duration {
 }
 
 // DaysToResolve returns TimeToResolve in days
-func (i *Incident) DaysToResolve() float64 {
+func (i Incident) DaysToResolve() float64 {
 	return i.TimeToResolve().Hours() / 24
 }

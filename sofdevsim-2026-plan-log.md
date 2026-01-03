@@ -4100,3 +4100,66 @@ Deductions:
 ## Approval
 ✅ APPROVED BY USER - 2026-01-03
 Documentation and examples updates complete for both fluentfp and sofdevsim.
+---
+
+2026-01-03T21:00:15Z | Phase 8 Contract: Improve FluentFP README
+
+# Phase 8 Contract: Improve FluentFP README
+
+**Created:** 2026-01-03
+
+## Step 1 Checklist
+- [x] 1a: Presented understanding
+- [x] 1b: Asked clarifying questions (pair README not needed)
+- [x] 1b-answer: Received answers
+- [x] 1c: Contract created (this file)
+- [x] 1d: Approval received (user said "proceed")
+
+## Objective
+Improve the main README.md with insights from the analysis, fix bugs, and rename ANALYSIS.md to lowercase.
+
+## Success Criteria
+
+- [x] Rename ANALYSIS.md → analysis.md
+- [x] Fix mustAtoi naming (line 124-125)
+- [x] Fix errors.Each bug with slice.From() (line 131-132)
+- [x] Add "Why FluentFP" section after Key Features
+- [x] Add pair package section to modules list
+- [x] Build succeeds
+- [ ] Commit to repo
+
+## Actual Results
+
+**Completed:** 2026-01-03
+
+### Files Modified
+- `ANALYSIS.md` → `analysis.md` (renamed)
+- `README.md` - Added Why FluentFP section, pair package section, fixed bugs
+
+### Changes Summary
+1. Renamed ANALYSIS.md to lowercase analysis.md
+2. Fixed mustAtoi naming (line 124-125)
+3. Fixed errors.Each bug - now uses slice.From(errs).Each() (line 131-132)
+4. Added "Why FluentFP" section with 4-vs-1 comparison, method expressions, interop, bounded API (lines 33-55)
+5. Added pair package section with named function example (lines 178-203)
+
+### Self-Assessment
+Grade: A (98/100)
+
+What went well:
+- All changes applied cleanly
+- Named function example follows our documented practices
+- Build succeeds
+
+### Improvements Made (after grading)
+- "Why FluentFP" now uses method expression `Record.GetLeadTime` (demonstrates "reads like English")
+- Removed unused `pairs` variable from pair example
+- Verified analysis.md link target exists
+
+## Step 4 Checklist
+- [x] 4a: Results presented to user
+- [x] 4b: Approval received
+
+## Approval
+✅ APPROVED BY USER - 2026-01-03
+README improvements complete with analysis insights and bug fixes.

@@ -41,7 +41,7 @@ func sprintID(number int) string {
 }
 
 // DaysRemaining returns days left in the sprint
-func (s *Sprint) DaysRemaining(currentDay int) int {
+func (s Sprint) DaysRemaining(currentDay int) int {
 	remaining := s.EndDay - currentDay
 	if remaining < 0 {
 		return 0
@@ -50,7 +50,7 @@ func (s *Sprint) DaysRemaining(currentDay int) int {
 }
 
 // DaysElapsed returns days completed in the sprint
-func (s *Sprint) DaysElapsed(currentDay int) int {
+func (s Sprint) DaysElapsed(currentDay int) int {
 	elapsed := currentDay - s.StartDay
 	if elapsed < 0 {
 		return 0
@@ -62,7 +62,7 @@ func (s *Sprint) DaysElapsed(currentDay int) int {
 }
 
 // ProgressPct returns the sprint progress as a percentage
-func (s *Sprint) ProgressPct(currentDay int) float64 {
+func (s Sprint) ProgressPct(currentDay int) float64 {
 	if s.DurationDays == 0 {
 		return 0
 	}
@@ -70,7 +70,7 @@ func (s *Sprint) ProgressPct(currentDay int) float64 {
 }
 
 // BufferRemaining returns unused buffer days
-func (s *Sprint) BufferRemaining() float64 {
+func (s Sprint) BufferRemaining() float64 {
 	remaining := s.BufferDays - s.BufferConsumed
 	if remaining < 0 {
 		return 0
@@ -79,7 +79,7 @@ func (s *Sprint) BufferRemaining() float64 {
 }
 
 // BufferPctUsed returns buffer consumption as percentage
-func (s *Sprint) BufferPctUsed() float64 {
+func (s Sprint) BufferPctUsed() float64 {
 	if s.BufferDays == 0 {
 		return 0
 	}
@@ -111,12 +111,12 @@ func (s *Sprint) AddTicket(ticketID string) {
 }
 
 // TicketCount returns the number of tickets in the sprint
-func (s *Sprint) TicketCount() int {
+func (s Sprint) TicketCount() int {
 	return len(s.Tickets)
 }
 
 // AvgWIP returns the average WIP over the sprint
-func (s *Sprint) AvgWIP() float64 {
+func (s Sprint) AvgWIP() float64 {
 	if s.WIPTicks == 0 {
 		return 0
 	}

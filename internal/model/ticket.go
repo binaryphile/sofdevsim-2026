@@ -55,27 +55,27 @@ func NewTicket(id, title string, estimatedDays float64, understanding Understand
 }
 
 // IsAssigned returns true if the ticket has a developer assigned
-func (t *Ticket) IsAssigned() bool {
+func (t Ticket) IsAssigned() bool {
 	return t.AssignedTo != ""
 }
 
 // IsActive returns true if the ticket is being worked on
-func (t *Ticket) IsActive() bool {
+func (t Ticket) IsActive() bool {
 	return t.Phase != PhaseBacklog && t.Phase != PhaseDone
 }
 
 // IsComplete returns true if the ticket is done
-func (t *Ticket) IsComplete() bool {
+func (t Ticket) IsComplete() bool {
 	return t.Phase == PhaseDone
 }
 
 // HasChildren returns true if this ticket was decomposed
-func (t *Ticket) HasChildren() bool {
+func (t Ticket) HasChildren() bool {
 	return len(t.ChildIDs) > 0
 }
 
 // IsChild returns true if this ticket was created from decomposition
-func (t *Ticket) IsChild() bool {
+func (t Ticket) IsChild() bool {
 	return t.ParentID != ""
 }
 
@@ -110,7 +110,7 @@ var UnderstandingPhaseMultiplier = map[UnderstandingLevel]map[WorkflowPhase]floa
 }
 
 // CalculatePhaseEffort returns the effort required for a specific phase
-func (t *Ticket) CalculatePhaseEffort(phase WorkflowPhase) float64 {
+func (t Ticket) CalculatePhaseEffort(phase WorkflowPhase) float64 {
 	basePct, ok := PhaseEffortPct[phase]
 	if !ok {
 		return 0
@@ -129,7 +129,7 @@ func (t *Ticket) CalculatePhaseEffort(phase WorkflowPhase) float64 {
 }
 
 // TotalPhaseEffort returns the sum of effort spent across all phases
-func (t *Ticket) TotalPhaseEffort() float64 {
+func (t Ticket) TotalPhaseEffort() float64 {
 	var total float64
 	for _, effort := range t.PhaseEffortSpent {
 		total += effort
