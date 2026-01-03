@@ -1,0 +1,297 @@
+# Design Document
+
+## Overview
+
+### What This Simulation Does
+
+The Software Development Simulation models an 8-phase ticket workflow to test competing theories about optimal ticket sizing:
+
+- **DORA Research** suggests that batch size matters: tickets taking longer than one week correlate with worse delivery outcomes
+- **TameFlow** argues that cognitive load (understanding level) is the real discriminant: uncertain work causes variance regardless of size
+
+This simulation lets you run controlled experiments to see which approach produces better DORA metrics.
+
+### The Hypothesis
+
+| Policy | Rule | Theory |
+|--------|------|--------|
+| DORA-Strict | Decompose tickets > 5 days | Time-based ceiling reduces batch size |
+| TameFlow-Cognitive | Decompose tickets with Low understanding | Reducing uncertainty improves predictability |
+| Hybrid | Both conditions | Belt and suspenders |
+| None | No decomposition | Baseline for comparison |
+
+### Why This Matters
+
+Sizing policy affects:
+- **Lead Time** - How long from start to deploy?
+- **Quality** - How many incidents per deploy?
+- **Predictability** - Can we trust our estimates?
+
+---
+
+## Domain Model
+
+```mermaid
+classDiagram
+    class Simulation {
+        +int CurrentTick
+        +Sprint CurrentSprint
+        +SizingPolicy SizingPolicy
+        +Developer[] Developers
+        +Ticket[] Backlog
+        +Ticket[] ActiveTickets
+        +Ticket[] CompletedTickets
+        +Incident[] OpenIncidents
+        +Incident[] ResolvedIncidents
+        +StartSprint()
+        +FindTicketByID(id) Ticket
+        +IdleDevelopers() Developer[]
+    }
+
+    class Ticket {
+        +string ID
+        +string Title
+        +string ParentID
+        +WorkflowPhase Phase
+        +UnderstandingLevel UnderstandingLevel
+        +float64 EstimatedDays
+        +float64 ActualDays
+        +map PhaseEffortSpent
+        +int StartedTick
+        +int CompletedTick
+        +CalculatePhaseEffort(phase) float64
+    }
+
+    class Developer {
+        +string ID
+        +string Name
+        +float64 Velocity
+        +string CurrentTicket
+        +IsIdle() bool
+    }
+
+    class Sprint {
+        +int Number
+        +int StartDay
+        +int DurationDays
+        +float64 BufferDays
+        +float64 BufferUsed
+        +ProgressPct(tick) float64
+        +BufferPctUsed() float64
+    }
+
+    class Incident {
+        +string ID
+        +string TicketID
+        +string Severity
+        +time CreatedAt
+        +time ResolvedAt
+        +IsOpen() bool
+    }
+
+    Simulation "1" *-- "*" Developer
+    Simulation "1" *-- "*" Ticket
+    Simulation "1" *-- "0..1" Sprint
+    Simulation "1" *-- "*" Incident
+    Ticket "*" -- "0..1" Ticket : parent
+```
+
+### Workflow Phases
+
+```mermaid
+stateDiagram-v2
+    [*] --> Research
+    Research --> Sizing
+    Sizing --> Planning
+    Planning --> Implement
+    Implement --> Verify
+    Verify --> CI_CD
+    CI_CD --> Review
+    Review --> Done
+    Done --> [*]
+```
+
+### Enumerations
+
+**Understanding Levels:** Low | Medium | High
+
+**Sizing Policies:** None | DORA-Strict | TameFlow-Cognitive | Hybrid
+
+---
+
+## Key Algorithms
+
+### Variance Model (Core Hypothesis)
+
+The variance model is the heart of the simulation. It maps understanding level to outcome predictability:
+
+| Understanding | Multiplier Range | Meaning |
+|---------------|------------------|---------|
+| High | 0.95 - 1.05x | Predictable, minimal surprise |
+| Medium | 0.80 - 1.20x | Some unknowns, moderate variance |
+| Low | 0.50 - 1.50x | High uncertainty, frequent surprise |
+
+**Implementation:** Each tick, actual effort = estimated effort × random multiplier from the range above.
+
+### Phase Effort Distribution
+
+Total ticket effort is distributed across phases:
+
+| Phase | % of Total Effort |
+|-------|-------------------|
+| Research | 10% |
+| Sizing | 5% |
+| Planning | 10% |
+| Implement | 40% |
+| Verify | 15% |
+| CI/CD | 5% |
+| Review | 10% |
+| Done | 5% |
+
+### Decomposition Algorithm
+
+When a ticket is decomposed:
+
+1. **Children count:** 2-4 (weighted 40%/40%/20%)
+2. **Children sum:** 90-110% of parent estimate (decomposition reveals scope)
+3. **Each child:** Varies ±30% from base estimate
+4. **Understanding improves:** 60% chance each child has better understanding than parent
+
+### Incident Generation
+
+Incidents are generated when tickets complete, based on understanding:
+
+| Understanding | Base Fail Rate |
+|---------------|----------------|
+| High | 5% |
+| Medium | 12% |
+| Low | 25% |
+
+**Large ticket multiplier:** Tickets > 5 days have 1.5x incident rate.
+
+### DORA Metrics Calculation
+
+| Metric | Formula | Better |
+|--------|---------|--------|
+| Lead Time | Average of (CompletedAt - StartedAt) | Lower |
+| Deploy Frequency | Deploys in last 7 ticks ÷ 7 | Higher |
+| MTTR | Average of (ResolvedAt - CreatedAt) for incidents | Lower |
+| Change Fail Rate | Total incidents ÷ Total deploys | Lower |
+
+---
+
+## Architecture
+
+```mermaid
+flowchart TD
+    subgraph cmd["cmd/sofdevsim/"]
+        main["main.go<br/>(entry point)"]
+    end
+
+    subgraph tui["internal/tui/"]
+        app["app.go - Bubbletea model, keybindings"]
+        planning["planning.go - Backlog, developers"]
+        execution["execution.go - Active work, fever chart"]
+        metrics_view["metrics.go - DORA dashboard, sparklines"]
+        comparison_view["comparison.go - A/B results"]
+        styles["styles.go - Lipgloss styles"]
+    end
+
+    subgraph engine["internal/engine/"]
+        engine_go["engine.go - Tick loop, transitions"]
+        policies["policies.go - Decomposition"]
+        variance["variance.go - Understanding→multiplier"]
+        events["events.go - Bugs, incidents"]
+        generator["generator.go - Ticket generation"]
+    end
+
+    subgraph metrics["internal/metrics/"]
+        dora["dora.go - DORA calculations"]
+        fever["fever.go - Buffer tracking"]
+        comparison_logic["comparison.go - A/B logic"]
+        tracker["tracker.go - History"]
+    end
+
+    subgraph model["internal/model/"]
+        simulation["simulation.go"]
+        ticket["ticket.go"]
+        developer["developer.go"]
+        sprint["sprint.go"]
+        incident["incident.go"]
+        enums["enums.go"]
+    end
+
+    main --> app
+    app --> engine_go
+    app --> dora
+    engine_go --> simulation
+    dora --> simulation
+```
+
+### Package Dependencies
+
+```mermaid
+graph LR
+    tui --> engine
+    tui --> metrics
+    engine --> model
+    metrics --> model
+```
+
+**Dependency Rule:** Packages only depend downward. Model has no dependencies.
+
+---
+
+## Data Flow
+
+### Tick Loop
+
+```mermaid
+flowchart TD
+    A[Advance CurrentTick] --> B[For each ActiveTicket]
+    B --> C[Calculate effort<br/>developer.Velocity × variance]
+    C --> D[Add to PhaseEffortSpent]
+    D --> E{Phase complete?}
+    E -->|No| B
+    E -->|Yes| F{Last phase?}
+    F -->|No| G[Transition to next phase]
+    G --> B
+    F -->|Yes| H[Move to CompletedTickets<br/>Free developer]
+    H --> I[Generate random events<br/>bugs, scope creep]
+    I --> J[Check incident generation]
+    J --> K[Update metrics<br/>DORA, fever chart]
+```
+
+### Phase Transition Logic
+
+```mermaid
+flowchart LR
+    A[phaseEffort = EstimatedDays × distribution × variance] --> B{Spent >= Effort?}
+    B -->|Yes| C[phase++]
+    B -->|No| D[Continue work]
+    C --> E{phase == Done?}
+    E -->|Yes| F[Complete ticket]
+    E -->|No| G[Start next phase]
+```
+
+### Comparison Mode
+
+1. Generate backlog with seed N
+2. Clone simulation state
+3. Run Simulation A with DORA-Strict for 3 sprints
+4. Run Simulation B with TameFlow-Cognitive for 3 sprints (same seed)
+5. Compare final DORA metrics
+6. Declare winner based on metric wins (4 metrics, majority wins)
+
+---
+
+## Key Design Decisions
+
+| Decision | Rationale |
+|----------|-----------|
+| Tick = 1 day | Simplifies mental model; matches sprint planning |
+| 8 phases | Based on Unified Workflow Rubric from industry research |
+| Variance by understanding | Core hypothesis: uncertainty causes unpredictability |
+| Seed-based RNG | Enables reproducible experiments |
+| In-memory only | MVP simplicity; no persistence complexity |
+| Bubbletea TUI | Elm architecture, well-maintained, ntcharts compatible |

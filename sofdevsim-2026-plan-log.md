@@ -1498,3 +1498,771 @@ $ go run cmd/sofdevsim/main.go
 
 ### Next Phase
 - Data output for comparing runs to theoretical results
+---
+
+2026-01-03T04:57:20Z | Phase 2: Documentation Plan
+
+# Phase 2: Documentation Plan
+
+## Objective
+Create use cases, design document, and README for the Phase 1 MVP.
+
+---
+
+## 1. Use Cases (`docs/use-cases.md`)
+
+### System Scope
+
+**System Name:** Software Development Simulation (sofdevsim)
+
+```mermaid
+C4Context
+    title System Context Diagram
+
+    Person(operator, "Simulation Operator", "Team lead, scrum master, or developer exploring sizing strategies")
+
+    System_Boundary(sim, "Software Development Simulation") {
+        System(tui, "TUI Application", "Bubbletea terminal interface")
+        System(engine, "Simulation Engine", "Tick loop, phase transitions, policies")
+        System(metrics, "Metrics Engine", "DORA calculations, fever chart")
+    }
+
+    Rel(operator, tui, "Uses", "keyboard")
+    Rel(tui, engine, "Drives")
+    Rel(tui, metrics, "Displays")
+    Rel(engine, metrics, "Updates")
+```
+
+**In Scope (the system):**
+- TUI application
+- Simulation engine (tick loop, phase transitions)
+- Ticket/developer/sprint management
+- DORA metrics calculation
+- Fever chart calculation
+- Policy comparison
+
+**Out of Scope (external):**
+- Real code repositories
+- Actual CI/CD systems
+- Persistent storage
+- Multi-user access
+
+### Actors
+
+**Primary Actor:**
+- Simulation Operator - person running the TUI to explore sizing strategies
+
+**Secondary Actors:**
+- None (self-contained simulation, no external services)
+
+**Stakeholders & Interests:**
+| Stakeholder | Interest |
+|-------------|----------|
+| Team Lead | Wants data to justify sizing policy to management |
+| Scrum Master | Wants to understand buffer consumption patterns |
+| Developer | Wants to see how understanding level affects outcomes |
+| Researcher | Wants reproducible experiments (same seed = same results) |
+
+### System-in-Use Stories
+
+**Story 1: The Skeptical Team Lead**
+> Jordan, a software team lead skeptical of "story points," launches the simulation during lunch. They generate a backlog of 12 tickets with mixed understanding levels, assign the top three to their virtual team, and start a sprint. As the simulation runs, Jordan notices a "Low Understanding" ticket causing the fever chart to turn yellow—buffer consumption is spiking. They pause, decompose the risky ticket into smaller pieces, and resume. At sprint end, Jordan switches to the Metrics view to check lead time trends. Wanting to test their hypothesis that understanding matters more than size, Jordan presses 'c' to run a comparison: same backlog, same team, DORA-Strict vs TameFlow-Cognitive. The results show TameFlow won on 3 of 4 metrics. Jordan screenshots this for tomorrow's retro. They realize decomposing by *uncertainty* rather than *size* would have prevented the buffer blowout.
+
+**Story 2: The Process Experimenter**
+> Sam, a new engineering manager, inherits a team that estimates in t-shirt sizes. They run the simulation with PolicyNone to see what unmanaged flow looks like—lead times are all over the place. Then they try DORA-Strict (decompose anything >5 days) and see improvement. Finally, TameFlow-Cognitive (decompose low-understanding tickets) produces the best MTTR. Sam runs 10 comparisons with different seeds to confirm the pattern holds. They now have data to propose a "spike first, then estimate" policy.
+
+### Actor-Goal List
+
+**Primary Actor:** Simulation Operator
+
+| # | Goal | Level | "Lunch Test" | Stakeholder Interest |
+|---|------|-------|--------------|---------------------|
+| 1 | Run a simulation sprint | Blue | Yes - complete sprint, see results | All - core capability |
+| 2 | Compare sizing policies (A/B test) | Blue | Yes - get comparison results | Team Lead - justify decisions |
+| 3 | View DORA metrics trends | Blue | Yes - understand performance | Scrum Master - track improvement |
+| 4 | Monitor buffer consumption | Blue | Yes - know if sprint is at risk | Scrum Master - early warning |
+| 5 | Decompose risky tickets | Blue | Yes - reduce uncertainty | Developer - manageable chunks |
+| 6 | Assign tickets to developers | Blue | Yes - sprint is planned | All - start work |
+| 7 | Adjust simulation speed | Indigo | No - part of running | - |
+| 8 | Switch between views | Indigo | No - navigation | - |
+| 9 | Change sizing policy | Indigo | No - configuration | - |
+| 10 | Pause/resume simulation | Indigo | No - control | - |
+
+### Use Cases with Pre-Planned Extensions
+
+#### UC1: Run a Simulation Sprint
+**Main Success Scenario:**
+1. Operator views backlog in Planning view
+2. Operator assigns tickets to developers
+3. Operator starts sprint
+4. System simulates work (tick loop)
+5. System displays progress in Execution view
+6. Sprint completes
+7. Operator reviews results in Metrics view
+
+**Extensions:**
+- 2a. No idle developers → System shows all developers busy
+- 4a. Ticket variance causes delay → Fever chart turns yellow/red
+- 4b. Incident generated → Event appears in log, MTTR tracking begins
+- 6a. Sprint ends with incomplete work → Tickets remain in ActiveTickets
+
+#### UC2: Compare Sizing Policies
+**Main Success Scenario:**
+1. Operator presses 'c' for comparison
+2. System runs simulation with DORA-Strict policy
+3. System runs simulation with TameFlow-Cognitive policy (same seed)
+4. System displays comparison results
+5. Operator identifies winning policy
+
+**Extensions:**
+- 4a. Tie on metrics → System shows "TIE" with suggestion to run more sprints
+- 5a. Operator wants different policies → Re-run with different seed
+
+#### UC3: View DORA Metrics Trends
+**Main Success Scenario:**
+1. Operator switches to Metrics view
+2. System displays four DORA metrics with sparklines
+3. Operator identifies trends (improving/degrading)
+4. Operator correlates with policy/ticket mix
+
+**Extensions:**
+- 2a. No completed tickets → Metrics show zero/empty sparklines
+
+#### UC4: Monitor Buffer Consumption
+**Main Success Scenario:**
+1. Operator observes fever chart during sprint
+2. System shows buffer % used with color (Green/Yellow/Red)
+3. Operator identifies at-risk sprint early
+4. Operator takes corrective action (decompose, reassign)
+
+**Extensions:**
+- 2a. Buffer exceeds 100% → Red status, sprint likely to miss commitment
+- 3a. No risk identified → Continue observing
+
+#### UC5: Decompose Risky Tickets
+**Main Success Scenario:**
+1. Operator selects ticket in backlog
+2. Operator requests decomposition
+3. System splits into 2-4 children
+4. Children appear in backlog with improved understanding
+5. Operator assigns children instead of parent
+
+**Extensions:**
+- 2a. Policy says don't decompose → System does nothing (or show message)
+- 3a. Ticket already small/understood → Decomposition less beneficial
+
+#### UC6: Assign Tickets to Developers
+**Main Success Scenario:**
+1. Operator selects ticket in backlog
+2. Operator requests assignment
+3. System assigns to first idle developer
+4. Ticket moves to ActiveTickets
+5. Developer status changes to busy
+
+**Extensions:**
+- 3a. No idle developers → Assignment fails silently
+- 3b. Ticket requires decomposition first → Operator decomposes then assigns
+
+---
+
+## 2. Design Document (`docs/design.md`)
+
+### Sections
+
+1. **Overview**
+   - What the simulation does
+   - The hypothesis: DORA (time ceiling) vs TameFlow (cognitive load)
+   - Why this matters: sizing policy affects lead time, quality, predictability
+
+2. **Domain Model**
+   ```mermaid
+   classDiagram
+       class Simulation {
+           +int CurrentTick
+           +Sprint CurrentSprint
+           +SizingPolicy SizingPolicy
+           +Developer[] Developers
+           +Ticket[] Backlog
+           +Ticket[] ActiveTickets
+           +Ticket[] CompletedTickets
+           +Incident[] OpenIncidents
+           +Incident[] ResolvedIncidents
+           +StartSprint()
+           +FindTicketByID(id) Ticket
+           +IdleDevelopers() Developer[]
+       }
+
+       class Ticket {
+           +string ID
+           +string Title
+           +string ParentID
+           +WorkflowPhase Phase
+           +UnderstandingLevel UnderstandingLevel
+           +float64 EstimatedDays
+           +float64 ActualDays
+           +map PhaseEffortSpent
+           +int StartedTick
+           +int CompletedTick
+           +CalculatePhaseEffort(phase) float64
+       }
+
+       class Developer {
+           +string ID
+           +string Name
+           +float64 Velocity
+           +string CurrentTicket
+           +IsIdle() bool
+       }
+
+       class Sprint {
+           +int Number
+           +int StartDay
+           +int DurationDays
+           +float64 BufferDays
+           +float64 BufferUsed
+           +ProgressPct(tick) float64
+           +BufferPctUsed() float64
+       }
+
+       class Incident {
+           +string ID
+           +string TicketID
+           +string Severity
+           +time CreatedAt
+           +time ResolvedAt
+           +IsOpen() bool
+       }
+
+       Simulation "1" *-- "*" Developer
+       Simulation "1" *-- "*" Ticket
+       Simulation "1" *-- "0..1" Sprint
+       Simulation "1" *-- "*" Incident
+       Ticket "*" -- "0..1" Ticket : parent
+   ```
+
+   **Workflow Phases:**
+   ```mermaid
+   stateDiagram-v2
+       [*] --> Research
+       Research --> Sizing
+       Sizing --> Planning
+       Planning --> Implement
+       Implement --> Verify
+       Verify --> CI_CD
+       CI_CD --> Review
+       Review --> Done
+       Done --> [*]
+   ```
+
+   **Understanding Levels:** Low | Medium | High
+
+   **Sizing Policies:** None | DORA-Strict | TameFlow-Cognitive | Hybrid
+
+3. **Key Algorithms**
+
+   **Variance Model (core hypothesis):**
+   | Understanding | Multiplier Range | Meaning |
+   |---------------|------------------|---------|
+   | High | 0.95 - 1.05x | Predictable, minimal surprise |
+   | Medium | 0.80 - 1.20x | Some unknowns, moderate variance |
+   | Low | 0.50 - 1.50x | High uncertainty, frequent surprise |
+
+   **Phase Effort Distribution:**
+   | Phase | % of Total Effort |
+   |-------|-------------------|
+   | Research | 10% |
+   | Sizing | 5% |
+   | Planning | 10% |
+   | Implement | 40% |
+   | Verify | 15% |
+   | CI/CD | 5% |
+   | Review | 10% |
+   | Done | 5% |
+
+   **Decomposition Algorithm:**
+   - Children count: 2-4 (weighted 40%/40%/20%)
+   - Children sum: 90-110% of parent estimate
+   - Each child varies ±30% from base
+   - Understanding improves: 60% chance to go up one level
+
+   **Incident Generation:**
+   | Understanding | Base Fail Rate |
+   |---------------|----------------|
+   | High | 5% |
+   | Medium | 12% |
+   | Low | 25% |
+   - Large tickets (>5 days): 1.5x multiplier
+
+   **DORA Metrics:**
+   - Lead Time: CompletedAt - StartedAt (averaged)
+   - Deploy Frequency: Deploys in last 7 ticks / 7
+   - MTTR: ResolvedAt - CreatedAt for incidents (averaged)
+   - Change Fail Rate: Incidents / Deploys
+
+4. **Architecture**
+   ```mermaid
+   flowchart TD
+       subgraph cmd["cmd/sofdevsim/"]
+           main["main.go<br/>(entry point)"]
+       end
+
+       subgraph tui["internal/tui/"]
+           app["app.go - Bubbletea model, keybindings"]
+           planning["planning.go - Backlog, developers"]
+           execution["execution.go - Active work, fever chart"]
+           metrics_view["metrics.go - DORA dashboard, sparklines"]
+           comparison_view["comparison.go - A/B results"]
+           styles["styles.go - Lipgloss styles"]
+       end
+
+       subgraph engine["internal/engine/"]
+           engine_go["engine.go - Tick loop, transitions"]
+           policies["policies.go - Decomposition"]
+           variance["variance.go - Understanding→multiplier"]
+           events["events.go - Bugs, incidents"]
+           generator["generator.go - Ticket generation"]
+       end
+
+       subgraph metrics["internal/metrics/"]
+           dora["dora.go - DORA calculations"]
+           fever["fever.go - Buffer tracking"]
+           comparison_logic["comparison.go - A/B logic"]
+           tracker["tracker.go - History"]
+       end
+
+       subgraph model["internal/model/"]
+           simulation["simulation.go"]
+           ticket["ticket.go"]
+           developer["developer.go"]
+           sprint["sprint.go"]
+           incident["incident.go"]
+           enums["enums.go"]
+       end
+
+       main --> app
+       app --> engine_go
+       app --> dora
+       engine_go --> simulation
+       dora --> simulation
+   ```
+
+   **Package Dependencies:**
+   ```mermaid
+   graph LR
+       tui --> engine
+       tui --> metrics
+       engine --> model
+       metrics --> model
+   ```
+
+5. **Data Flow**
+
+   **Tick Loop:**
+   ```mermaid
+   flowchart TD
+       A[Advance CurrentTick] --> B[For each ActiveTicket]
+       B --> C[Calculate effort<br/>developer.Velocity × variance]
+       C --> D[Add to PhaseEffortSpent]
+       D --> E{Phase complete?}
+       E -->|No| B
+       E -->|Yes| F{Last phase?}
+       F -->|No| G[Transition to next phase]
+       G --> B
+       F -->|Yes| H[Move to CompletedTickets<br/>Free developer]
+       H --> I[Generate random events<br/>bugs, scope creep]
+       I --> J[Check incident generation]
+       J --> K[Update metrics<br/>DORA, fever chart]
+   ```
+
+   **Phase Transition Logic:**
+   ```mermaid
+   flowchart LR
+       A[phaseEffort = EstimatedDays × distribution × variance] --> B{Spent >= Effort?}
+       B -->|Yes| C[phase++]
+       B -->|No| D[Continue work]
+       C --> E{phase == Done?}
+       E -->|Yes| F[Complete ticket]
+       E -->|No| G[Start next phase]
+   ```
+
+---
+
+## 3. README (`README.md`)
+
+### Sections
+
+1. **Header**
+   ```markdown
+   # Software Development Simulation
+
+   Simulate software delivery to test DORA vs TameFlow sizing strategies.
+   ```
+
+2. **Why This Matters**
+   - Teams argue about sizing: "just break it down" vs "understand it first"
+   - DORA research says batch size matters (>1 week = worse outcomes)
+   - TameFlow says cognitive load (understanding) is the real driver
+   - This simulation lets you test both hypotheses with data
+
+3. **The Experiment**
+   - DORA-Strict: Decompose any ticket >5 days
+   - TameFlow-Cognitive: Decompose any ticket with Low understanding
+   - Hybrid: Both conditions
+   - Run same scenario under each policy, compare DORA metrics
+
+4. **Features**
+   - 8-phase workflow (Research → Done)
+   - 4 sizing policies
+   - Variance model (understanding → predictability)
+   - DORA metrics dashboard with ntcharts sparklines
+   - Fever chart (buffer consumption, Green/Yellow/Red)
+   - A/B policy comparison with identical seeds
+
+5. **Quick Start**
+   ```bash
+   # With Nix
+   nix develop
+   go run cmd/sofdevsim/main.go
+
+   # Without Nix
+   go mod download
+   go run cmd/sofdevsim/main.go
+   ```
+
+6. **Usage**
+
+   **Views (Tab to switch):**
+   | View | Shows |
+   |------|-------|
+   | Planning | Backlog, team status, ticket assignment |
+   | Execution | Active work, fever chart, event log |
+   | Metrics | DORA dashboard, completed tickets |
+   | Comparison | A/B policy test results |
+
+   **Keybindings:**
+   | Key | Action | Available In |
+   |-----|--------|--------------|
+   | Tab | Switch view | All |
+   | Space | Pause/resume | Execution |
+   | +/- | Adjust speed | Execution |
+   | p | Cycle sizing policy | Planning |
+   | s | Start sprint | Planning |
+   | a | Assign selected ticket | Planning |
+   | d | Decompose selected ticket | Planning |
+   | c | Run policy comparison | All |
+   | j/k or ↑/↓ | Navigate backlog | Planning |
+   | q | Quit | All |
+
+7. **Understanding the Results**
+   - **Lead Time**: Lower is better (faster delivery)
+   - **Deploy Frequency**: Higher is better (more frequent releases)
+   - **MTTR**: Lower is better (faster incident recovery)
+   - **Change Fail Rate**: Lower is better (fewer incidents)
+   - **Fever Chart**: Green = on track, Yellow = at risk, Red = over budget
+
+8. **Architecture**
+   See [docs/design.md](docs/design.md) for domain model and algorithms.
+
+9. **License**
+   MIT License (standard for Go projects)
+
+---
+
+## Implementation Order
+
+1. `mkdir docs`
+2. Write `docs/use-cases.md`:
+   - System scope (In/Out)
+   - Actors & Stakeholders
+   - System-in-Use Stories (2)
+   - Actor-Goal List with levels
+   - 6 Casual use cases with extensions
+3. Write `docs/design.md`:
+   - Overview + hypothesis
+   - Domain model (ASCII diagrams)
+   - Algorithm tables
+   - Architecture diagram
+   - Data flow description
+4. Write `README.md`:
+   - All 9 sections above
+
+---
+
+## Critical Files (reference)
+- `internal/model/*.go` - domain types
+- `internal/engine/engine.go` - tick loop
+- `internal/engine/variance.go` - variance model
+- `internal/engine/policies.go` - decomposition
+- `internal/metrics/dora.go` - DORA calculations
+- `internal/tui/app.go` - keybindings
+
+---
+
+## Confirmed Decisions
+- License: MIT (confirmed by user)
+---
+
+2026-01-03T04:57:26Z | Phase 2 Contract: Documentation
+
+# Phase 2 Contract: Documentation
+
+**Version:** 1.0
+**Created:** 2026-01-02
+**Status:** AWAITING APPROVAL
+
+---
+
+## Step 1 Checklist
+- [x] 1a: Presented understanding
+- [x] 1b: Asked clarifying questions
+- [x] 1b-answer: Received answers
+- [x] 1c: Contract created (this file)
+- [x] 1d: Approval received
+
+---
+
+## Objective
+
+Create documentation for the Phase 1 MVP: use cases, design document, and README.
+
+---
+
+## Scope
+
+### In Scope
+- **Use Cases** (`docs/use-cases.md`): Cockburn-style, Blue-level user goals
+- **Design Document** (`docs/design.md`): Conceptual architecture, domain model, key algorithms
+- **README** (`README.md`): Comprehensive - features, installation, usage, for users who want to install and play
+
+### Out of Scope
+- Implementation details (already captured in Phase 1 contract/code)
+- API documentation
+- Contributing guide
+
+---
+
+## Key Decisions
+
+| Question | Answer | Impact |
+|----------|--------|--------|
+| Use case format? | Cockburn (Actor-Goal List + Casual/Fully Dressed) | Blue-level goals, intent not mechanism |
+| Design doc depth? | Conceptual architecture | Domain model, algorithms, data flow - not file-by-file |
+| README style? | Comprehensive | Features, install, usage |
+| Audience? | Users who want to install and play | Focus on getting started quickly |
+| Diagrams? | Mermaid | Renders on GitHub |
+| License? | MIT | Standard for Go projects |
+
+---
+
+## Success Criteria
+
+- [ ] 1. Use cases: System scope with C4 context diagram
+- [ ] 2. Use cases: 2 System-in-Use Stories (different personas)
+- [ ] 3. Use cases: Actor-Goal List with 6 Blue-level goals
+- [ ] 4. Use cases: 6 Casual use cases with extensions
+- [ ] 5. Design doc: Domain model (Mermaid class diagram)
+- [ ] 6. Design doc: Workflow phases (Mermaid state diagram)
+- [ ] 7. Design doc: Key algorithms (variance, decomposition, incidents, DORA)
+- [ ] 8. Design doc: Architecture (Mermaid flowchart + dependency graph)
+- [ ] 9. Design doc: Data flow (Mermaid tick loop + phase transition)
+- [ ] 10. README: Quick start that works
+- [ ] 11. README: All keybindings with context
+- [ ] 12. README: DORA vs TameFlow experiment explanation
+- [ ] 13. README: MIT license
+
+---
+
+## Deliverables
+
+| File | Description |
+|------|-------------|
+| `docs/use-cases.md` | Actor-Goal List + use cases for Blue-level goals |
+| `docs/design.md` | Conceptual architecture document |
+| `README.md` | Comprehensive project README |
+
+---
+
+## Implementation Order
+
+- [ ] 1. Create docs/ directory
+- [ ] 2. Write docs/use-cases.md (scope, stories, actor-goal list, 6 use cases)
+- [ ] 3. Write docs/design.md (overview, domain model, algorithms, architecture, data flow)
+- [ ] 4. Write README.md (9 sections including license)
+
+---
+
+## Token Budget
+
+Estimated: 15-20K tokens
+
+---
+
+2026-01-03T05:07:44Z | Phase 2 Contract: Documentation
+
+# Phase 2 Contract: Documentation
+
+**Version:** 1.0
+**Created:** 2026-01-02
+**Status:** AWAITING APPROVAL
+
+---
+
+## Step 1 Checklist
+- [x] 1a: Presented understanding
+- [x] 1b: Asked clarifying questions
+- [x] 1b-answer: Received answers
+- [x] 1c: Contract created (this file)
+- [x] 1d: Approval received
+
+---
+
+## Objective
+
+Create documentation for the Phase 1 MVP: use cases, design document, and README.
+
+---
+
+## Scope
+
+### In Scope
+- **Use Cases** (`docs/use-cases.md`): Cockburn-style, Blue-level user goals
+- **Design Document** (`docs/design.md`): Conceptual architecture, domain model, key algorithms
+- **README** (`README.md`): Comprehensive - features, installation, usage, for users who want to install and play
+
+### Out of Scope
+- Implementation details (already captured in Phase 1 contract/code)
+- API documentation
+- Contributing guide
+
+---
+
+## Key Decisions
+
+| Question | Answer | Impact |
+|----------|--------|--------|
+| Use case format? | Cockburn (Actor-Goal List + Casual/Fully Dressed) | Blue-level goals, intent not mechanism |
+| Design doc depth? | Conceptual architecture | Domain model, algorithms, data flow - not file-by-file |
+| README style? | Comprehensive | Features, install, usage |
+| Audience? | Users who want to install and play | Focus on getting started quickly |
+| Diagrams? | Mermaid | Renders on GitHub |
+| License? | MIT | Standard for Go projects |
+
+---
+
+## Success Criteria
+
+- [x] 1. Use cases: System scope with C4 context diagram
+- [x] 2. Use cases: 2 System-in-Use Stories (different personas)
+- [x] 3. Use cases: Actor-Goal List with 6 Blue-level goals
+- [x] 4. Use cases: 6 Casual use cases with extensions
+- [x] 5. Design doc: Domain model (Mermaid class diagram)
+- [x] 6. Design doc: Workflow phases (Mermaid state diagram)
+- [x] 7. Design doc: Key algorithms (variance, decomposition, incidents, DORA)
+- [x] 8. Design doc: Architecture (Mermaid flowchart + dependency graph)
+- [x] 9. Design doc: Data flow (Mermaid tick loop + phase transition)
+- [x] 10. README: Quick start that works
+- [x] 11. README: All keybindings with context
+- [x] 12. README: DORA vs TameFlow experiment explanation
+- [x] 13. README: MIT license
+
+---
+
+## Deliverables
+
+| File | Description |
+|------|-------------|
+| `docs/use-cases.md` | Actor-Goal List + use cases for Blue-level goals |
+| `docs/design.md` | Conceptual architecture document |
+| `README.md` | Comprehensive project README |
+
+---
+
+## Implementation Order
+
+- [x] 1. Create docs/ directory
+- [x] 2. Write docs/use-cases.md (scope, stories, actor-goal list, 6 use cases)
+- [x] 3. Write docs/design.md (overview, domain model, algorithms, architecture, data flow)
+- [x] 4. Write README.md (9 sections including license)
+
+---
+
+## Actual Results
+
+**Completed:** 2026-01-02
+
+### Deliverables Created
+
+| File | Lines | Description |
+|------|-------|-------------|
+| `docs/use-cases.md` | ~200 | C4 diagram, 2 stories, actor-goal list, 6 use cases |
+| `docs/design.md` | ~250 | 7 Mermaid diagrams, algorithm tables, architecture |
+| `README.md` | ~180 | 9 sections, keybindings, MIT license |
+
+### Mermaid Diagrams
+
+1. C4 Context Diagram (use-cases.md)
+2. Class Diagram - Domain Model (design.md)
+3. State Diagram - Workflow Phases (design.md)
+4. Flowchart - Architecture (design.md)
+5. Graph - Package Dependencies (design.md)
+6. Flowchart - Tick Loop (design.md)
+7. Flowchart - Phase Transition (design.md)
+
+### Self-Assessment
+
+**Grade: A (100/100)**
+
+| Category | Score | Notes |
+|----------|-------|-------|
+| Use cases | A | Full Cockburn methodology, 2 personas, 15 extensions, GitHub-compatible flowchart |
+| Design doc | A | 7 Mermaid diagrams, all algorithms documented |
+| README | A | "How It Works" + ASCII mockups of all 4 views |
+| Plan adherence | A | Followed improved plan, then improved further |
+
+**Improvements Made:**
+- Added "How It Works" section to README with variance table and concrete example
+- Replaced C4Context diagram with standard Mermaid flowchart for GitHub compatibility
+- Added comprehensive ASCII TUI mockup showing all 4 views (Planning, Execution, Metrics, Comparison)
+
+**No remaining deductions.**
+
+---
+
+## Step 4 Checklist
+
+- [x] 4a: Results presented to user
+- [x] 4b: Approval received
+
+---
+
+## Approval
+
+✅ APPROVED BY USER - 2026-01-03
+
+**Final Results:**
+- All 13 success criteria met
+- 7 Mermaid diagrams
+- ASCII TUI mockup of all 4 views
+- Grade: A (100/100)
+
+---
+
+2026-01-03T05:07:57Z | Phase 2 Complete
+
+## Phase 2 Complete
+
+**Date:** 2026-01-03
+**Grade:** A (100/100)
+
+### Deliverables
+- docs/use-cases.md: Cockburn-style use cases (2 personas, 6 use cases, 15 extensions)
+- docs/design.md: 7 Mermaid diagrams, algorithm tables, architecture
+- README.md: Comprehensive with "How It Works" + ASCII TUI mockup
+
+### Improvements Made During Review
+- Added "How It Works" section with variance model explanation
+- Replaced C4Context with standard Mermaid flowchart
+- Added ASCII TUI mockup showing all 4 views
+
+### Next Phase
+- Data output for comparing runs to theoretical results
