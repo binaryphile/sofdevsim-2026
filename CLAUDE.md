@@ -12,60 +12,171 @@
 
 Use `github.com/binaryphile/fluentfp` for fluent, functional patterns where they afford concise but clear code.
 
-### Slice Operations
+### slice Package - Complete API
+
 ```go
 import "github.com/binaryphile/fluentfp/slice"
 
-// Instead of manual loops for filtering/mapping:
-activeTickets := slice.From(tickets).KeepIf(func(t Ticket) bool {
-    return t.Phase != PhaseDone
-})
+// Factory functions
+slice.From(ts []T) Mapper[T]           // For mapping to built-in types
+slice.MapTo[R](ts []T) MapperTo[R,T]   // For mapping to arbitrary type R
 
-// Chain operations fluently:
-ticketIDs := slice.From(tickets).ToString(func(t Ticket) string {
-    return t.ID
-})
+// Mapper[T] methods (also on MapperTo)
+.KeepIf(fn func(T) bool) Mapper[T]     // Filter: keep matching
+.RemoveIf(fn func(T) bool) Mapper[T]   // Filter: remove matching
+.Convert(fn func(T) T) Mapper[T]       // Map to same type
+.TakeFirst(n int) Mapper[T]            // First n elements
+.Each(fn func(T))                      // Side-effect iteration
+.Len() int                             // Count elements
 
-// Filter and count:
-completedCount := slice.From(tickets).KeepIf(func(t Ticket) bool {
-    return t.CompletedTick >= startDay
-}).Len()
+// Mapping methods (return Mapper of target type)
+.ToAny(fn func(T) any) Mapper[any]
+.ToBool(fn func(T) bool) Mapper[bool]
+.ToByte(fn func(T) byte) Mapper[byte]
+.ToError(fn func(T) error) Mapper[error]
+.ToFloat32(fn func(T) float32) Mapper[float32]
+.ToFloat64(fn func(T) float64) Mapper[float64]
+.ToInt(fn func(T) int) Mapper[int]
+.ToRune(fn func(T) rune) Mapper[rune]
+.ToString(fn func(T) string) Mapper[string]
+
+// MapperTo[R,T] additional method
+.To(fn func(T) R) Mapper[R]            // Map to type R
 ```
 
-### Option Type (for nullable values)
+### slice Patterns
+
+```go
+// Count matching elements
+count := slice.From(tickets).KeepIf(Ticket.IsActive).Len()
+
+// Extract field to strings
+ids := slice.From(tickets).ToString(Ticket.GetID)
+
+// Method expressions for clean chains
+actives := slice.From(users).
+    Convert(User.Normalize).
+    KeepIf(User.IsValid)
+```
+
+### option Package
+
 ```go
 import "github.com/binaryphile/fluentfp/option"
 
-// Wrap optional values:
-assignee := option.Of(ticket.AssignedTo)
-devName := assignee.Or("unassigned")
+// Creating options
+option.Of(t T) Basic[T]                // Always ok
+option.New(t T, ok bool) Basic[T]      // Conditional ok
+option.IfProvided(t T) Basic[T]        // Ok if non-zero value
+option.FromOpt(ptr *T) Basic[T]        // From pointer (nil = not-ok)
 
-// Comma-ok unwrapping:
-if dev, ok := assignee.Get(); ok {
-    // process assigned developer
-}
+// Using options
+.Get() (T, bool)                       // Comma-ok unwrap
+.Or(t T) T                             // Value or default
+.OrZero() T                            // Value or zero
+.OrEmpty() T                           // Alias for strings
+.OrFalse() bool                        // For option.Bool
+.Call(fn func(T))                      // Side-effect if ok
+
+// Pre-defined types
+option.String, option.Int, option.Bool, option.Error
 ```
 
-### Must (panic on error, for init/setup)
+### option Patterns
+
+```go
+// Nullable database field
+func (r Record) GetHost() option.String {
+    return option.IfProvided(r.NullableHost.String)
+}
+
+// Tri-state boolean (true/false/unknown)
+type Result struct {
+    IsConnected option.Bool  // OrFalse() gives default
+}
+connected := result.IsConnected.OrFalse()
+```
+
+### must Package
+
 ```go
 import "github.com/binaryphile/fluentfp/must"
 
-// For initialization where errors are fatal:
-config := must.Get(loadConfig())
-atoi := must.Of(strconv.Atoi)
+must.Get(t T, err error) T             // Return or panic
+must.BeNil(err error)                  // Panic if error
+must.Getenv(key string) string         // Env var or panic
+must.Of(fn func(T) (R, error)) func(T) R  // Wrap fallible func
 ```
 
-### Ternary Expressions
+### must Patterns
+
+```go
+// Initialization sequences
+db := must.Get(sql.Open("postgres", dsn))
+must.BeNil(db.Ping())
+
+// Validation-only (discard result, just validate)
+_ = must.Get(strconv.Atoi(configID))
+
+// Inline in expressions
+devices = append(devices, must.Get(store.GetDevices(chunk))...)
+
+// Time parsing
+timestamp := must.Get(time.Parse("2006-01-02 15:04:05", s.ScannedAt))
+
+// With slice operations
+atoi := must.Of(strconv.Atoi)
+ints := slice.From(strings).ToInt(atoi)
+```
+
+### ternary Package
+
 ```go
 import "github.com/binaryphile/fluentfp/ternary"
 
-status := ternary.If[string](ticket.Phase == PhaseDone).Then("complete").Else("in progress")
+ternary.If[R](cond bool).Then(t R).Else(e R) R
+ternary.If[R](cond bool).ThenCall(fn).ElseCall(fn) R  // Lazy
 ```
 
-### When NOT to Use FluentFP
-- Simple single-pass loops that are already clear
-- Performance-critical hot paths (stick to plain loops)
-- When it would obscure rather than clarify intent
+### ternary Patterns
+
+```go
+// Factory alias for repeated use
+If := ternary.If[string]
+status := If(done).Then("complete").Else("pending")
+```
+
+### lof Package (Lower-Order Functions)
+
+```go
+import "github.com/binaryphile/fluentfp/lof"
+
+lof.Println(s string)      // Wraps fmt.Println for Each
+lof.Len(ts []T) int        // Wraps len
+```
+
+### Why Always Prefer FluentFP Over Loops
+
+Loops are 3+ lines; FluentFP is 1 conceptual operation per line.
+- Loops have multiple forms → mental load
+- Loops force wasted syntax (discarded `_` values)
+- Loops nest; FluentFP chains
+- Loops describe *how*; FluentFP describes *what*
+
+### When Loops Are Still Necessary
+
+1. **Index correlation across parallel slices** - need to access multiple slices by index
+2. **Channel consumption** - `for r := range chan` has no FP equivalent
+3. **Reduce/accumulate** - building maps, running sums (no `Fold` yet)
+4. **Complex control flow** - break/continue/early return within loop
+
+See [fluentfp/slice/README.md](https://github.com/binaryphile/fluentfp/blob/develop/slice/README.md#when-loops-are-still-necessary) for detailed examples.
+
+### FluentFP Enhancements Wanted
+
+- [x] Add `ToFloat64` and `ToFloat32` methods to slice package (v0.5.0)
+- [ ] Add `Zip` method or function for parallel slice iteration
+- [ ] Add `Fold`/`Reduce` for accumulating operations
 
 ## Testing: Red/Green TDD + Khorikov Principles
 
