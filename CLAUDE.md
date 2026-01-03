@@ -225,6 +225,20 @@ leadTimes, deployFreqs, mttrs, cfrs := slice.Unzip4(history,
 | Stored for later use | |
 | Captures outer variables | |
 
+**Why name functions (beyond the rules above):**
+
+Anonymous functions and higher-order functions require mental effort to parse. Named functions **reduce this cognitive load** by making code read like English:
+
+```go
+// Inline: reader must parse lambda syntax and infer meaning
+slice.From(tickets).KeepIf(func(t Ticket) bool { return t.CompletedTick >= cutoff }).Len()
+
+// Named: reads as intent - "keep if completed after cutoff"
+slice.From(tickets).KeepIf(completedAfterCutoff).Len()
+```
+
+Named functions aren't ceremony—they're **documentation at the right boundary**. If logic is simple enough to consider inlining, it's simple enough to name and document. The godoc comment is there when you need to dig deeper—consistent with Go practices everywhere else.
+
 **Locality:** Define named functions close to first usage, not at package level.
 
 #### Method Expressions (preferred)
@@ -266,7 +280,23 @@ total := slice.Fold(amounts, 0.0, sumFloat64)
 
 ### Why Always Prefer FluentFP Over Loops
 
-Loops are 3+ lines; FluentFP is 1 conceptual operation per line.
+**Concrete example - field extraction:**
+
+```go
+// FluentFP: one expression stating intent
+return slice.From(f.History).ToFloat64(func(s FeverSnapshot) float64 { return s.PercentUsed })
+
+// Loop: four concepts interleaved
+var result []float64                           // 1. variable declaration
+for _, s := range f.History {                  // 2. iteration mechanics (discarded _)
+    result = append(result, s.PercentUsed)     // 3. append mechanics
+}
+return result                                  // 4. return
+```
+
+The loop forces you to think about *how* (declare, iterate, append, return). FluentFP expresses *what* (extract PercentUsed as float64s).
+
+**General principles:**
 - Loops have multiple forms → mental load
 - Loops force wasted syntax (discarded `_` values)
 - Loops nest; FluentFP chains

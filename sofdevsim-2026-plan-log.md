@@ -3649,3 +3649,454 @@ Deductions:
 ## Approval
 ✅ APPROVED BY USER - 2026-01-03
 Final results: FluentFP v0.6.0 patterns applied across 5 files with named functions per CLAUDE.md guidance.
+---
+
+2026-01-03T20:21:12Z | Phase 7 Contract: FluentFP Documentation Insights
+
+# Phase 7 Contract: FluentFP Documentation Insights
+
+**Created:** 2026-01-03
+
+## Step 1 Checklist
+- [x] 1a: Presented understanding
+- [x] 1b: Asked clarifying questions (refined thesis through dialogue)
+- [x] 1b-answer: Received answers
+- [x] 1c: Contract created (this file)
+- [x] 1d: Approval received (user said "proceed")
+
+## Objective
+Update CLAUDE.md and fluentfp READMEs with insights about why named functions reduce cognitive load.
+
+## Core Thesis
+Named functions reduce cognitive load. Anonymous functions require mental effort to parse. Named functions ease this by:
+1. Translating lambda mechanics into readable English
+2. Providing godoc comments at digestible boundaries
+3. Aiding your own understanding—naming forces you to articulate intent
+
+## Success Criteria
+
+- [ ] sofdevsim CLAUDE.md: Add "Why name functions" section after line 227
+- [ ] sofdevsim CLAUDE.md: Replace "Why Always Prefer FluentFP" section with concrete example
+- [ ] fluentfp slice/README.md: Add "Why Name Your Functions" section
+- [ ] fluentfp README.md: Mark Zip as complete in Future Enhancements
+- [ ] Both projects build successfully
+- [ ] Commits made to both repos
+---
+
+2026-01-03T20:21:12Z | Plan: Update Documentation with FluentFP Insights
+
+# Plan: Update Documentation with FluentFP Insights
+
+## Objective
+Add insights from our Phase 6 discussion to CLAUDE.md and fluentfp READMEs.
+
+## Core Thesis
+
+**Named functions reduce cognitive load.** Anonymous functions and higher-order functions require mental effort to parse. Named functions ease this by:
+
+1. **Translating lambda mechanics into readable English** - `KeepIf(completedAfterCutoff)` vs parsing inline syntax
+2. **Providing godoc comments at digestible boundaries** - if the logic is simple enough to consider inlining, it's simple enough to name and document
+3. **Aiding your own understanding** - naming forces you to articulate intent; the comment crystallizes your thinking
+
+## Files to Modify
+
+### 1. `/home/ted/projects/sofdevsim-2026/CLAUDE.md`
+
+**Edit A: After line 227 (after "Captures outer variables" row in table), add:**
+
+```markdown
+**Why name functions (beyond the rules above):**
+
+Anonymous functions and higher-order functions require mental effort to parse. Named functions **reduce this cognitive load** by making code read like English:
+
+
+```go
+// Inline: reader must parse lambda syntax and infer meaning
+slice.From(tickets).KeepIf(func(t Ticket) bool { return t.CompletedTick >= cutoff }).Len()
+
+// Named: reads as intent - "keep if completed after cutoff"
+slice.From(tickets).KeepIf(completedAfterCutoff).Len()
+```
+
+Named functions aren't ceremony—they're **documentation at the right boundary**. If logic is simple enough to consider inlining, it's simple enough to name and document. The godoc comment is there when the reader needs to dig deeper—consistent with Go practices everywhere else.
+```
+
+**Edit B: Replace lines 267-274 ("Why Always Prefer FluentFP Over Loops" section) with:**
+
+```markdown
+### Why Always Prefer FluentFP Over Loops
+
+**Concrete example - field extraction:**
+
+```go
+// FluentFP: one expression stating intent
+return slice.From(f.History).ToFloat64(func(s FeverSnapshot) float64 { return s.PercentUsed })
+
+// Loop: four concepts interleaved
+var result []float64                           // 1. variable declaration
+for _, s := range f.History {                  // 2. iteration mechanics (discarded _)
+    result = append(result, s.PercentUsed)     // 3. append mechanics
+}
+return result                                  // 4. return
+```
+
+The loop forces you to think about *how* (declare, iterate, append, return). FluentFP expresses *what* (extract PercentUsed as float64s).
+
+**General principles:**
+- Loops have multiple forms → mental load
+- Loops force wasted syntax (discarded `_` values)
+- Loops nest; FluentFP chains
+- Loops describe *how*; FluentFP describes *what*
+```
+
+---
+
+### 2. `/home/ted/projects/fluentfp/slice/README.md`
+
+**Add after line 352 (after "When Loops Are Still Necessary" section), new section:**
+
+```markdown
+--------------------------------------------------------------------------------------------
+
+## Why Name Your Functions
+
+Anonymous functions and higher-order functions require mental effort to parse. When using FluentFP with custom predicates or reducers, **prefer named functions over inline anonymous functions**. This reduces cognitive load.
+
+### The Problem with Inline Lambdas
+
+Anonymous functions require readers to:
+1. Parse higher-order function concept (KeepIf takes a function)
+2. Parse anonymous function syntax
+3. Understand the predicate logic inline
+4. Track all this while following the chain
+
+### Named Functions Read Like English
+
+```go
+// Hard to parse: what does this filter mean?
+slice.From(tickets).KeepIf(func(t Ticket) bool { return t.CompletedTick >= cutoff }).Len()
+
+// Reads as intent: "keep if completed after cutoff, get length"
+slice.From(tickets).KeepIf(completedAfterCutoff).Len()
+```
+
+The second version hides the mechanics. You see intent. If you need details, you find a named function with a godoc comment. Naming also forces you to articulate intent—crystallizing your own understanding.
+
+### Documentation at the Right Boundary
+
+```go
+// completedAfterCutoff returns true if ticket was completed after the cutoff tick.
+completedAfterCutoff := func(t Ticket) bool {
+    return t.CompletedTick >= cutoff
+}
+```
+
+This provides:
+- A semantic name communicating intent
+- A godoc comment explaining the predicate
+- A digestible unit of logic
+
+This is consistent with Go's documentation practices—the comment is there when you need to dig deeper.
+
+### When to Name
+
+| Name when... | Inline when... |
+|--------------|----------------|
+| Captures outer variables | Trivial field access (`func(u User) string { return u.Name }`) |
+| Has domain meaning | Standard idiom (`t.Run`, `http.HandlerFunc`) |
+| Reused multiple times | |
+| Complex (multiple statements) | |
+```
+
+---
+
+### 3. `/home/ted/projects/fluentfp/README.md`
+
+**Edit line 161: change:**
+```markdown
+- [ ] `Zip` function for parallel slice iteration
+```
+**to:**
+```markdown
+- [x] `Zip`/`ZipWith` for parallel slice iteration (v0.6.0, pair package)
+```
+
+---
+
+## Verification
+
+After edits:
+1. `go build ./...` in both projects (ensure no markdown in Go files by accident)
+2. Visual review of markdown rendering
+3. Commit to respective repos
+---
+
+2026-01-03T20:28:46Z | Phase 1 Contract: Update FluentFP Examples
+
+# Phase 1 Contract: Update FluentFP Examples
+
+**Created:** 2026-01-03
+
+## Step 1 Checklist
+- [x] 1a: Presented understanding
+- [x] 1b: Asked clarifying questions (refined through grading cycles)
+- [x] 1b-answer: Received answers
+- [x] 1c: Contract created (this file)
+- [x] 1d: Approval received (user said "proceed")
+
+## Objective
+Update fluentfp/examples/slice.go to demonstrate v0.6.0 features (Fold, Unzip, Zip, ToFloat64) following documented naming practices.
+
+## Success Criteria
+
+- [ ] Add pair package import
+- [ ] Add godoc comment to existing `titleFromPost` function
+- [ ] Add named predicate example with godoc (postHasLongTitle)
+- [ ] Add named reducer example with godoc (sumPostIDs using Fold)
+- [ ] Add ToFloat64 example (inline - trivial)
+- [ ] Add Unzip2 example (inline - trivial)
+- [ ] Add ZipWith example with named transformer (formatPostRating)
+- [ ] Example compiles and runs
+- [ ] Commit to fluentfp repo
+---
+
+2026-01-03T20:28:46Z | Plan: Update FluentFP Examples
+
+# Plan: Update FluentFP Examples
+
+## Objective
+Bring fluentfp/examples up to date with v0.6.0 features and named function practices.
+
+## Current State (from reading examples)
+
+| File | Status | Issues |
+|------|--------|--------|
+| `slice.go` | Needs update | Missing: Fold, Unzip, Zip, ToFloat64, named function godoc |
+| `comparison/main.go` | OK | Library comparison - not a best-practices showcase |
+| `must.go` | OK | Shows must package well |
+| `basic_option.go` | OK | Shows option basics |
+| `advanced_option.go` | OK | Extensive comments, good naming |
+| `ternary.go` | OK | Well documented, named functions |
+
+## Documented Practices to Demonstrate
+
+From slice/README.md "Why Name Your Functions":
+- **Name when:** captures outer variables, has domain meaning, reused, complex
+- **Inline when:** trivial field access, standard idiom
+
+## Changes to `/home/ted/projects/fluentfp/examples/slice.go`
+
+**Insertion point:** After line 133 (`Each(lof.Println)`), before line 134 (`}`).
+
+Add new section demonstrating v0.6.0 features with proper naming practices:
+
+### 1. Named predicate with godoc (has domain meaning)
+```go
+// postHasLongTitle returns true if the post title has more than 5 words.
+postHasLongTitle := func(p Post) bool {
+    return len(strings.Fields(p.Title)) > 5
+}
+longTitlePosts := posts.KeepIf(postHasLongTitle)
+fmt.Printf("\n%d posts have long titles\n", len(longTitlePosts))
+```
+
+### 2. Named reducer with godoc (domain: accumulating)
+```go
+// sumPostIDs accumulates post IDs into a running total.
+sumPostIDs := func(total int, p Post) int { return total + p.ID }
+totalIDs := slice.Fold(posts, 0, sumPostIDs)
+fmt.Println("\nsum of post IDs:", totalIDs)
+```
+
+### 3. ToFloat64 - inline OK (trivial field access)
+```go
+// Inline is fine here - trivial field extraction
+idsAsFloats := posts.ToFloat64(func(p Post) float64 { return float64(p.ID) })
+fmt.Println("\npost IDs as floats:", idsAsFloats[:3])
+```
+
+### 4. Unzip2 - inline OK (trivial field access)
+```go
+// Inline extractors are fine - single field access each
+ids, titles := slice.Unzip2(posts,
+    func(p Post) int { return p.ID },
+    func(p Post) string { return p.Title },
+)
+fmt.Printf("\nextracted %d IDs and %d titles\n", len(ids), len(titles))
+```
+
+### 5. Zip/ZipWith - named transformer (has domain meaning)
+```go
+// formatPostRating creates a display string from a post and rating.
+formatPostRating := func(p Post, rating int) string {
+    return fmt.Sprintf("Post %d: %d stars", p.ID, rating)
+}
+
+ratings := []int{5, 4, 3}
+first3 := []Post(posts.TakeFirst(3))  // Convert Mapper to []Post for pair.ZipWith
+summaries := pair.ZipWith(first3, ratings, formatPostRating)
+slice.From(summaries).Each(lof.Println)
+```
+
+### Also fix existing code
+Line 118-120: Add godoc comment to `titleFromPost`:
+```go
+// titleFromPost extracts the title from a post as a Title type.
+titleFromPost := func(post Post) Title {
+    return Title(post.Title)
+}
+```
+
+## Import Block Changes
+
+Add to imports at top of slice.go:
+```go
+import (
+    // ... existing imports ...
+    "github.com/binaryphile/fluentfp/tuple/pair"
+)
+```
+
+## Expected New Output
+
+After existing output, should see:
+```
+X posts have long titles
+sum of post IDs: NNNN
+post IDs as floats: [1 2 3]
+extracted 100 IDs and 100 titles
+Post 1: 5 stars
+Post 2: 4 stars
+Post 3: 3 stars
+```
+
+## Verification
+
+1. `go build ./examples/...` in fluentfp
+2. `go run examples/slice.go` - verify new output appears
+3. No compilation errors
+---
+
+2026-01-03T20:31:41Z | Phase 1 Contract: Update FluentFP Examples
+
+# Phase 1 Contract: Update FluentFP Examples
+
+**Created:** 2026-01-03
+
+## Step 1 Checklist
+- [x] 1a: Presented understanding
+- [x] 1b: Asked clarifying questions (refined through grading cycles)
+- [x] 1b-answer: Received answers
+- [x] 1c: Contract created (this file)
+- [x] 1d: Approval received (user said "proceed")
+
+## Objective
+Update fluentfp/examples/slice.go to demonstrate v0.6.0 features (Fold, Unzip, Zip, ToFloat64) following documented naming practices.
+
+## Success Criteria
+
+- [x] Add pair package import
+- [x] Add godoc comment to existing `titleFromPost` function
+- [x] Add named predicate example with godoc (postHasLongTitle)
+- [x] Add named reducer example with godoc (sumPostIDs using Fold)
+- [x] Add ToFloat64 example (inline - trivial)
+- [x] Add Unzip2 example (inline - trivial)
+- [x] Add ZipWith example with named transformer (formatPostRating)
+- [x] Example compiles and runs
+- [ ] Commit to fluentfp repo
+
+## Actual Results
+
+**Completed:** 2026-01-03
+
+### Files Modified
+- `examples/slice.go` - Added v0.6.0 feature examples (lines 137-175)
+
+### Verification Output
+```
+65 posts have long titles
+sum of post IDs: 5050
+post IDs as floats: [1 2 3]
+extracted 100 IDs and 100 titles
+post ratings:
+Post 1: 5 stars
+Post 2: 4 stars
+Post 3: 3 stars
+```
+
+### Self-Assessment
+Grade: A (97/100)
+
+What went well:
+- All v0.6.0 features demonstrated correctly
+- Named functions with godoc for non-trivial cases
+- Inline functions for trivial field access
+- Comments explain why each approach was chosen
+
+Deductions:
+- -3 points: Build verification initially used wrong command
+
+## Step 4 Checklist
+- [x] 4a: Results presented to user
+- [x] 4b: Approval received
+---
+
+2026-01-03T20:32:08Z | Phase 7 Contract: FluentFP Documentation Insights
+
+# Phase 7 Contract: FluentFP Documentation Insights
+
+**Created:** 2026-01-03
+
+## Step 1 Checklist
+- [x] 1a: Presented understanding
+- [x] 1b: Asked clarifying questions (refined thesis through dialogue)
+- [x] 1b-answer: Received answers
+- [x] 1c: Contract created (this file)
+- [x] 1d: Approval received (user said "proceed")
+
+## Objective
+Update CLAUDE.md and fluentfp READMEs with insights about why named functions reduce cognitive load.
+
+## Core Thesis
+Named functions reduce cognitive load. Anonymous functions require mental effort to parse. Named functions ease this by:
+1. Translating lambda mechanics into readable English
+2. Providing godoc comments at digestible boundaries
+3. Aiding your own understanding—naming forces you to articulate intent
+
+## Success Criteria
+
+- [x] sofdevsim CLAUDE.md: Add "Why name functions" section after line 227
+- [x] sofdevsim CLAUDE.md: Replace "Why Always Prefer FluentFP" section with concrete example
+- [x] fluentfp slice/README.md: Add "Why Name Your Functions" section
+- [x] fluentfp README.md: Mark Zip as complete in Future Enhancements
+- [x] Both projects build successfully
+- [x] Commits made to both repos
+
+## Actual Results
+
+**Completed:** 2026-01-03
+
+### Files Modified
+- `sofdevsim-2026/CLAUDE.md` - Added "Why name functions" rationale + concrete loop comparison
+- `fluentfp/slice/README.md` - Added "Why Name Your Functions" section
+- `fluentfp/README.md` - Marked Zip as complete
+
+### Self-Assessment
+Grade: A (95/100)
+
+What went well:
+- Refined thesis through dialogue with user
+- Removed condescending "struggle" framing
+- Removed redundant "for everyone" qualifiers
+- Core insight preserved: named functions reduce cognitive load, aid your own understanding
+
+Deductions:
+- -5 points: Required multiple correction rounds on framing
+
+## Step 4 Checklist
+- [x] 4a: Results presented to user
+- [x] 4b: Approval received
+
+## Approval
+✅ APPROVED BY USER - 2026-01-03
+Documentation and examples updates complete for both fluentfp and sofdevsim.
