@@ -62,10 +62,11 @@ func (a *App) activeWorkPanel() string {
 			continue
 		}
 
-		ticket := a.sim.FindTicketByID(dev.CurrentTicket)
-		if ticket == nil {
+		ticketIdx := a.sim.FindActiveTicketIndex(dev.CurrentTicket)
+		if ticketIdx == -1 {
 			continue
 		}
+		ticket := a.sim.ActiveTickets[ticketIdx]
 
 		// Calculate progress within current phase
 		phaseEffort := ticket.CalculatePhaseEffort(ticket.Phase)

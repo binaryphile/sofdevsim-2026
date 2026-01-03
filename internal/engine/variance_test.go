@@ -51,7 +51,7 @@ func TestVarianceModel_Calculate(t *testing.T) {
 			max = 0
 
 			for i := 0; i < iterations; i++ {
-				v := vm.Calculate(&ticket, i)
+				v := vm.Calculate(ticket, i)
 				sum += v
 				if v < min {
 					min = v
@@ -85,8 +85,8 @@ func TestVarianceModel_Reproducibility(t *testing.T) {
 	ticket.Phase = model.PhaseImplement
 
 	for tick := 0; tick < 100; tick++ {
-		v1 := vm1.Calculate(&ticket, tick)
-		v2 := vm2.Calculate(&ticket, tick)
+		v1 := vm1.Calculate(ticket, tick)
+		v2 := vm2.Calculate(ticket, tick)
 
 		if v1 != v2 {
 			t.Errorf("tick %d: v1=%v != v2=%v (should be reproducible)", tick, v1, v2)

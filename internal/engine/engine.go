@@ -10,10 +10,10 @@ import (
 
 // Engine runs the simulation tick loop
 type Engine struct {
-	sim       *model.Simulation
-	variance  *VarianceModel
-	events    *EventGenerator
-	policies  *PolicyEngine
+	sim      *model.Simulation
+	variance *VarianceModel
+	events   *EventGenerator
+	policies *PolicyEngine
 }
 
 // NewEngine creates a simulation engine
@@ -33,16 +33,18 @@ func (e *Engine) Tick() []model.Event {
 
 	// 1. Developers work on assigned tickets
 	for i := range e.sim.Developers {
-		dev := &e.sim.Developers[i]
+		dev := e.sim.Developers[i]
 		if dev.IsIdle() {
 			continue
 		}
 
-		ticket := e.sim.FindTicketByID(dev.CurrentTicket)
-		if ticket == nil {
-			dev.Unassign()
+		ticketIdx := e.sim.FindActiveTicketIndex(dev.CurrentTicket)
+		if ticketIdx == -1 {
+			e.sim.Developers[i] = dev.WithoutTicket()
 			continue
 		}
+
+		ticket := e.sim.ActiveTickets[ticketIdx]
 
 		// Calculate work done with variance
 		variance := e.variance.Calculate(ticket, e.sim.CurrentTick)
@@ -53,9 +55,23 @@ func (e *Engine) Tick() []model.Event {
 
 		// Check phase completion
 		if ticket.RemainingEffort <= 0 {
-			events := e.advancePhase(ticket, dev)
+			events, updatedTicket, updatedDev := e.advancePhase(ticket, dev)
 			allEvents = append(allEvents, events...)
+			ticket = updatedTicket
+			dev = updatedDev
+
+			if ticket.Phase == model.PhaseDone {
+				// Ticket completed - add to completed and remove from active
+				e.sim.CompletedTickets = append(e.sim.CompletedTickets, ticket)
+				e.sim.ActiveTickets = append(e.sim.ActiveTickets[:ticketIdx], e.sim.ActiveTickets[ticketIdx+1:]...)
+				e.sim.Developers[i] = dev
+				continue
+			}
 		}
+
+		// Write back (still active)
+		e.sim.ActiveTickets[ticketIdx] = ticket
+		e.sim.Developers[i] = dev
 	}
 
 	// 2. Generate random events (bugs, scope creep)
@@ -82,7 +98,7 @@ func (e *Engine) Tick() []model.Event {
 }
 
 // advancePhase moves a ticket to the next phase or completes it
-func (e *Engine) advancePhase(ticket *model.Ticket, dev *model.Developer) []model.Event {
+func (e *Engine) advancePhase(ticket model.Ticket, dev model.Developer) ([]model.Event, model.Ticket, model.Developer) {
 	events := make([]model.Event, 0)
 
 	oldPhase := ticket.Phase
@@ -92,10 +108,7 @@ func (e *Engine) advancePhase(ticket *model.Ticket, dev *model.Developer) []mode
 		// Ticket complete
 		ticket.CompletedAt = time.Now()
 		ticket.CompletedTick = e.sim.CurrentTick
-		dev.CompleteTicket(ticket.ActualDays)
-
-		// Move from active to completed
-		e.moveToCompleted(ticket.ID)
+		dev = dev.WithCompletedTicket(ticket.ActualDays)
 
 		events = append(events, model.NewEvent(
 			model.EventTicketComplete,
@@ -113,18 +126,7 @@ func (e *Engine) advancePhase(ticket *model.Ticket, dev *model.Developer) []mode
 		))
 	}
 
-	return events
-}
-
-// moveToCompleted moves a ticket from active to completed
-func (e *Engine) moveToCompleted(ticketID string) {
-	for i, t := range e.sim.ActiveTickets {
-		if t.ID == ticketID {
-			e.sim.CompletedTickets = append(e.sim.CompletedTickets, t)
-			e.sim.ActiveTickets = append(e.sim.ActiveTickets[:i], e.sim.ActiveTickets[i+1:]...)
-			return
-		}
-	}
+	return events, ticket, dev
 }
 
 // updateBuffer consumes buffer when tickets are behind schedule
@@ -133,12 +135,14 @@ func (e *Engine) updateBuffer() {
 		return
 	}
 
+	sprint := *e.sim.CurrentSprint
+
 	// Calculate expected vs actual progress
-	progressPct := e.sim.CurrentSprint.ProgressPct(e.sim.CurrentTick)
+	progressPct := sprint.ProgressPct(e.sim.CurrentTick)
 	expectedComplete := progressPct * float64(len(e.sim.ActiveTickets))
 
 	// completedInCurrentSprint returns true if ticket was completed after sprint started.
-	completedInCurrentSprint := func(t model.Ticket) bool { return t.CompletedTick >= e.sim.CurrentSprint.StartDay }
+	completedInCurrentSprint := func(t model.Ticket) bool { return t.CompletedTick >= sprint.StartDay }
 	completedInSprint := slice.From(e.sim.CompletedTickets).
 		KeepIf(completedInCurrentSprint).
 		Len()
@@ -146,7 +150,8 @@ func (e *Engine) updateBuffer() {
 	// If behind schedule, consume buffer
 	if float64(completedInSprint) < expectedComplete {
 		bufferConsumption := (expectedComplete - float64(completedInSprint)) * 0.1
-		e.sim.CurrentSprint.ConsumeBuffer(bufferConsumption)
+		sprint = sprint.WithConsumedBuffer(bufferConsumption)
+		*e.sim.CurrentSprint = sprint
 	}
 }
 
@@ -156,12 +161,16 @@ func (e *Engine) trackWIP() {
 		return
 	}
 
+	sprint := *e.sim.CurrentSprint
 	currentWIP := len(e.sim.ActiveTickets)
-	if currentWIP > e.sim.CurrentSprint.MaxWIP {
-		e.sim.CurrentSprint.MaxWIP = currentWIP
+
+	if currentWIP > sprint.MaxWIP {
+		sprint.MaxWIP = currentWIP
 	}
-	e.sim.CurrentSprint.WIPSum += currentWIP
-	e.sim.CurrentSprint.WIPTicks++
+	sprint.WIPSum += currentWIP
+	sprint.WIPTicks++
+
+	*e.sim.CurrentSprint = sprint
 }
 
 // endSprint handles sprint completion
@@ -190,16 +199,17 @@ func (e *Engine) RunSprint() []model.Event {
 
 // AssignTicket assigns a ticket to a developer and starts work
 func (e *Engine) AssignTicket(ticketID, devID string) error {
-	ticket := e.sim.FindTicketByID(ticketID)
-	if ticket == nil {
-		return fmt.Errorf("ticket %s not found", ticketID)
+	ticketIdx := e.sim.FindBacklogTicketIndex(ticketID)
+	if ticketIdx == -1 {
+		return fmt.Errorf("ticket %s not found in backlog", ticketID)
 	}
 
-	dev := e.sim.FindDeveloperByID(devID)
-	if dev == nil {
+	devIdx := e.sim.FindDeveloperIndex(devID)
+	if devIdx == -1 {
 		return fmt.Errorf("developer %s not found", devID)
 	}
 
+	dev := e.sim.Developers[devIdx]
 	if !dev.IsIdle() {
 		return fmt.Errorf("developer %s is busy with %s", devID, dev.CurrentTicket)
 	}
@@ -207,20 +217,25 @@ func (e *Engine) AssignTicket(ticketID, devID string) error {
 	// Move from backlog to active
 	e.moveToActive(ticketID)
 
+	// Find ticket in active (it was just moved)
+	ticketIdx = e.sim.FindActiveTicketIndex(ticketID)
+	ticket := e.sim.ActiveTickets[ticketIdx]
+
 	// Start the ticket
-	ticket = e.sim.FindTicketByID(ticketID) // Re-find after move
 	ticket.AssignedTo = devID
 	ticket.StartedAt = time.Now()
 	ticket.StartedTick = e.sim.CurrentTick
 	ticket.Phase = model.PhaseResearch
 	ticket.RemainingEffort = ticket.CalculatePhaseEffort(model.PhaseResearch)
+	e.sim.ActiveTickets[ticketIdx] = ticket
 
 	// Assign to developer
-	dev.Assign(ticketID)
+	e.sim.Developers[devIdx] = dev.WithTicket(ticketID)
 
 	// Add to sprint if there is one
 	if e.sim.CurrentSprint != nil {
-		e.sim.CurrentSprint.AddTicket(ticketID)
+		sprint := e.sim.CurrentSprint.WithTicket(ticketID)
+		*e.sim.CurrentSprint = sprint
 	}
 
 	return nil
@@ -239,34 +254,25 @@ func (e *Engine) moveToActive(ticketID string) {
 
 // TryDecompose applies sizing policy and decomposes if needed
 func (e *Engine) TryDecompose(ticketID string) ([]model.Ticket, bool) {
-	ticket := e.sim.FindTicketByID(ticketID)
-	if ticket == nil {
+	ticketIdx := e.sim.FindBacklogTicketIndex(ticketID)
+	if ticketIdx == -1 {
 		return nil, false
 	}
 
-	if !e.policies.ShouldDecompose(*ticket, e.sim.SizingPolicy) {
+	ticket := e.sim.Backlog[ticketIdx]
+
+	if !e.policies.ShouldDecompose(ticket, e.sim.SizingPolicy) {
 		return nil, false
 	}
 
-	children := e.policies.Decompose(*ticket)
+	children := e.policies.Decompose(ticket)
 
 	// Remove parent from backlog
-	for i, t := range e.sim.Backlog {
-		if t.ID == ticketID {
-			e.sim.Backlog = append(e.sim.Backlog[:i], e.sim.Backlog[i+1:]...)
-			break
-		}
-	}
+	e.sim.Backlog = append(e.sim.Backlog[:ticketIdx], e.sim.Backlog[ticketIdx+1:]...)
 
 	// Add children to backlog
 	for _, child := range children {
 		e.sim.Backlog = append(e.sim.Backlog, child)
-	}
-
-	// Update parent with child IDs
-	ticket.ChildIDs = make([]string, len(children))
-	for i, child := range children {
-		ticket.ChildIDs[i] = child.ID
 	}
 
 	return children, true

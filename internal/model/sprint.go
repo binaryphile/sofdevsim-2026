@@ -86,8 +86,8 @@ func (s Sprint) BufferPctUsed() float64 {
 	return s.BufferConsumed / s.BufferDays
 }
 
-// UpdateFeverStatus recalculates fever status based on buffer consumption
-func (s *Sprint) UpdateFeverStatus() {
+// WithUpdatedFeverStatus returns sprint with fever status recalculated
+func (s Sprint) WithUpdatedFeverStatus() Sprint {
 	pctUsed := s.BufferPctUsed()
 	switch {
 	case pctUsed < 0.33:
@@ -97,17 +97,19 @@ func (s *Sprint) UpdateFeverStatus() {
 	default:
 		s.FeverStatus = FeverRed
 	}
+	return s
 }
 
-// ConsumeBuffer adds to buffer consumption and updates fever status
-func (s *Sprint) ConsumeBuffer(days float64) {
+// WithConsumedBuffer returns sprint with buffer consumed and fever updated
+func (s Sprint) WithConsumedBuffer(days float64) Sprint {
 	s.BufferConsumed += days
-	s.UpdateFeverStatus()
+	return s.WithUpdatedFeverStatus()
 }
 
-// AddTicket adds a ticket to the sprint
-func (s *Sprint) AddTicket(ticketID string) {
+// WithTicket returns sprint with ticket added
+func (s Sprint) WithTicket(ticketID string) Sprint {
 	s.Tickets = append(s.Tickets, ticketID)
+	return s
 }
 
 // TicketCount returns the number of tickets in the sprint

@@ -51,7 +51,7 @@ func TestSprint_UpdateFeverStatus(t *testing.T) {
 			sprint := model.NewSprint(1, 0, 10, 0.2)
 			sprint.BufferDays = tt.bufferDays
 			sprint.BufferConsumed = tt.bufferConsumed
-			sprint.UpdateFeverStatus()
+			sprint = sprint.WithUpdatedFeverStatus()
 
 			if sprint.FeverStatus != tt.wantStatus {
 				t.Errorf("UpdateFeverStatus() = %v, want %v (consumed %.1f%%)",
@@ -71,13 +71,13 @@ func TestSprint_ConsumeBuffer(t *testing.T) {
 	}
 
 	// Consume to yellow
-	sprint.ConsumeBuffer(0.8) // 40% consumed
+	sprint = sprint.WithConsumedBuffer(0.8) // 40% consumed
 	if sprint.FeverStatus != model.FeverYellow {
 		t.Errorf("After 40%% consumed, expected Yellow, got %v", sprint.FeverStatus)
 	}
 
 	// Consume to red
-	sprint.ConsumeBuffer(0.6) // 70% total
+	sprint = sprint.WithConsumedBuffer(0.6) // 70% total
 	if sprint.FeverStatus != model.FeverRed {
 		t.Errorf("After 70%% consumed, expected Red, got %v", sprint.FeverStatus)
 	}

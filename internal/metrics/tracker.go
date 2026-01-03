@@ -22,7 +22,9 @@ func NewTracker() *Tracker {
 // Update recalculates all metrics from simulation state
 func (t *Tracker) Update(sim *model.Simulation) {
 	t.DORA.Update(sim)
-	t.Fever.Update(sim.CurrentSprint)
+	if sim.CurrentSprint != nil {
+		t.Fever.Update(*sim.CurrentSprint)
+	}
 }
 
 // GetResult extracts a simulation result for comparison

@@ -362,6 +362,70 @@ See [fluentfp/slice/README.md](https://github.com/binaryphile/fluentfp/blob/deve
 - [x] Add `Unzip2`/`Unzip3`/`Unzip4` for multi-field extraction (v0.6.0)
 - [x] Add `Zip`/`ZipWith` for parallel slice iteration (v0.6.0)
 
+## Value Semantics
+
+### The Case for Values Over Pointers
+
+Go's default to pass-by-value has underappreciated benefits. Consider preferring value semantics wherever practical, reserving pointers for designs that get dramatic simplification from them.
+
+**Benefits of value semantics:**
+
+1. **Nil safety** - Value receivers can't panic on nil. This eliminates an entire class of runtime errors (Hoare's "billion dollar mistake").
+
+2. **Explicit mutation** - When methods return new values instead of mutating, call sites show what changes:
+   ```go
+   // Value semantics: mutation is visible
+   sprint = sprint.WithConsumedBuffer(0.5)
+
+   // Pointer semantics: mutation is hidden
+   sprint.ConsumeBuffer(0.5)  // Did sprint change? Must read the method.
+   ```
+
+3. **No indirection** - `dev.IsIdle()` reads cleaner than `(*dev).IsIdle()` or the implicit indirection of pointer receivers.
+
+4. **Method expressions** - FluentFP's `slice.From(users).KeepIf(User.IsActive)` requires value receivers. Pointer receivers break method expression compatibility.
+
+5. **Predictable copying** - Small structs copy cheaply. Worrying about "copying overhead" is often premature optimization.
+
+**The `With*` pattern for transformation:**
+
+Instead of mutating methods, return transformed copies:
+```go
+// Value semantics
+func (d Developer) WithTicket(id string) Developer {
+    d.CurrentTicket = id
+    d.WIPCount++
+    return d
+}
+// Usage: dev = dev.WithTicket("TKT-001")
+
+// vs pointer mutation
+func (d *Developer) Assign(id string) {
+    d.CurrentTicket = id
+    d.WIPCount++
+}
+// Usage: dev.Assign("TKT-001")
+```
+
+The `With*` pattern makes mutation explicit at call sites. The trade-off is slightly more verbose call sites (`dev = dev.WithTicket(...)` vs `dev.WithTicket(...)`), but the explicitness aids comprehension.
+
+**When pointers still make sense:**
+
+- **Aggregate roots** - Container types that manage collections (e.g., `Simulation` holding `[]Ticket`) benefit from pointer semantics to avoid copying large slices.
+- **Interface satisfaction** - When an interface requires pointer receivers.
+- **Performance-critical hot paths** - Profiled bottlenecks where copying is measurably expensive.
+- **Dramatically simpler designs** - When value semantics would require awkward workarounds.
+
+**Honest trade-offs:**
+
+The `With*` pattern adds verbosity. `sprint = sprint.WithConsumedBuffer(0.5)` is longer than `sprint.ConsumeBuffer(0.5)`. For simple mutations, this can feel ceremonial.
+
+Large struct copies have real cost. Go's escape analysis often helps, but not always. Profile before assuming it matters.
+
+The Go standard library uses both patterns. `strings.Builder` mutates. `time.Time` is immutable. Context matters.
+
+**Bottom line:** Value semantics reduce cognitive load and eliminate nil panics. The verbosity cost is usually worth the safety gain. But pointers remain the right choice when they dramatically simplify a design.
+
 ## Testing: Red/Green TDD + Khorikov Principles
 
 Reference: Khorikov, Vladimir. "Unit Testing: Principles, Practices, and Patterns." Manning, 2020.

@@ -29,11 +29,7 @@ func NewFeverChart() *FeverChart {
 }
 
 // Update recalculates fever chart from sprint state
-func (f *FeverChart) Update(sprint *model.Sprint) {
-	if sprint == nil {
-		return
-	}
-
+func (f *FeverChart) Update(sprint model.Sprint) {
 	f.BufferTotal = sprint.BufferDays
 	f.BufferConsumed = sprint.BufferConsumed
 	f.BufferRemaining = f.BufferTotal - f.BufferConsumed

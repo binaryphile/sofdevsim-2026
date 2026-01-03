@@ -27,10 +27,11 @@ func (i Incident) IsOpen() bool {
 	return i.ResolvedAt == nil
 }
 
-// Resolve marks the incident as resolved
-func (i *Incident) Resolve() {
+// Resolved returns the incident marked as resolved
+func (i Incident) Resolved() Incident {
 	now := time.Now()
 	i.ResolvedAt = &now
+	return i
 }
 
 // TimeToResolve returns the duration from creation to resolution

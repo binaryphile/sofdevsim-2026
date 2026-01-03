@@ -27,21 +27,24 @@ func (d Developer) IsIdle() bool {
 	return d.CurrentTicket == ""
 }
 
-// Assign assigns a ticket to this developer
-func (d *Developer) Assign(ticketID string) {
+// WithTicket returns a developer assigned to the given ticket
+func (d Developer) WithTicket(ticketID string) Developer {
 	d.CurrentTicket = ticketID
 	d.WIPCount++
+	return d
 }
 
-// Unassign clears the current ticket assignment
-func (d *Developer) Unassign() {
+// WithoutTicket returns a developer with no ticket assignment
+func (d Developer) WithoutTicket() Developer {
 	d.CurrentTicket = ""
+	return d
 }
 
-// CompleteTicket records completion and clears assignment
-func (d *Developer) CompleteTicket(effort float64) {
+// WithCompletedTicket returns a developer with updated completion stats
+func (d Developer) WithCompletedTicket(effort float64) Developer {
 	d.TicketsCompleted++
 	d.TotalEffort += effort
 	d.WIPCount--
 	d.CurrentTicket = ""
+	return d
 }

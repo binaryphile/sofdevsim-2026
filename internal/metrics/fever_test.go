@@ -44,10 +44,10 @@ func TestFeverChart_Update(t *testing.T) {
 			sprint := model.NewSprint(1, 0, 10, 0.2)
 			sprint.BufferDays = tt.bufferDays
 			sprint.BufferConsumed = tt.bufferConsumed
-			sprint.UpdateFeverStatus()
+			sprint = sprint.WithUpdatedFeverStatus()
 
 			fever := metrics.NewFeverChart()
-			fever.Update(&sprint)
+			fever.Update(sprint)
 
 			if fever.PercentUsed() != tt.wantPctUsed {
 				t.Errorf("PercentUsed() = %.1f, want %.1f", fever.PercentUsed(), tt.wantPctUsed)
@@ -74,8 +74,8 @@ func TestFeverChart_HistoryValues(t *testing.T) {
 	consumptions := []float64{1, 2, 3, 5, 7}
 	for _, consumed := range consumptions {
 		sprint.BufferConsumed = consumed
-		sprint.UpdateFeverStatus()
-		fever.Update(&sprint)
+		sprint = sprint.WithUpdatedFeverStatus()
+		fever.Update(sprint)
 	}
 
 	values := fever.HistoryValues()
@@ -100,24 +100,24 @@ func TestFeverChart_StatusHelpers(t *testing.T) {
 
 	// Green
 	sprint.BufferConsumed = 2
-	sprint.UpdateFeverStatus()
-	fever.Update(&sprint)
+	sprint = sprint.WithUpdatedFeverStatus()
+	fever.Update(sprint)
 	if !fever.IsGreen() || fever.IsYellow() || fever.IsRed() {
 		t.Error("Expected only IsGreen() to be true at 20%")
 	}
 
 	// Yellow
 	sprint.BufferConsumed = 5
-	sprint.UpdateFeverStatus()
-	fever.Update(&sprint)
+	sprint = sprint.WithUpdatedFeverStatus()
+	fever.Update(sprint)
 	if fever.IsGreen() || !fever.IsYellow() || fever.IsRed() {
 		t.Error("Expected only IsYellow() to be true at 50%")
 	}
 
 	// Red
 	sprint.BufferConsumed = 8
-	sprint.UpdateFeverStatus()
-	fever.Update(&sprint)
+	sprint = sprint.WithUpdatedFeverStatus()
+	fever.Update(sprint)
 	if fever.IsGreen() || fever.IsYellow() || !fever.IsRed() {
 		t.Error("Expected only IsRed() to be true at 80%")
 	}

@@ -64,34 +64,34 @@ func (s *Simulation) StartSprint() {
 	s.CurrentSprint = &sprint
 }
 
-// FindTicketByID searches all ticket collections for a ticket
-func (s *Simulation) FindTicketByID(id string) *Ticket {
+// FindActiveTicketIndex returns index of ticket in ActiveTickets, or -1 if not found
+func (s Simulation) FindActiveTicketIndex(id string) int {
 	for i := range s.ActiveTickets {
 		if s.ActiveTickets[i].ID == id {
-			return &s.ActiveTickets[i]
+			return i
 		}
 	}
-	for i := range s.Backlog {
-		if s.Backlog[i].ID == id {
-			return &s.Backlog[i]
-		}
-	}
-	for i := range s.CompletedTickets {
-		if s.CompletedTickets[i].ID == id {
-			return &s.CompletedTickets[i]
-		}
-	}
-	return nil
+	return -1
 }
 
-// FindDeveloperByID finds a developer by ID
-func (s *Simulation) FindDeveloperByID(id string) *Developer {
-	for i := range s.Developers {
-		if s.Developers[i].ID == id {
-			return &s.Developers[i]
+// FindBacklogTicketIndex returns index of ticket in Backlog, or -1 if not found
+func (s Simulation) FindBacklogTicketIndex(id string) int {
+	for i := range s.Backlog {
+		if s.Backlog[i].ID == id {
+			return i
 		}
 	}
-	return nil
+	return -1
+}
+
+// FindDeveloperIndex returns index of developer, or -1 if not found
+func (s Simulation) FindDeveloperIndex(id string) int {
+	for i := range s.Developers {
+		if s.Developers[i].ID == id {
+			return i
+		}
+	}
+	return -1
 }
 
 // IdleDevelopers returns developers without assigned tickets

@@ -24,7 +24,7 @@ func (g *EventGenerator) GenerateRandomEvents(sim *model.Simulation) []model.Eve
 
 	// Process active tickets for bugs and scope creep
 	for i := range sim.ActiveTickets {
-		ticket := &sim.ActiveTickets[i]
+		ticket := sim.ActiveTickets[i]
 
 		// Bug discovered (2% daily chance, higher for low understanding)
 		bugChance := 0.02
@@ -51,11 +51,14 @@ func (g *EventGenerator) GenerateRandomEvents(sim *model.Simulation) []model.Eve
 				sim.CurrentTick,
 			))
 		}
+
+		sim.ActiveTickets[i] = ticket
 	}
 
-	// Resolve some open incidents
+	// Resolve some open incidents - collect indices to remove
+	var resolvedIndices []int
 	for i := range sim.OpenIncidents {
-		inc := &sim.OpenIncidents[i]
+		inc := sim.OpenIncidents[i]
 		if !inc.IsOpen() {
 			continue
 		}
@@ -68,14 +71,21 @@ func (g *EventGenerator) GenerateRandomEvents(sim *model.Simulation) []model.Eve
 		}
 
 		if rng.Float64() < resolveChance {
-			inc.Resolve()
-			sim.ResolvedIncidents = append(sim.ResolvedIncidents, *inc)
+			resolved := inc.Resolved()
+			sim.ResolvedIncidents = append(sim.ResolvedIncidents, resolved)
+			resolvedIndices = append(resolvedIndices, i)
 			events = append(events, model.NewEvent(
 				model.EventIncidentResolved,
 				fmt.Sprintf("Incident %s resolved", inc.ID),
 				sim.CurrentTick,
 			))
 		}
+	}
+
+	// Remove resolved incidents (reverse order to preserve indices)
+	for i := len(resolvedIndices) - 1; i >= 0; i-- {
+		idx := resolvedIndices[i]
+		sim.OpenIncidents = append(sim.OpenIncidents[:idx], sim.OpenIncidents[idx+1:]...)
 	}
 
 	return events
@@ -87,7 +97,7 @@ func (g *EventGenerator) CheckForIncidents(sim *model.Simulation) []model.Event 
 	rng := rand.New(rand.NewSource(g.seed + int64(sim.CurrentTick)))
 
 	for i := range sim.CompletedTickets {
-		ticket := &sim.CompletedTickets[i]
+		ticket := sim.CompletedTickets[i]
 
 		// Only check tickets deployed in last 3 days
 		daysSinceDeployed := sim.CurrentTick - ticket.CompletedAt.Day()
@@ -117,6 +127,7 @@ func (g *EventGenerator) CheckForIncidents(sim *model.Simulation) []model.Event 
 			sim.OpenIncidents = append(sim.OpenIncidents, incident)
 			ticket.CausedIncident = true
 			ticket.IncidentID = incidentID
+			sim.CompletedTickets[i] = ticket
 
 			events = append(events, model.NewEvent(
 				model.EventIncident,
