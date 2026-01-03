@@ -263,10 +263,29 @@ Named functions aren't ceremony—they're **documentation at the right boundary*
 
 When a type has a method matching the required signature, use it directly:
 ```go
-// Best: method expression
-actives := users.KeepIf(User.IsActive)
-names := users.ToString(User.Name)
+// Method expression: reads as English, no function body to parse
+slice.From(developers).KeepIf(Developer.IsIdle)
+
+// Inline anonymous: reader must parse lambda syntax
+slice.From(developers).KeepIf(func(d Developer) bool { return d.IsIdle() })
 ```
+
+The method expression reads as intent: "keep if developer is idle." No syntax to parse, no function body—just *what*, not *how*.
+
+**Critical: Use value receivers for read-only methods.** Method expressions only work when receiver type matches slice element type. `slice.From(users)` creates `Mapper[User]`, so `User.Method` requires a value receiver:
+
+```go
+// Works with slice.From
+func (u User) IsActive() bool { return u.Active }
+
+// Doesn't work - (*User).IsActive expects *User, not User
+func (u *User) IsActive() bool { return u.Active }
+```
+
+**Design rule:** Value receivers by default, pointer receivers only when mutating. This:
+- Enables method expressions with FluentFP
+- Eliminates nil receiver panics (the "billion dollar mistake")
+- Makes value semantics explicit
 
 #### Named Functions (when method expressions don't apply)
 
