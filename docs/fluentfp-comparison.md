@@ -6,7 +6,7 @@ Side-by-side comparison using actual code from this project.
 
 **The invisible familiarity discount.** A `for` loop you've seen 10,000 times feels instant to parse—but that's learned pattern recognition, not inherent simplicity. This doesn't mean FluentFP is always clearer (there are plenty of cases where conventional loops win), but be aware of the discount when comparing. Show that loop to a non-programmer alongside `KeepIf(Developer.IsIdle)`. Which one can they understand? Come back to your own code after 6 months—the loop requires re-simulation ("what is this counting?"), the chain states intent directly.
 
-**Loop syntax variations add ambiguity.** Go's `for` loop has multiple forms (`for i := 0; i < n; i++`, `for i, x := range`, `for _, x := range`, `for i := range`, `for x := range ch`)—each means something different. You must identify which form before understanding what it does. FluentFP methods have one form each: `KeepIf` always filters, `ToFloat64` always extracts.
+**Loop syntax variations add ambiguity.** Go's `for` loop has multiple forms (`for i, x := range`, `for _, x := range`, `for i := range`, `for x := range ch`)—each means something different. You must identify which form before understanding what it does. FluentFP methods have one form each: `KeepIf` always filters, `ToFloat64` always extracts.
 
 **Concerns factored, not eliminated.** FluentFP doesn't make iteration disappear—it moves it to one place. The library still does `make`, `range`, and `append`. The difference: written once in the library, not at every call site. You specify only what varies: the predicate, the extractor, the reducer.
 
