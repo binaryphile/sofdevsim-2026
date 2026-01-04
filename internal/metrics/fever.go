@@ -21,6 +21,9 @@ type FeverSnapshot struct {
 	Status      model.FeverStatus
 }
 
+// GetPercentUsed returns the buffer consumption percentage.
+func (s FeverSnapshot) GetPercentUsed() float64 { return s.PercentUsed }
+
 // NewFeverChart creates an initialized fever chart
 func NewFeverChart() *FeverChart {
 	return &FeverChart{
@@ -80,5 +83,5 @@ func (f *FeverChart) IsRed() bool {
 
 // HistoryValues returns buffer percentages for sparkline
 func (f *FeverChart) HistoryValues() []float64 {
-	return slice.From(f.History).ToFloat64(func(s FeverSnapshot) float64 { return s.PercentUsed })
+	return slice.From(f.History).ToFloat64(FeverSnapshot.GetPercentUsed)
 }

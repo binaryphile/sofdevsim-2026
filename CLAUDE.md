@@ -209,53 +209,64 @@ adults := slice.From(pair.Zip(names, ages)).KeepIf(NameAgePairIsAdult)
 
 ```go
 // Fold - reduce slice to single value
-total := slice.Fold(amounts, 0.0, func(acc, x float64) float64 { return acc + x })
+// sumFloat64 adds two float64 values.
+sumFloat64 := func(acc, x float64) float64 { return acc + x }
+total := slice.Fold(amounts, 0.0, sumFloat64)
 
 // Build map from slice
-byMAC := slice.Fold(devices, make(map[string]Device), func(m map[string]Device, d Device) map[string]Device {
+// indexByMAC adds a device to the map keyed by its MAC address.
+indexByMAC := func(m map[string]Device, d Device) map[string]Device {
     m[d.MAC] = d
     return m
-})
+}
+byMAC := slice.Fold(devices, make(map[string]Device), indexByMAC)
 
 // Unzip - extract multiple fields in one pass (avoids N iterations)
+// Use method expressions when types have appropriate getters
 leadTimes, deployFreqs, mttrs, cfrs := slice.Unzip4(history,
-    func(h HistoryPoint) float64 { return h.LeadTimeAvg },
-    func(h HistoryPoint) float64 { return h.DeployFrequency },
-    func(h HistoryPoint) float64 { return h.MTTR },
-    func(h HistoryPoint) float64 { return h.ChangeFailRate },
+    HistoryPoint.GetLeadTimeAvg,
+    HistoryPoint.GetDeployFrequency,
+    HistoryPoint.GetMTTR,
+    HistoryPoint.GetChangeFailRate,
 )
 ```
 
 ### Named vs Inline Functions
 
-**Preference hierarchy** (best to worst):
+**Preference hierarchy:**
 1. **Method expressions** - `User.IsActive`, `Device.GetMAC` (cleanest, no function body)
-2. **Named functions** - `isActive := func(u User) bool {...}` (readable, debuggable)
-3. **Inline anonymous** - `func(u User) bool {...}` (only when trivial)
+2. **Named functions** - `isActive := func(u User) bool {...}` (readable, documented)
 
-**When to name (vs inline):**
+Avoid inline anonymous functions in FluentFP chains. If the logic is simple enough to inline, it's simple enough to name and document.
 
-| Name when... | Inline when... |
-|--------------|----------------|
-| Reused (called 2+ times) | Trivial wrapper (single forwarding expression) |
-| Complex (multiple statements) | Standard idiom (t.Run, http.HandlerFunc) |
-| Has domain meaning | Context already explains intent |
-| Stored for later use | |
-| Captures outer variables | |
-
-**Why name functions (beyond the rules above):**
-
-Anonymous functions and higher-order functions require mental effort to parse. Named functions **reduce this cognitive load** by making code read like English:
+**All named functions get godoc-style comments:**
 
 ```go
-// Inline: reader must parse lambda syntax and infer meaning
-slice.From(tickets).KeepIf(func(t Ticket) bool { return t.CompletedTick >= cutoff }).Len()
-
-// Named: reads as intent - "keep if completed after cutoff"
-slice.From(tickets).KeepIf(completedAfterCutoff).Len()
+// completedAfterCutoff returns true if ticket was completed after the cutoff tick.
+completedAfterCutoff := func(t Ticket) bool { return t.CompletedTick >= cutoff }
 ```
 
-Named functions aren't ceremony—they're **documentation at the right boundary**. If logic is simple enough to consider inlining, it's simple enough to name and document. The godoc comment is there when you need to dig deeper—consistent with Go practices everywhere else.
+**Single-expression functions go on one line:**
+
+```go
+// sumDuration adds two durations.
+sumDuration := func(a, b time.Duration) time.Duration { return a + b }
+
+// GetPercentUsed returns the buffer consumption percentage.
+func (s FeverSnapshot) GetPercentUsed() float64 { return s.PercentUsed }
+```
+
+**Why this matters:**
+
+Anonymous functions require parsing lambda syntax, predicate logic, and chain context simultaneously. Named functions with godoc comments let you read intent directly:
+
+```go
+// Inline: parse syntax, logic, and context together
+slice.From(tickets).KeepIf(func(t Ticket) bool { return t.CompletedTick >= cutoff }).Len()
+
+// Named: read intent - "keep if completed after cutoff"
+slice.From(tickets).KeepIf(completedAfterCutoff).Len()
+```
 
 **Locality:** Define named functions close to first usage, not at package level.
 
@@ -329,10 +340,11 @@ total := slice.Fold(amounts, 0.0, sumFloat64)
 **Concrete example - field extraction:**
 
 ```go
-// FluentFP: one expression stating intent
-return slice.From(f.History).ToFloat64(func(s FeverSnapshot) float64 { return s.PercentUsed })
+// FluentFP: extract percent values from history
+return slice.From(f.History).ToFloat64(FeverSnapshot.GetPercentUsed)
 
 // Loop: four concepts interleaved
+// Extract percent values from history
 var result []float64                           // 1. variable declaration
 for _, s := range f.History {                  // 2. iteration mechanics (discarded _)
     result = append(result, s.PercentUsed)     // 3. append mechanics
@@ -340,7 +352,7 @@ for _, s := range f.History {                  // 2. iteration mechanics (discar
 return result                                  // 4. return
 ```
 
-The loop forces you to think about *how* (declare, iterate, append, return). FluentFP expresses *what* (extract PercentUsed as float64s).
+The loop forces you to think about *how* (declare, iterate, append, return). FluentFP expresses *what* (extract PercentUsed).
 
 **General principles:**
 - Loops have multiple forms → mental load
