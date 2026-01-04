@@ -2,6 +2,14 @@
 
 Side-by-side comparison using actual code from this project.
 
+## Key Insights
+
+**The invisible familiarity discount.** A `for` loop you've seen 10,000 times feels instant to parse—but that's learned pattern recognition, not inherent simplicity. This doesn't mean FluentFP is always clearer (there are plenty of cases where conventional loops win), but be aware of the discount when comparing. Show that loop to a non-programmer alongside `KeepIf(Developer.IsIdle)`. Which one can they understand? Come back to your own code after 6 months—the loop requires re-simulation ("what is this counting?"), the chain states intent directly.
+
+**Concerns factored, not eliminated.** FluentFP doesn't make iteration disappear—it moves it to one place. The library still does `make`, `range`, and `append`. The difference: written once in the library, not at every call site. You specify only what varies: the predicate, the extractor, the reducer.
+
+---
+
 ## Conceptual Model
 
 ### FluentFP: Data Pipeline
