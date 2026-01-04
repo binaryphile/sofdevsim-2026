@@ -4163,3 +4163,44 @@ What went well:
 ## Approval
 ✅ APPROVED BY USER - 2026-01-03
 README improvements complete with analysis insights and bug fixes.
+---
+
+2026-01-04T00:56:49Z | Phase: Update FluentFP Docs with Walkthrough Insights
+
+# Phase: Update FluentFP Docs with Walkthrough Insights
+
+**Completed:** 2026-01-03
+
+## Objective
+Capture key insights from code walkthrough discussion into FluentFP documentation.
+
+## Deliverables
+
+### Key Insights Added
+1. **The invisible familiarity discount** — Familiar patterns feel simple due to repetition, not inherent simplicity
+2. **Loop syntax variations add ambiguity** — Range-based loops have multiple forms; FluentFP methods have one each
+3. **Concerns factored, not eliminated** — Library handles mechanics once; you specify only what varies
+
+### Files Modified
+
+**fluentfp:**
+- `README.md` — Added 3 insight paragraphs to "Why FluentFP" section
+- `analysis.md` — Added full sections for familiarity discount and concerns factored
+- `slice/README.md` — Expanded "multiple forms" mention with specific loop variations
+- `examples/patterns.go` — New file with annotated pattern comparisons
+- `examples/slice.go` — Replaced inline anonymous functions with method expressions
+
+**sofdevsim-2026:**
+- `docs/fluentfp-comparison.md` — Added "Key Insights" section at top
+
+## Commits
+- `d5a183b` Add 'invisible familiarity discount' and 'concerns factored' insights
+- `225a770` Add 'Key Insights' section to FluentFP comparison doc
+- `2b382c3` Add loop syntax variations insight
+- `356cdbf` Add parenthetical about C-style loops
+- `3e90946` Add loop syntax variations insight to README and slice README
+- `466b2d6` Replace inline anonymous functions with method expressions in slice.go
+
+## Notes
+- Added nuance: "conventional loops win in many cases" — insight is about awareness, not absolutism
+- Aligned example code with documented guidance (no inline anonymous in FluentFP chains)
