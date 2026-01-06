@@ -129,22 +129,19 @@ must.Of(fn func(T) (R, error)) func(T) R  // Wrap fallible func
 ### must Patterns
 
 ```go
-// Initialization sequences
-db := must.Get(sql.Open("postgres", dsn))
-must.BeNil(db.Ping())
-
-// Validation-only (discard result, just validate)
-_ = must.Get(strconv.Atoi(configID))
+// With slice operations (prefix with "must" to signal panic behavior)
+mustAtoi := must.Of(strconv.Atoi)
+ints := slice.From(strings).ToInt(mustAtoi)
 
 // Inline in expressions
 devices = append(devices, must.Get(store.GetDevices(chunk))...)
 
+// Initialization sequences
+db := must.Get(sql.Open("postgres", dsn))
+must.BeNil(db.Ping())
+
 // Time parsing
 timestamp := must.Get(time.Parse("2006-01-02 15:04:05", s.ScannedAt))
-
-// With slice operations (prefix with "must" to signal panic behavior)
-mustAtoi := must.Of(strconv.Atoi)
-ints := slice.From(strings).ToInt(mustAtoi)
 ```
 
 ### ternary Package
@@ -335,7 +332,7 @@ sumFloat64 := func(acc, x float64) float64 { return acc + x }
 total := slice.Fold(amounts, 0.0, sumFloat64)
 ```
 
-### Why Always Prefer FluentFP Over Loops
+### Why Prefer FluentFP for Data Transformation
 
 **Concrete example - field extraction:**
 
@@ -360,10 +357,13 @@ The loop forces you to think about *how* (declare, iterate, append, return). Flu
 - Loops nest; FluentFP chains
 - Loops describe *how*; FluentFP describes *what*
 
+**Performance note:** Single-operation chains often equal or beat naive loops (fluentfp pre-allocates). Multi-operation chains allocate per operation—expect 50-100% overhead in hot paths. See [benchmarks](https://github.com/binaryphile/fluentfp/blob/main/methodology.md#benchmark-results).
+
 ### When Loops Are Still Necessary
 
 1. **Channel consumption** - `for r := range chan` has no FP equivalent
 2. **Complex control flow** - break/continue/early return within loop
+3. **Index-dependent logic** - when you need `i` for more than just indexing
 
 See [fluentfp/slice/README.md](https://github.com/binaryphile/fluentfp/blob/develop/slice/README.md#when-loops-are-still-necessary) for detailed examples.
 
