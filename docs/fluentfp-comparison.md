@@ -361,6 +361,100 @@ avgFever = sum / float64(len(t.Fever.History))
 - Named predicates document intent and enable reuse
 - No index variables, no append mechanics, no counter mutation
 - Chainable: filter → count is one expression
+- Correctness by construction—bugs you can't make when you don't write loops
+
+Line counts don't capture bugs avoided. Consider this filter:
+
+```go
+var idle []Developer
+for _, d := range developers {
+    if d.IsIdle() {
+        idle = append(idle, d)
+    }
+}
+```
+
+What can go wrong? You could forget `var idle []Developer` and get a nil slice panic on append. You could write `idle = append(developers, d)` and corrupt your input. You could use `for i, d := range` and later accidentally reference `developers[i]` instead of `d`. You could shadow `d` inside the if block. Each bug compiles. Each requires debugging.
+
+Now look at the FluentFP version:
+
+```go
+idle := slice.From(developers).KeepIf(Developer.IsIdle)
+```
+
+Where would the nil slice bug live? There's no variable to forget. Where would the wrong append target bug live? There's no append. Where would the index bug live? There's no index. The mechanics that contain the bugs don't exist in your code—they exist once, tested, in the library.
+
+### Real Bugs from Production Code
+
+The examples above are hypothetical. Here are real bugs from a production Go codebase—all compiled, all passed code review, all written by experienced developers. These mistakes are inevitable when the mechanics exist.
+
+| Category | Why Subtle | FluentFP Prevents? |
+|----------|-----------|-------------------|
+| Index typo (`i+i` not `i+1`) | Looks intentional | ✓ No index |
+| Defer in loop | Defers pile up silently | ✓ No loop body |
+| Error shadowing (`:=` vs `=`) | Normal Go syntax | ✓ No local variables |
+| Inconsistent bounds check | Similar functions, different safety | ✓ No manual indexing |
+| `&&` vs `||` logic error | Always-false looks like real check | ✓ No boolean logic |
+| Map iteration order | Maps look ordered in debugger | ✗ Orthogonal |
+| Input mutation | No hint function mutates | ✓ Returns new slice |
+| Empty slice assumption | "No data = skip" seems reasonable | ✗ Still possible |
+
+**`&&` vs `||` — condition is always false:**
+```go
+// BUG: nothing is both < 200 AND >= 300
+if resp.StatusCode < http.StatusOK && resp.StatusCode >= http.StatusMultipleChoices {
+    err = errors.New("error status")  // never executes
+}
+
+// FIX: || checks "outside 200-299 range"
+if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+    err = errors.New("error status")
+}
+```
+
+**Error shadowing — `:=` creates new variable, loses error:**
+```go
+// BUG: err is local to loop, outer err unchanged
+func InsertRows(db *sql.DB, rows []Row) {
+    for _, row := range rows {
+        _, err := db.Exec(query, row...)  // := shadows
+        if err != nil { log.Print(err) }  // logs but doesn't return
+    }
+    // function returns nil even if errors occurred
+}
+
+// FIX: = assigns to outer err
+func InsertRows(db *sql.DB, rows []Row) (err error) {
+    for _, row := range rows {
+        if _, err = db.Exec(query, row...); err != nil {
+            return
+        }
+    }
+    return nil
+}
+```
+
+**Defer in loop — resources pile up:**
+```go
+// BUG: all Close() calls wait until function returns
+for _, partition := range partitions {
+    mgr, _ := offsetManager.ManagePartition(topic, partition)
+    defer mgr.Close()  // N defers pile up
+    // ... use mgr
+}
+// all N resources held until here
+
+// FIX: closure scopes the defer
+for _, partition := range partitions {
+    func() {
+        mgr, _ := offsetManager.ManagePartition(topic, partition)
+        defer mgr.Close()  // runs at end of closure
+        // ... use mgr
+    }()
+}
+```
+
+Six of eight bugs are structurally impossible with FluentFP—not because the library is clever, but because the mechanics that contain the bugs don't exist in your code.
 
 **Conventional advantages:**
 - Familiar to all Go developers
