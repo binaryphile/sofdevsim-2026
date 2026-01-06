@@ -357,7 +357,7 @@ The loop forces you to think about *how* (declare, iterate, append, return). Flu
 - Loops nest; FluentFP chains
 - Loops describe *how*; FluentFP describes *what*
 
-**Performance note:** Single-operation chains often equal or beat naive loops (fluentfp pre-allocates). Multi-operation chains allocate per operation—expect 50-100% overhead in hot paths. See [benchmarks](https://github.com/binaryphile/fluentfp/blob/main/methodology.md#benchmark-results).
+**Performance note:** Single-operation chains equal properly-written loops. Multi-operation chains allocate per operation—expect 2-3× overhead in hot paths. See [benchmarks](https://github.com/binaryphile/fluentfp/blob/main/methodology.md#benchmark-results).
 
 ### When Loops Are Still Necessary
 
