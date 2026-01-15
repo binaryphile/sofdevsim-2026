@@ -57,9 +57,12 @@ type App struct {
 // tickMsg is sent on each simulation tick
 type tickMsg time.Time
 
-// NewApp creates and initializes the application
-func NewApp() *App {
-	seed := time.Now().UnixNano()
+// NewAppWithSeed creates a new App with the specified random seed.
+// If seed is 0, uses current time for randomness.
+func NewAppWithSeed(seed int64) *App {
+	if seed == 0 {
+		seed = time.Now().UnixNano()
+	}
 	sim := model.NewSimulation(model.PolicyDORAStrict, seed)
 
 	// Add default team
@@ -365,7 +368,7 @@ func (a *App) headerView() string {
 		status = "RUNNING"
 	}
 
-	right := MutedStyle.Render(fmt.Sprintf("%s | %s | Day %d", policy, status, a.sim.CurrentTick))
+	right := MutedStyle.Render(fmt.Sprintf("%s | %s | Day %d | Seed %d", policy, status, a.sim.CurrentTick, a.sim.Seed))
 
 	return BoxStyle.Width(a.width - 2).Render(
 		lipgloss.JoinHorizontal(lipgloss.Top, tabs, "  ", right),
