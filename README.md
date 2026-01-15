@@ -128,6 +128,21 @@ go mod download
 go run cmd/sofdevsim/main.go
 ```
 
+## CLI Flags
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--seed` | 0 | Random seed for reproducibility (0 = use current time) |
+
+**Example:** Run with fixed seed for reproducible results:
+```bash
+go run cmd/sofdevsim/main.go --seed 42
+```
+
+## Tutorial
+
+For a hands-on walkthrough with checkpoints, see [docs/tutorial.md](docs/tutorial.md).
+
 ## Usage
 
 ### Views
@@ -181,9 +196,9 @@ Press **Tab** to switch between views:
 
 | Color | Buffer Used | Meaning |
 |-------|-------------|---------|
-| **Green** | < 50% | On track |
-| **Yellow** | 50-80% | At risk |
-| **Red** | > 80% | Over budget |
+| **Green** | < 33% | On track |
+| **Yellow** | 33-66% | At risk |
+| **Red** | > 66% | Over budget |
 
 ### Comparison Mode
 
