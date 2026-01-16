@@ -80,10 +80,10 @@ func printState(app *App, label string) {
 }
 
 func printFever(app *App) {
-	if app.sim.CurrentSprint == nil {
+	sprint, ok := app.sim.CurrentSprintOption.Get()
+	if !ok {
 		return
 	}
-	sprint := app.sim.CurrentSprint
 	pctUsed := 0.0
 	if sprint.BufferDays > 0 {
 		pctUsed = (sprint.BufferConsumed / sprint.BufferDays) * 100

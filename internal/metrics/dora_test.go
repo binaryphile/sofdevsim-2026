@@ -81,6 +81,28 @@ func TestDORAMetrics_LeadTime_UsesTicksNotWallClock(t *testing.T) {
 	}
 }
 
+// Test that tickets starting at tick 0 are included in lead time calculation
+func TestDORAMetrics_LeadTime_IncludesTicketsStartingAtZero(t *testing.T) {
+	sim := model.NewSimulation(model.PolicyNone, 12345)
+	sim.CurrentTick = 10
+
+	sim.CompletedTickets = []model.Ticket{
+		{
+			ID:            "TKT-001",
+			StartedTick:   0,  // Started at tick 0
+			CompletedTick: 9,  // Completed at tick 9 = 9 days lead time
+		},
+	}
+
+	dora := metrics.NewDORAMetrics()
+	dora.Update(sim)
+
+	// Lead time should be 9 days, not 0 (ticket should not be excluded)
+	if dora.LeadTimeAvgDays() < 8.5 || dora.LeadTimeAvgDays() > 9.5 {
+		t.Errorf("LeadTimeAvgDays() = %.2f, want 9.0 (ticket started at tick 0)", dora.LeadTimeAvgDays())
+	}
+}
+
 // Test that history is appended for sparklines
 func TestDORAMetrics_History(t *testing.T) {
 	sim := model.NewSimulation(model.PolicyNone, 12345)

@@ -1,11 +1,17 @@
 package model
 
-import "github.com/binaryphile/fluentfp/slice"
+import (
+	"github.com/binaryphile/fluentfp/option"
+	"github.com/binaryphile/fluentfp/slice"
+)
+
+// NoSprint is the zero value for option.Basic[Sprint], representing no active sprint.
+var NoSprint option.Basic[Sprint]
 
 // Simulation holds the complete state of a simulation run
 type Simulation struct {
-	CurrentTick   int // 1 tick = 1 day
-	CurrentSprint *Sprint
+	CurrentTick          int // 1 tick = 1 day
+	CurrentSprintOption  option.Basic[Sprint]
 	SprintNumber  int
 
 	// Team
@@ -61,7 +67,7 @@ func (s *Simulation) AddTicket(ticket Ticket) {
 func (s *Simulation) StartSprint() {
 	s.SprintNumber++
 	sprint := NewSprint(s.SprintNumber, s.CurrentTick, s.SprintLength, s.BufferPct)
-	s.CurrentSprint = &sprint
+	s.CurrentSprintOption = option.Of(sprint)
 }
 
 // FindActiveTicketIndex returns index of ticket in ActiveTickets, or -1 if not found

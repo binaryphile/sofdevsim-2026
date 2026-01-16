@@ -23,7 +23,7 @@ func init() {
 	gob.Register(model.EventType(0))
 
 	// Register struct types
-	gob.Register(model.Simulation{})
+	gob.Register(PersistableSimulation{}) // Gob-safe version of model.Simulation
 	gob.Register(model.Developer{})
 	gob.Register(model.Ticket{})
 	gob.Register(model.Sprint{})
@@ -50,7 +50,7 @@ func Save(path, name string, sim *model.Simulation, tracker *metrics.Tracker) er
 		Timestamp: time.Now(),
 		Name:      name,
 		State: SimulationState{
-			Simulation: *sim,
+			Simulation: ToPersistable(sim),
 			DORA:       *tracker.DORA,
 			Fever:      *tracker.Fever,
 		},
@@ -107,7 +107,7 @@ func Load(path string) (*model.Simulation, *metrics.Tracker, error) {
 		Fever: &saveFile.State.Fever,
 	}
 
-	sim := &saveFile.State.Simulation
+	sim := FromPersistable(saveFile.State.Simulation)
 
 	return sim, tracker, nil
 }

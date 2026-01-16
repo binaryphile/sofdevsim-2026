@@ -33,3 +33,31 @@ func TestNewAppWithSeed_ZeroUsesRandomSeed(t *testing.T) {
 		t.Errorf("Seed 0 should use current time, producing different seeds")
 	}
 }
+
+// TestSprintEndsWhenDurationReached verifies sprint is cleared after end day.
+func TestSprintEndsWhenDurationReached(t *testing.T) {
+	app := NewAppWithSeed(42)
+	app.sim.StartSprint()
+	app.paused = false                // Enable tick processing
+	app.currentView = ViewExecution   // Required for tick processing
+
+	// Get sprint end day
+	sprint, ok := app.sim.CurrentSprintOption.Get()
+	if !ok {
+		t.Fatal("Expected sprint to be started")
+	}
+
+	// Move to end day
+	app.sim.CurrentTick = sprint.EndDay
+
+	// Simulate tick that should end sprint
+	app.Update(tickMsg(time.Now()))
+
+	// Sprint should be cleared
+	if _, ok := app.sim.CurrentSprintOption.Get(); ok {
+		t.Error("Sprint should be cleared after end day reached")
+	}
+	if !app.paused {
+		t.Error("Should be paused after sprint ends")
+	}
+}

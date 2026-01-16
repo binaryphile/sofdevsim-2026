@@ -117,11 +117,12 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.events = append(a.events, events...)
 			a.tracker.Update(a.sim)
 
-			// Auto-pause when sprint ends
-			if a.sim.CurrentSprint != nil && a.sim.CurrentTick >= a.sim.CurrentSprint.EndDay {
+			// End sprint when duration reached
+			if sprint, ok := a.sim.CurrentSprintOption.Get(); ok && a.sim.CurrentTick >= sprint.EndDay {
+				a.sim.CurrentSprintOption = model.NoSprint // Clear sprint
 				a.paused = true
 				a.statusMessage = "Sprint complete - press 's' for next sprint"
-				a.statusExpiry = time.Now().Add(5 * time.Second) // matches error message duration
+				a.statusExpiry = time.Now().Add(5 * time.Second)
 			}
 		}
 		return a, a.tickCmd()
@@ -163,7 +164,7 @@ func (a *App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case "s":
 		// Start sprint (from planning view)
-		if a.currentView == ViewPlanning && a.sim.CurrentSprint == nil {
+		if _, ok := a.sim.CurrentSprintOption.Get(); a.currentView == ViewPlanning && !ok {
 			a.sim.StartSprint()
 			a.currentView = ViewExecution
 			a.paused = false
@@ -346,7 +347,8 @@ func (a *App) runSprintWithAutoAssign(sim *model.Simulation, eng *engine.Engine,
 	}
 
 	// Run the sprint
-	for sim.CurrentTick < sim.CurrentSprint.EndDay {
+	sprint, _ := sim.CurrentSprintOption.Get()
+	for sim.CurrentTick < sprint.EndDay {
 		eng.Tick()
 		tracker.Update(sim)
 

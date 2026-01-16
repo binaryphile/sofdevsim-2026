@@ -115,6 +115,19 @@ type Result struct {
 connected := result.IsConnected.OrFalse()
 ```
 
+### Prefer Options Over Nil Pointers
+
+For optional values, prefer `option.Basic[T]` over `*T`:
+
+| Pattern | Problem | Solution |
+|---------|---------|----------|
+| `*T` for "maybe absent" | Nil checks scattered, panic risk | `option.Basic[T]` |
+| `if ptr != nil` | Easy to forget, silent bugs | `.Get()` forces handling |
+| `*ptr` access | Panics if nil | `.OrZero()` or `.Or(default)` |
+
+**Use pointers for:** Mutation of aggregate roots, interface requirements.
+**Use options for:** "This value may not exist" semantics.
+
 ### must Package
 
 ```go

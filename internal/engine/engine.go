@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/binaryphile/fluentfp/option"
 	"github.com/binaryphile/fluentfp/slice"
 	"github.com/binaryphile/sofdevsim-2026/internal/model"
 )
@@ -89,7 +90,7 @@ func (e *Engine) Tick() []model.Event {
 	e.trackWIP()
 
 	// 6. Check sprint end
-	if e.sim.CurrentSprint != nil && e.sim.CurrentTick >= e.sim.CurrentSprint.EndDay {
+	if sprint, ok := e.sim.CurrentSprintOption.Get(); ok && e.sim.CurrentTick >= sprint.EndDay {
 		endEvents := e.endSprint()
 		allEvents = append(allEvents, endEvents...)
 	}
@@ -131,11 +132,10 @@ func (e *Engine) advancePhase(ticket model.Ticket, dev model.Developer) ([]model
 
 // updateBuffer consumes buffer when tickets are behind schedule
 func (e *Engine) updateBuffer() {
-	if e.sim.CurrentSprint == nil {
+	sprint, ok := e.sim.CurrentSprintOption.Get()
+	if !ok {
 		return
 	}
-
-	sprint := *e.sim.CurrentSprint
 
 	// Calculate expected vs actual progress
 	progressPct := sprint.ProgressPct(e.sim.CurrentTick)
@@ -151,17 +151,17 @@ func (e *Engine) updateBuffer() {
 	if float64(completedInSprint) < expectedComplete {
 		bufferConsumption := (expectedComplete - float64(completedInSprint)) * 0.1
 		sprint = sprint.WithConsumedBuffer(bufferConsumption)
-		*e.sim.CurrentSprint = sprint
+		e.sim.CurrentSprintOption = option.Of(sprint)
 	}
 }
 
 // trackWIP records work-in-progress metrics for export
 func (e *Engine) trackWIP() {
-	if e.sim.CurrentSprint == nil {
+	sprint, ok := e.sim.CurrentSprintOption.Get()
+	if !ok {
 		return
 	}
 
-	sprint := *e.sim.CurrentSprint
 	currentWIP := len(e.sim.ActiveTickets)
 
 	if currentWIP > sprint.MaxWIP {
@@ -170,7 +170,7 @@ func (e *Engine) trackWIP() {
 	sprint.WIPSum += currentWIP
 	sprint.WIPTicks++
 
-	*e.sim.CurrentSprint = sprint
+	e.sim.CurrentSprintOption = option.Of(sprint)
 }
 
 // endSprint handles sprint completion
@@ -189,7 +189,8 @@ func (e *Engine) RunSprint() []model.Event {
 
 	e.sim.StartSprint()
 
-	for e.sim.CurrentTick < e.sim.CurrentSprint.EndDay {
+	sprint, _ := e.sim.CurrentSprintOption.Get()
+	for e.sim.CurrentTick < sprint.EndDay {
 		events := e.Tick()
 		allEvents = append(allEvents, events...)
 	}
@@ -233,9 +234,9 @@ func (e *Engine) AssignTicket(ticketID, devID string) error {
 	e.sim.Developers[devIdx] = dev.WithTicket(ticketID)
 
 	// Add to sprint if there is one
-	if e.sim.CurrentSprint != nil {
-		sprint := e.sim.CurrentSprint.WithTicket(ticketID)
-		*e.sim.CurrentSprint = sprint
+	if sprint, ok := e.sim.CurrentSprintOption.Get(); ok {
+		sprint = sprint.WithTicket(ticketID)
+		e.sim.CurrentSprintOption = option.Of(sprint)
 	}
 
 	return nil

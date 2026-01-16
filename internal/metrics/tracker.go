@@ -22,8 +22,8 @@ func NewTracker() *Tracker {
 // Update recalculates all metrics from simulation state
 func (t *Tracker) Update(sim *model.Simulation) {
 	t.DORA.Update(sim)
-	if sim.CurrentSprint != nil {
-		t.Fever.Update(*sim.CurrentSprint)
+	if sprint, ok := sim.CurrentSprintOption.Get(); ok {
+		t.Fever.Update(sprint)
 	}
 }
 

@@ -173,7 +173,7 @@ Incidents are generated when tickets complete, based on understanding:
 
 | Metric | Formula | Better |
 |--------|---------|--------|
-| Lead Time | Average of (CompletedAt - StartedAt) | Lower |
+| Lead Time | Average of (CompletedTick - StartedTick) | Lower |
 | Deploy Frequency | Deploys in last 7 ticks ÷ 7 | Higher |
 | MTTR | Average of (ResolvedAt - CreatedAt) for incidents | Lower |
 | Change Fail Rate | Total incidents ÷ Total deploys | Lower |

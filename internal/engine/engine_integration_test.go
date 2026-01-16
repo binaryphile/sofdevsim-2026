@@ -130,8 +130,8 @@ func TestEngine_WIPTracking(t *testing.T) {
 	// Run sprint
 	eng.RunSprint()
 
-	sprint := sim.CurrentSprint
-	if sprint == nil {
+	sprint, ok := sim.CurrentSprintOption.Get()
+	if !ok {
 		t.Fatal("Expected sprint to exist")
 	}
 

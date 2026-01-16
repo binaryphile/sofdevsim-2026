@@ -32,11 +32,11 @@ func (a *App) executionView() string {
 }
 
 func (a *App) sprintProgress() string {
-	if a.sim.CurrentSprint == nil {
+	sprint, ok := a.sim.CurrentSprintOption.Get()
+	if !ok {
 		return MutedStyle.Render("No active sprint")
 	}
 
-	sprint := a.sim.CurrentSprint
 	progress := sprint.ProgressPct(a.sim.CurrentTick)
 	bar := RenderProgressBar(progress, 50)
 
@@ -101,11 +101,11 @@ func (a *App) activeWorkPanel() string {
 func (a *App) feverPanel() string {
 	title := TitleStyle.Render("Fever Chart")
 
-	if a.sim.CurrentSprint == nil {
+	sprint, ok := a.sim.CurrentSprintOption.Get()
+	if !ok {
 		return lipgloss.JoinVertical(lipgloss.Left, title, MutedStyle.Render("No active sprint"))
 	}
 
-	sprint := a.sim.CurrentSprint
 	pctUsed := sprint.BufferPctUsed() * 100
 
 	bar := RenderProgressBar(sprint.BufferPctUsed(), 20)

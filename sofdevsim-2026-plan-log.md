@@ -9501,3 +9501,514 @@ Aligned documentation with current implementation state after persistence and he
 
 ### Verification
 All 9 checks passed (build, content, structure)
+---
+
+2026-01-16T02:07:13Z | Plan: Manual Verification of Ticket Fixes
+
+# Plan: Manual Verification of Ticket Fixes
+
+## Objective
+
+Verify that all 4 completed tickets work correctly in the running application.
+
+---
+
+## Verification Steps
+
+### 1. TKT-001: Backlog count in header
+
+**Test:** Launch app, observe header bar
+**Expected:** Header shows `Backlog: N` between Day and Done counts
+**Pass if:** Backlog count visible and updates when tickets are assigned
+
+---
+
+### 2. TKT-002: Auto-pause when sprint ends
+
+**Test:**
+1. Start sprint (press 's')
+2. Assign tickets to developers (press 'a')
+3. Resume simulation (press Space)
+4. Wait for sprint to end
+
+**Expected:**
+- Simulation auto-pauses at sprint end
+- Status message: "Sprint complete - press 's' for next sprint"
+
+**Pass if:** Simulation doesn't run past sprint end day
+
+---
+
+### 3. TKT-003: DORA Lead Time shows real values
+
+**Test:**
+1. Complete at least one ticket (run through a sprint)
+2. Switch to Metrics tab (Tab key)
+3. Observe Lead Time value
+
+**Expected:** Lead Time shows non-zero value (e.g., "12.5d")
+**Pass if:** Lead Time > 0 after tickets complete
+
+---
+
+### 4. TKT-004: Comparison shows TIE for equal values
+
+**Test:**
+1. Press 'c' to run comparison
+2. Observe any metrics row where both values are equal
+
+**Expected:** Equal values show "TIE" not a winner checkmark
+**Pass if:** No false winners on equal metrics
+
+---
+
+## Quick Test Sequence
+
+```bash
+# Build and run
+go build ./cmd/sofdevsim && ./sofdevsim
+
+# In app:
+# 1. Check header for "Backlog: N" ← TKT-001
+# 2. Press 's' to start sprint
+# 3. Press 'a' to assign tickets
+# 4. Press Space to resume
+# 5. Wait for sprint end ← TKT-002 (should auto-pause)
+# 6. Press Tab to view Metrics ← TKT-003 (Lead Time > 0)
+# 7. Press 'c' to run comparison ← TKT-004 (no false winners)
+```
+
+---
+
+## Success Criteria
+
+- [ ] TKT-001: Backlog count visible in header
+- [ ] TKT-002: Auto-pause at sprint end with message
+- [ ] TKT-003: Lead Time shows non-zero after completions
+- [ ] TKT-004: Equal metrics show TIE
+---
+
+2026-01-16T21:37:31Z | Plan: End Sprint with Option Refactor
+
+# Plan: End Sprint with Option Refactor
+
+## Objective
+
+1. Update CLAUDE.md: Make option-over-nil guidance explicit
+2. Refactor `CurrentSprint *Sprint` → `option.Basic[Sprint]`
+3. Fix sprint end behavior using option semantics
+4. TDD with Khorikov balance
+
+---
+
+## Phase 1: Update CLAUDE.md
+
+Add after "### option Patterns" section (~line 113):
+
+```markdown
+### Prefer Options Over Nil Pointers
+
+For optional values, prefer `option.Basic[T]` over `*T`:
+
+| Pattern | Problem | Solution |
+|---------|---------|----------|
+| `*T` for "maybe absent" | Nil checks scattered, panic risk | `option.Basic[T]` |
+| `if ptr != nil` | Easy to forget, silent bugs | `.Get()` forces handling |
+| `*ptr` access | Panics if nil | `.OrZero()` or `.Or(default)` |
+
+**Use pointers for:** Mutation of aggregate roots, interface requirements.
+**Use options for:** "This value may not exist" semantics.
+```
+
+---
+
+## Phase 2: TDD - Write Failing Test First
+
+**Timing:** Write test AFTER Phase 3 type change compiles, but BEFORE sprint end fix.
+
+**File:** `internal/tui/app_test.go`
+
+```go
+func TestSprintEndsWhenDurationReached(t *testing.T) {
+    app := NewAppWithSeed(42)
+    app.sim.StartSprint()
+
+    // Get sprint end day
+    sprint, _ := app.sim.CurrentSprint.Get()
+    app.sim.CurrentTick = sprint.EndDay
+
+    // Simulate tick that should end sprint
+    app.Update(tickMsg(time.Now()))
+
+    // Sprint should be cleared
+    if _, ok := app.sim.CurrentSprint.Get(); ok {
+        t.Error("Sprint should be cleared after end day reached")
+    }
+    if !app.paused {
+        t.Error("Should be paused after sprint ends")
+    }
+}
+```
+
+**RED:** Test fails because sprint is NOT cleared (current behavior just pauses).
+
+---
+
+## Phase 3: Refactor CurrentSprint
+
+### Type Change + Import
+
+**File:** `internal/model/simulation.go`
+
+```go
+import "github.com/binaryphile/fluentfp/option"
+
+// Before
+CurrentSprint *Sprint
+
+// After
+CurrentSprint option.Basic[Sprint]
+```
+
+### StartSprint Update
+
+```go
+func (s *Simulation) StartSprint() {
+    s.SprintNumber++
+    sprint := NewSprint(s.SprintNumber, s.CurrentTick, s.SprintLength, s.BufferPct)
+    s.CurrentSprint = option.Of(sprint)  // was: &sprint
+}
+```
+
+### Pattern Transformations
+
+| Before | After |
+|--------|-------|
+| `if sim.CurrentSprint != nil` | `if sprint, ok := sim.CurrentSprint.Get(); ok` |
+| `*sim.CurrentSprint` | `sprint` (from Get) |
+| `sim.CurrentSprint = &sprint` | `sim.CurrentSprint = option.Of(sprint)` |
+| `sim.CurrentSprint = nil` | `sim.CurrentSprint = option.Basic[Sprint]{}` |
+
+### Files to Update (with imports)
+
+| File | Add Import | Changes |
+|------|------------|---------|
+| `internal/model/simulation.go` | `option` | Type + StartSprint |
+| `internal/tui/app.go` | (has model) | ~5 nil checks + sprint end fix |
+| `internal/tui/execution.go` | (has model) | 2 nil checks |
+| `internal/engine/engine.go` | (has model) | ~6 nil checks |
+| `internal/metrics/tracker.go` | (has model) | 1 nil check |
+| `internal/export/writers.go` | (has model) | 1 nil check |
+
+---
+
+## Phase 4: Persistence Migration
+
+**Issue:** Existing V1 saves have `*Sprint`. New code expects `option.Basic[Sprint]`.
+
+**File:** `internal/persistence/schema.go`
+
+```go
+const CurrentVersion = 2  // Bump from 1
+```
+
+**File:** `internal/persistence/migrate.go`
+
+Add migration function:
+
+```go
+func migrateV1toV2(state *SimulationState) {
+    // option.Basic[Sprint] zero value is equivalent to nil *Sprint
+    // Gob will decode missing/nil as zero value - no action needed
+    // This migration exists to document the schema change
+}
+```
+
+**Note:** Gob decodes missing fields as zero values. `option.Basic[Sprint]{}` is the zero value (no sprint), which is semantically equivalent to `nil`. Migration should work automatically, but we bump version for clarity.
+
+---
+
+## Phase 5: Fix Sprint End
+
+**File:** `internal/tui/app.go` (tickMsg handler)
+
+```go
+// End sprint when duration reached
+if sprint, ok := a.sim.CurrentSprint.Get(); ok && a.sim.CurrentTick >= sprint.EndDay {
+    a.sim.CurrentSprint = option.Basic[model.Sprint]{} // Clear sprint
+    a.paused = true
+    a.statusMessage = "Sprint complete - press 's' for next sprint"
+    a.statusExpiry = time.Now().Add(5 * time.Second)
+}
+```
+
+**GREEN:** Test from Phase 2 now passes.
+
+---
+
+## Phase 6: Update Use Case
+
+**File:** `docs/use-cases.md` - UC1 step 6:
+
+> 6. Sprint ends when duration reached (system clears active sprint)
+
+---
+
+## Phase 7: Verify & Clean Up
+
+1. Run all tests: `go test ./...`
+2. Manual verification: start sprint → wait → 's' works for next sprint
+3. Test save/load with new schema
+
+---
+
+## Execution Order
+
+1. ✏️ CLAUDE.md - doc guidance
+2. 📦 `model/simulation.go` - type change
+3. 🔧 `engine/engine.go` - nil → option checks
+4. 🔧 `tui/execution.go` - nil → option checks
+5. 🔧 `metrics/tracker.go` - nil → option check
+6. 🔧 `export/writers.go` - nil → option check
+7. 🔧 `tui/app.go` - nil → option checks (NOT sprint end fix yet)
+8. ✅ Build passes, existing tests pass
+9. 🧪 Write failing test (RED) - sprint not cleared
+10. 🔧 `tui/app.go` - add sprint end fix
+11. ✅ New test passes (GREEN)
+12. 📦 `persistence/schema.go` + `migrate.go` - version bump
+13. 📝 `docs/use-cases.md`
+14. 🧪 Manual verification
+
+**Note:** Existing tests using `*Sprint` patterns will fail at step 2. Update them as part of steps 3-7.
+---
+
+2026-01-16T21:51:42Z | Plan: End Sprint with Option Refactor
+
+# Plan: End Sprint with Option Refactor
+
+## Objective
+
+1. Update CLAUDE.md: Make option-over-nil guidance explicit
+2. Refactor `CurrentSprint *Sprint` → `option.Basic[Sprint]`
+3. Fix sprint end behavior using option semantics
+4. TDD with Khorikov balance
+
+---
+
+## Phase 1: Update CLAUDE.md
+
+Add after "### option Patterns" section (~line 113):
+
+```markdown
+### Prefer Options Over Nil Pointers
+
+For optional values, prefer `option.Basic[T]` over `*T`:
+
+| Pattern | Problem | Solution |
+|---------|---------|----------|
+| `*T` for "maybe absent" | Nil checks scattered, panic risk | `option.Basic[T]` |
+| `if ptr != nil` | Easy to forget, silent bugs | `.Get()` forces handling |
+| `*ptr` access | Panics if nil | `.OrZero()` or `.Or(default)` |
+
+**Use pointers for:** Mutation of aggregate roots, interface requirements.
+**Use options for:** "This value may not exist" semantics.
+```
+
+---
+
+## Phase 2: TDD - Write Failing Test First
+
+**Timing:** Write test AFTER Phase 3 type change compiles, but BEFORE sprint end fix.
+
+**File:** `internal/tui/app_test.go`
+
+```go
+func TestSprintEndsWhenDurationReached(t *testing.T) {
+    app := NewAppWithSeed(42)
+    app.sim.StartSprint()
+
+    // Get sprint end day
+    sprint, _ := app.sim.CurrentSprint.Get()
+    app.sim.CurrentTick = sprint.EndDay
+
+    // Simulate tick that should end sprint
+    app.Update(tickMsg(time.Now()))
+
+    // Sprint should be cleared
+    if _, ok := app.sim.CurrentSprint.Get(); ok {
+        t.Error("Sprint should be cleared after end day reached")
+    }
+    if !app.paused {
+        t.Error("Should be paused after sprint ends")
+    }
+}
+```
+
+**RED:** Test fails because sprint is NOT cleared (current behavior just pauses).
+
+---
+
+## Phase 3: Refactor CurrentSprint
+
+### Type Change + Import
+
+**File:** `internal/model/simulation.go`
+
+```go
+import "github.com/binaryphile/fluentfp/option"
+
+// Before
+CurrentSprint *Sprint
+
+// After
+CurrentSprint option.Basic[Sprint]
+```
+
+### StartSprint Update
+
+```go
+func (s *Simulation) StartSprint() {
+    s.SprintNumber++
+    sprint := NewSprint(s.SprintNumber, s.CurrentTick, s.SprintLength, s.BufferPct)
+    s.CurrentSprint = option.Of(sprint)  // was: &sprint
+}
+```
+
+### Pattern Transformations
+
+| Before | After |
+|--------|-------|
+| `if sim.CurrentSprint != nil` | `if sprint, ok := sim.CurrentSprint.Get(); ok` |
+| `*sim.CurrentSprint` | `sprint` (from Get) |
+| `sim.CurrentSprint = &sprint` | `sim.CurrentSprint = option.Of(sprint)` |
+| `sim.CurrentSprint = nil` | `sim.CurrentSprint = option.Basic[Sprint]{}` |
+
+### Files to Update (with imports)
+
+| File | Add Import | Changes |
+|------|------------|---------|
+| `internal/model/simulation.go` | `option` | Type + StartSprint |
+| `internal/tui/app.go` | (has model) | ~5 nil checks + sprint end fix |
+| `internal/tui/execution.go` | (has model) | 2 nil checks |
+| `internal/engine/engine.go` | (has model) | ~6 nil checks |
+| `internal/metrics/tracker.go` | (has model) | 1 nil check |
+| `internal/export/writers.go` | (has model) | 1 nil check |
+
+---
+
+## Phase 4: Persistence Migration
+
+**Issue:** Existing V1 saves have `*Sprint`. New code expects `option.Basic[Sprint]`.
+
+**File:** `internal/persistence/schema.go`
+
+```go
+const CurrentVersion = 2  // Bump from 1
+```
+
+**File:** `internal/persistence/migrate.go`
+
+Add migration function:
+
+```go
+func migrateV1toV2(state *SimulationState) {
+    // option.Basic[Sprint] zero value is equivalent to nil *Sprint
+    // Gob will decode missing/nil as zero value - no action needed
+    // This migration exists to document the schema change
+}
+```
+
+**Note:** Gob decodes missing fields as zero values. `option.Basic[Sprint]{}` is the zero value (no sprint), which is semantically equivalent to `nil`. Migration should work automatically, but we bump version for clarity.
+
+---
+
+## Phase 5: Fix Sprint End
+
+**File:** `internal/tui/app.go` (tickMsg handler)
+
+```go
+// End sprint when duration reached
+if sprint, ok := a.sim.CurrentSprint.Get(); ok && a.sim.CurrentTick >= sprint.EndDay {
+    a.sim.CurrentSprint = option.Basic[model.Sprint]{} // Clear sprint
+    a.paused = true
+    a.statusMessage = "Sprint complete - press 's' for next sprint"
+    a.statusExpiry = time.Now().Add(5 * time.Second)
+}
+```
+
+**GREEN:** Test from Phase 2 now passes.
+
+---
+
+## Phase 6: Update Use Case
+
+**File:** `docs/use-cases.md` - UC1 step 6:
+
+> 6. Sprint ends when duration reached (system clears active sprint)
+
+---
+
+## Phase 7: Verify & Clean Up
+
+1. Run all tests: `go test ./...`
+2. Manual verification: start sprint → wait → 's' works for next sprint
+3. Test save/load with new schema
+
+---
+
+## Execution Order
+
+1. ✏️ CLAUDE.md - doc guidance
+2. 📦 `model/simulation.go` - type change
+3. 🔧 `engine/engine.go` - nil → option checks
+4. 🔧 `tui/execution.go` - nil → option checks
+5. 🔧 `metrics/tracker.go` - nil → option check
+6. 🔧 `export/writers.go` - nil → option check
+7. 🔧 `tui/app.go` - nil → option checks (NOT sprint end fix yet)
+8. ✅ Build passes, existing tests pass
+9. 🧪 Write failing test (RED) - sprint not cleared
+10. 🔧 `tui/app.go` - add sprint end fix
+11. ✅ New test passes (GREEN)
+12. 📦 `persistence/schema.go` + `migrate.go` - version bump
+13. 📝 `docs/use-cases.md`
+14. 🧪 Manual verification
+
+**Note:** Existing tests using `*Sprint` patterns will fail at step 2. Update them as part of steps 3-7.
+---
+
+2026-01-16T21:51:55Z | Completion: Option Refactor + Sprint End Fix
+
+## Completion: Option Refactor + Sprint End Fix
+
+**Date:** 2026-01-16
+**Grade:** A (95/100)
+
+### Summary
+
+Refactored `CurrentSprint *Sprint` to `CurrentSprintOption option.Basic[Sprint]` across the codebase, following the principle of preferring options over nil pointers. Fixed sprint end behavior to properly clear the active sprint when duration is reached.
+
+### Changes
+
+| File | Changes |
+|------|---------|
+| `internal/model/simulation.go` | Type change, added `NoSprint` constant |
+| `internal/engine/engine.go` | 6 nil checks → `.Get()` pattern |
+| `internal/tui/app.go` | Nil checks + sprint end fix |
+| `internal/tui/execution.go` | 2 nil checks |
+| `internal/metrics/tracker.go` | 1 nil check |
+| `internal/export/writers.go` | 1 nil check |
+| `internal/persistence/schema.go` | `PersistableSimulation`, v1→v2 |
+| `internal/persistence/migrate.go` | Schema history documentation |
+| `internal/tui/app_test.go` | `TestSprintEndsWhenDurationReached` |
+| `docs/use-cases.md` | UC1 step 6 updated |
+
+### TDD Cycle
+
+- **RED:** Test failed (sprint not cleared after end day)
+- **GREEN:** Fixed by clearing `CurrentSprintOption = model.NoSprint`
+
+### Artifacts
+
+- All tests pass
+- Persistence schema v2 with backward-compatible conversion layer
+- Naming convention: `Option` suffix for option types

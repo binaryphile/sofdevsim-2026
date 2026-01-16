@@ -110,9 +110,9 @@ func (e *Exporter) writeSprints(outputDir string) (int, error) {
 
 	// Write current sprint if it exists
 	count := 0
-	if e.sim.CurrentSprint != nil {
-		startDay := e.sim.CurrentSprint.StartDay
-		ticketsStarted := len(e.sim.CurrentSprint.Tickets)
+	if sprint, ok := e.sim.CurrentSprintOption.Get(); ok {
+		startDay := sprint.StartDay
+		ticketsStarted := len(sprint.Tickets)
 		// completedInSprint returns true if ticket was completed after sprint start.
 		completedInSprint := func(t model.Ticket) bool { return t.CompletedTick >= startDay }
 		ticketsCompleted := slice.From(e.sim.CompletedTickets).
@@ -120,7 +120,7 @@ func (e *Exporter) writeSprints(outputDir string) (int, error) {
 			Len()
 		incidents := len(e.sim.ResolvedIncidents) + len(e.sim.OpenIncidents)
 
-		row := formatSprintRow(*e.sim.CurrentSprint, ticketsStarted, ticketsCompleted, incidents)
+		row := formatSprintRow(sprint, ticketsStarted, ticketsCompleted, incidents)
 		if err := writer.Write(row); err != nil {
 			return count, err
 		}

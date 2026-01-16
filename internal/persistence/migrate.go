@@ -1,11 +1,20 @@
 package persistence
 
 // Migration framework for schema versioning.
-// Currently at v1 - no migrations needed yet.
+//
+// Schema History:
+//   - V1: Initial schema with model.Simulation (CurrentSprint *Sprint)
+//   - V2: PersistableSimulation with CurrentSprint *Sprint for gob compatibility
+//         (runtime uses option.Basic[Sprint] but persistence uses pointer)
+//
+// Note: V1→V2 migration is handled implicitly by PersistableSimulation.
+// Old V1 files used model.Simulation directly which had *Sprint.
+// New V2 files use PersistableSimulation which also has *Sprint.
+// The conversion to/from option.Basic happens in ToPersistable/FromPersistable.
 //
 // When schema changes are needed:
 // 1. Increment CurrentVersion in schema.go
-// 2. Add a migration function here: migrateV1ToV2
+// 2. Add a migration function here
 // 3. Register it in the migrations map
 // 4. Load() will automatically run the migration chain
 

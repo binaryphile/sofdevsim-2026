@@ -134,7 +134,7 @@ None (self-contained simulation, no external services)
 3. Operator starts sprint
 4. System simulates work (tick loop advances)
 5. System displays progress in Execution view
-6. Sprint completes when duration reached
+6. Sprint ends when duration reached (system clears active sprint, auto-pauses)
 7. Operator reviews results in Metrics view
 
 **Extensions:**
