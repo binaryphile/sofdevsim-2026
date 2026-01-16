@@ -357,7 +357,7 @@ The loop forces you to think about *how* (declare, iterate, append, return). Flu
 - Loops nest; FluentFP chains
 - Loops describe *how*; FluentFP describes *what*
 
-**Performance note:** Single-operation chains equal properly-written loops. Multi-operation chains allocate per operation—expect 2-3× overhead in hot paths. See [benchmarks](https://github.com/binaryphile/fluentfp/blob/main/methodology.md#benchmark-results).
+**Performance note:** Mapping operations (ToFloat64, ToString) match or beat loops. Filter operations (KeepIf) allocate intermediate slices—our benchmarks show 4-9× overhead depending on pattern. Use loops for filter+count in hot paths. See Benchmarks section below for measured results.
 
 ### When Loops Are Still Necessary
 
@@ -614,3 +614,53 @@ The simulation must produce sufficient data output to:
 A software development simulation with two evolutionary paths:
 1. Full video game
 2. LLM-based laboratory for automated software development experimentation
+
+## Benchmarks
+
+Run benchmarks on each build per Go Development Guide §7.
+
+```bash
+go test -bench=. -benchmem ./internal/engine/
+```
+
+### Baseline (2026-01-15)
+
+**Engine Hot Paths:**
+```
+BenchmarkTick-8                          63327     18776 ns/op    13448 B/op     3 allocs/op
+BenchmarkTick_LargeSimulation-8          54536     20991 ns/op    18973 B/op     3 allocs/op
+BenchmarkFindActiveTicketIndex-8       7165947       152.7 ns/op      0 B/op     0 allocs/op
+BenchmarkVarianceCalculate-8            130179      8916 ns/op     5376 B/op     1 allocs/op
+```
+
+**FluentFP vs Loop Comparisons:**
+```
+BenchmarkFluentFP_ToFloat64-8          6981193       171.5 ns/op    896 B/op     1 allocs/op
+BenchmarkLoop_ToFloat64-8              6461218       190.3 ns/op    896 B/op     1 allocs/op
+
+BenchmarkFluentFP_KeepIfLen-8           273500      4315 ns/op   27264 B/op     1 allocs/op
+BenchmarkLoop_FilterCount-8            2554616       475.7 ns/op      0 B/op     0 allocs/op
+
+BenchmarkFluentFP_Fold-8               9032090       130.7 ns/op      0 B/op     0 allocs/op
+BenchmarkLoop_Accumulate-8            38648880        30.49 ns/op     0 B/op     0 allocs/op
+
+BenchmarkFluentFP_Unzip4-8              881738      1345 ns/op    3584 B/op     4 allocs/op
+BenchmarkLoop_SinglePass-8             1703955       700.2 ns/op   3584 B/op     4 allocs/op
+```
+
+### Analysis
+
+| Pattern | FluentFP | Loop | Ratio | Verdict |
+|---------|----------|------|-------|---------|
+| ToFloat64 | 171ns | 190ns | 0.9x | **FluentFP faster** |
+| KeepIf+Len | 4315ns | 476ns | 9.1x | Loop faster (intermediate alloc) |
+| Fold | 131ns | 30ns | 4.3x | Loop faster (generic overhead) |
+| Unzip4 | 1345ns | 700ns | 1.9x | Loop faster (single pass) |
+
+**Recommendations:**
+- ToFloat64: Use FluentFP freely (no penalty)
+- KeepIf+Len: Use loops in hot paths, FluentFP elsewhere for clarity
+- Fold: Use loops for simple accumulation
+- Unzip4: Use FluentFP when readability matters (1.9x acceptable)
+
+**Future optimization candidate:** `FindActiveTicketIndex` is O(n) linear search. Consider hash map for large simulations.
