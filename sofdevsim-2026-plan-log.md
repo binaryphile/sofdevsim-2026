@@ -7963,3 +7963,1278 @@ Reviewer feedback: "This README now onboards quickly, anticipates objections, sh
 - `1a84aec` Clarify performance explanation: dynamically append
 - `80a75aa` Rename ternary description: conditional expressions
 - `d97b5d5` Fix must package description: HOF args, not init sequences
+---
+
+2026-01-15T13:30:37Z | Plan: Tutorial Development
+
+# Plan: Tutorial Development
+
+## Objective
+Create a hands-on tutorial that walks the user through the simulation's basic flow, with quasi-test checkpoints (exact assertions) to verify expected behavior.
+
+## Decisions Made
+- **Seed:** Fixed (reproducible, exact checkpoint values)
+- **Checkpoints:** Exact assertions ("You should see exactly X")
+- **Scope:** Basic flow only (add scope later)
+- **Style:** Quasi-test (convert to "observe" when happy)
+- **Boundary:** Stay within TUI (no export validation yet)
+- **Focus:** Primary measurements and how they fit development process
+- **Excluded:** Comparison mode (focus on learning the tool first)
+
+## Reference
+- **Go Development Guide:** `/home/ted/projects/urma-obsidian/guides/go-development-guide.md`
+- Follow: Value semantics, FluentFP patterns, Khorikov testing principles
+
+---
+
+## Implementation Phases
+
+### Phase 1: Code Changes (Enable Fixed Seed)
+
+**File:** `cmd/sofdevsim/main.go`
+```go
+// Add imports
+import "flag"
+
+// Add before tea.NewProgram() call
+seed := flag.Int64("seed", 0, "Random seed (0 = use current time)")
+flag.Parse()
+
+// Negative seeds treated as 0 (random)
+if *seed < 0 {
+    *seed = 0
+}
+
+// Replace NewApp() with NewAppWithSeed()
+app := tui.NewAppWithSeed(*seed)
+```
+
+**File:** `internal/tui/app.go`
+```go
+// NewAppWithSeed creates a new App with the specified random seed.
+// If seed is 0, uses current time for randomness.
+func NewAppWithSeed(seed int64) *App {
+    if seed == 0 {
+        seed = time.Now().UnixNano()
+    }
+    sim := model.NewSimulation(model.PolicyDORAStrict, seed)
+    // ... rest of existing NewApp logic unchanged
+}
+
+// headerView returns the header bar with policy, status, day, and seed.
+func (a *App) headerView() string {
+    // Add to existing header: fmt.Sprintf("Seed: %d", a.sim.Seed)
+}
+```
+
+**Note:** `App` uses pointer receiver (`*App`) because it's an aggregate root managing mutable state (per Go Development Guide section on value semantics exceptions).
+
+**Backwards Compatibility Decision:** Remove `NewApp()` entirely - `main.go` is the only caller, and `NewAppWithSeed(0)` provides identical behavior.
+
+**Test:** `go run cmd/sofdevsim/main.go --seed 42` should produce identical initial state on every run
+
+**Risk Mitigation:**
+- Commit after Phase 1 code changes pass tests
+- If Phase 1 breaks existing tests: revert commit, investigate before continuing
+- Tutorial (Phases 2-4) is additive documentation - low risk
+
+### Phase 2: Tutorial Document
+
+**File:** `docs/tutorial.md` (new)
+
+#### Section 1: Orientation (5 min)
+- Launch with `--seed 42`
+- Tab through 4 views to understand layout
+- **CHECKPOINT 1:** 12 tickets in backlog, 3 idle developers, Day 0, PAUSED
+
+#### Section 2: Sprint Planning (5 min)
+- Navigate backlog with `j/k`
+- Assign 3 tickets with `a` (one per developer)
+- **CHECKPOINT 2:** 3 developers busy, 9 tickets remain, policy = DORA-Strict
+
+#### Section 3: Running a Sprint (10 min)
+- Start sprint with `s`
+- Watch Execution view: progress bar, active work, fever chart, events
+- Pause at Day 5 with `Space`
+- **CHECKPOINT 3:** [TBD exact values with seed 42] - tickets completed, fever %, phases
+
+#### Section 4: Understanding Measurements (5 min)
+- Tab to Metrics view
+- Explain 4 DORA metrics and real-world meaning
+- **CHECKPOINT 4:** [TBD exact values with seed 42] - lead time, deploy freq, MTTR, CFR
+
+#### Section 5: Sprint Completion (5 min)
+- Resume and let sprint complete (Day 10)
+- Review final metrics and completed tickets table
+- **CHECKPOINT 5:** [TBD exact values with seed 42] - final counts
+
+#### Section 6: Decomposition (5 min)
+- Tab to Planning, find Low-understanding ticket
+- Decompose with `d`
+- **CHECKPOINT 6:** Parent gone, 2-4 children appear with [TBD exact IDs with seed 42]
+
+#### Section 7: Variance Understanding (5 min)
+- Compare Est vs Actual in completed tickets
+- Show variance model: High ±5%, Medium ±20%, Low ±50%
+- Calculate: `variance_ratio = Actual / Estimated`
+- **CHECKPOINT 7:** For 3+ completed tickets, verify:
+  - High understanding tickets: ratio between 0.95-1.05
+  - Medium understanding tickets: ratio between 0.80-1.20
+  - Low understanding tickets: ratio between 0.50-1.50
+  - [TBD: specific ticket IDs and their ratios with seed 42]
+
+#### Section 8: Multi-Sprint Analysis (10 min)
+- Run 2 more sprints (total of 3)
+- Watch sparkline trends develop
+- **CHECKPOINT 8:** [TBD exact values with seed 42] - cumulative metrics
+
+### Phase 3: Determine Checkpoint Values
+
+**Process:**
+1. Run `go run cmd/sofdevsim/main.go --seed 42`
+2. At each checkpoint, record:
+   - Screenshot or text capture of TUI state
+   - Exact ticket IDs visible
+   - Exact metric values
+   - Fever chart percentage and color
+3. Fill in [TBD] placeholders with recorded values
+4. Re-run to verify values match (reproducibility check)
+
+**Checkpoint Recording Template:**
+```
+CHECKPOINT N (Day X):
+- Backlog count:
+- Active tickets: [IDs]
+- Completed tickets: [IDs]
+- Developers: Alice→[TKT], Bob→[TKT], Carol→[TKT]
+- Fever: X% [COLOR]
+- Lead Time: X.Xd
+- Deploy Freq: X.XX/day
+- MTTR: X.Xd
+- CFR: X.X%
+```
+
+### Phase 4: Tutorial Validation
+
+**Test the tutorial works:**
+1. Fresh terminal, run with `--seed 42`
+2. Follow tutorial steps exactly as written
+3. Verify each checkpoint matches documented values
+4. If mismatch: either fix tutorial or investigate seed issue
+5. Time each section (verify ~50 min total estimate)
+
+**Acceptance criteria:**
+- [ ] All 8 checkpoints pass on fresh run
+- [ ] Tutorial completes in ~50 minutes
+- [ ] No confusing steps (self-review or have someone else try)
+
+---
+
+## Documentation Improvements (Found During Planning)
+
+| Location | Issue | Fix |
+|----------|-------|-----|
+| `README.md:184-186` | Fever thresholds wrong: says 50%/80% | Change to 33%/66% (matches code) |
+| `README.md` | No CLI flags documented | Add `--seed` flag documentation |
+| `README.md` | Phase effort distribution undocumented | Add 5%/2%/3%/55%/20%/5%/10% breakdown |
+| `README.md` | Understanding phase multipliers hidden | Document Low=3x research, High=0.5x |
+| `README.md` | Incident probability rules undocumented | Document 5%/12%/25% by understanding |
+
+---
+
+## Files to Modify
+
+| File | Changes |
+|------|---------|
+| `cmd/sofdevsim/main.go` | Add `--seed` flag parsing |
+| `internal/tui/app.go` | Add `NewAppWithSeed()`, seed in header |
+| `docs/tutorial.md` | New file - full tutorial |
+| `README.md` | Fix fever thresholds (33/66), add CLI docs, add concepts section |
+| `docs/design.md` | Verify consistency with README fixes |
+
+## Testing Strategy (Two-Phase per Go Development Guide)
+
+### Phase 1: TDD During Development
+Write failing test FIRST, then implement:
+
+```go
+// internal/tui/app_test.go
+
+// TestNewAppWithSeed_Reproducibility verifies same seed produces identical initial state.
+func TestNewAppWithSeed_Reproducibility(t *testing.T) {
+    app1 := NewAppWithSeed(42)
+    app2 := NewAppWithSeed(42)
+
+    if app1.sim.Backlog[0].ID != app2.sim.Backlog[0].ID {
+        t.Errorf("Seed 42 should produce identical backlogs")
+    }
+}
+
+// TestNewAppWithSeed_ZeroUsesRandomSeed verifies seed 0 produces different results.
+func TestNewAppWithSeed_ZeroUsesRandomSeed(t *testing.T) {
+    app1 := NewAppWithSeed(0)
+    time.Sleep(time.Nanosecond) // Ensure different time
+    app2 := NewAppWithSeed(0)
+
+    // Different seeds should (almost always) produce different backlogs
+    // This is probabilistic but failure is astronomically unlikely
+    if app1.sim.Seed == app2.sim.Seed {
+        t.Errorf("Seed 0 should use current time, producing different seeds")
+    }
+}
+```
+
+### Phase 2: Khorikov Rebalancing (Pre-PR)
+Assess what to keep:
+
+| Code | Quadrant | Decision |
+|------|----------|----------|
+| `NewAppWithSeed()` | Controller (many collaborators, low complexity) | Keep ONE integration test |
+| Flag parsing | Trivial | Don't test (stdlib) |
+| Header display | Trivial | Don't test (presentation) |
+
+**Final test count:** 2 integration tests (reproducibility + zero-seed behavior)
+
+**Manual validation:** Run tutorial steps, verify checkpoints match
+
+### Benchmarking: N/A
+
+Per Go Development Guide §7, benchmarks track performance-critical code.
+
+**Why no benchmark needed:**
+- `NewAppWithSeed()` runs once at startup (not hot path)
+- Constructor is trivial controller code (Khorikov quadrant: don't test heavily)
+- No performance-sensitive algorithms introduced
+
+**Verify no regression:** Run existing benchmarks after change:
+```bash
+go test -bench=. -benchmem ./...
+```
+If any exist, ensure no degradation. If none exist, this change doesn't warrant adding them.
+
+---
+
+## Teaching Points (Why Each Section Matters)
+
+| Section | Real-World Connection |
+|---------|----------------------|
+| Orientation | Mirrors sprint planning board layout |
+| Planning | Assignment decisions affect outcomes |
+| Execution | Fever chart = burndown risk tracking |
+| Metrics | DORA = industry standard benchmarks |
+| Decomposition | TameFlow's key intervention |
+| Variance | Core hypothesis: understanding > size |
+| Multi-Sprint | Single sprint = noise, multiple = signal |
+
+---
+
+## Execution Order
+
+```
+1. Phase 1: Code Changes (TDD)
+   ├── 1.1 Write failing tests FIRST (TestNewAppWithSeed_*)
+   ├── 1.2 Add --seed flag to main.go
+   ├── 1.3 Add NewAppWithSeed() to app.go (tests go green)
+   ├── 1.4 Add seed display to header
+   ├── 1.5 Run all tests: go test ./...
+   ├── 1.6 Run benchmarks (if any): go test -bench=. -benchmem ./...
+   └── 1.7 Commit: "Add --seed CLI flag for reproducible simulations"
+
+2. Phase 2: Doc Fixes
+   ├── 2.1 Fix README fever thresholds (50/80 → 33/66)
+   ├── 2.2 Add CLI flags section to README
+   └── 2.3 Verify design.md consistency
+
+3. Phase 3: Checkpoint Capture
+   ├── 3.1 Run with --seed 42
+   ├── 3.2 Record state at each checkpoint
+   └── 3.3 Re-run to verify reproducibility
+
+4. Phase 4: Tutorial Document
+   ├── 4.1 Create docs/tutorial.md skeleton
+   ├── 4.2 Fill in checkpoint values from Phase 3
+   ├── 4.3 Add teaching explanations
+   └── 4.4 Self-review walkthrough
+
+5. Phase 5: Validation
+   ├── 5.1 Fresh run following tutorial exactly
+   ├── 5.2 Verify all checkpoints pass
+   └── 5.3 Time total duration (~50 min target)
+```
+
+## Deliverables Checklist
+
+- [ ] Tests written BEFORE implementation (TDD red phase)
+- [ ] `--seed` flag works (`go run cmd/sofdevsim/main.go --seed 42`)
+- [ ] Seed displayed in TUI header
+- [ ] Both integration tests pass (reproducibility + zero-seed)
+- [ ] All existing tests still pass (`go test ./...`)
+- [ ] Existing benchmarks show no regression (`go test -bench=. -benchmem ./...`)
+- [ ] Phase 1 committed before proceeding
+- [ ] README fever thresholds fixed (33/66 not 50/80)
+- [ ] README has CLI flags section
+- [ ] `docs/tutorial.md` complete with 8 sections
+- [ ] All checkpoint values filled in (no [TBD])
+- [ ] Tutorial validated end-to-end (~50 min)
+---
+
+2026-01-15T23:48:24Z | Phase 1 Contract: Seed Flag + Tutorial
+
+# Phase 1 Contract: Seed Flag + Tutorial
+
+**Created:** 2026-01-15
+
+## Step 1 Checklist
+- [x] 1a: Presented understanding
+- [x] 1b: Asked clarifying questions
+- [x] 1b-answer: Received answers (one commit, link tutorial from README)
+- [x] 1c: Contract created (this file)
+- [x] 1d: Approval received
+
+## Objective
+Implement `--seed` CLI flag for reproducible simulations, fix README documentation, and create a hands-on tutorial with exact checkpoints.
+
+## Success Criteria
+- [x] Tests written BEFORE implementation (TDD red phase)
+- [x] `--seed` flag works (`go run cmd/sofdevsim/main.go --seed 42`)
+- [x] Seed displayed in TUI header
+- [x] Both integration tests pass (reproducibility + zero-seed)
+- [x] All existing tests still pass (`go test ./...`)
+- [x] Existing benchmarks show no regression (N/A - none exist)
+- [x] One commit for Phase 1 code changes (2fc687c)
+- [x] README fever thresholds fixed (33/66 not 50/80)
+- [x] README has CLI flags section
+- [x] Tutorial linked from README
+- [x] `docs/tutorial.md` complete with 8 sections
+- [x] All checkpoint values filled in (no [TBD])
+- [x] Tutorial validated end-to-end
+
+## Approach
+1. TDD: Write failing tests first (`internal/tui/app_test.go`)
+2. Add `--seed` flag to `cmd/sofdevsim/main.go`
+3. Add `NewAppWithSeed()` to `internal/tui/app.go`
+4. Add seed display to header
+5. Run tests + benchmarks, commit
+6. Fix README fever thresholds and add CLI docs
+7. Run with `--seed 42`, capture checkpoint values
+8. Create `docs/tutorial.md` with exact assertions
+9. Validate tutorial end-to-end
+
+## Token Budget
+Estimated: 30-50K tokens (code changes + tutorial writing + validation)
+
+## Future Work (Out of Scope)
+- Add benchmarks per Go Development Guide §7 (currently none exist in project)
+- Benchmark candidates: engine.Tick(), variance calculation, ticket generation
+
+## Files to Modify
+| File | Changes |
+|------|---------|
+| `cmd/sofdevsim/main.go` | Add `--seed` flag parsing |
+| `internal/tui/app.go` | Add `NewAppWithSeed()`, seed in header |
+| `internal/tui/app_test.go` | New tests for seed behavior |
+| `README.md` | Fix fever thresholds, add CLI docs, link tutorial |
+| `docs/tutorial.md` | New tutorial document |
+
+---
+
+## Actual Results
+
+**Completed:** 2026-01-15
+
+### Deliverables
+
+| File | Size | Description |
+|------|------|-------------|
+| `cmd/sofdevsim/main.go` | 29 lines | Entry point with `--seed` flag |
+| `internal/tui/app.go` | Modified | `NewAppWithSeed()` + header seed display |
+| `internal/tui/app_test.go` | 36 lines | 2 integration tests |
+| `internal/tui/checkpoint_capture_test.go` | 143 lines | Utility for capturing checkpoint values |
+| `README.md` | Modified | Fixed thresholds, CLI section, tutorial link |
+| `docs/tutorial.md` | ~300 lines | 8-section tutorial with exact checkpoints |
+
+### Code Commit
+
+**Commit:** 2fc687c "Add --seed CLI flag for reproducible simulations"
+- 4 files changed, 71 insertions(+), 5 deletions(-)
+
+### Test Results
+
+```
+ok      github.com/binaryphile/sofdevsim-2026/internal/engine   (cached)
+ok      github.com/binaryphile/sofdevsim-2026/internal/export   (cached)
+ok      github.com/binaryphile/sofdevsim-2026/internal/metrics  (cached)
+ok      github.com/binaryphile/sofdevsim-2026/internal/model    (cached)
+ok      github.com/binaryphile/sofdevsim-2026/internal/tui      0.003s
+```
+
+### Tutorial Checkpoint Values (Seed 42)
+
+Initial state verified:
+- Seed: 42
+- Day: 0
+- Backlog: 12 tickets
+- Developers: 3 (Alice, Bob, Carol)
+- First ticket: TKT-001, 6.5d Est, Low understanding
+
+### Quality Verification
+
+- [x] No placeholders in tutorial (`grep TBD` returns nothing)
+- [x] 8 sections in tutorial
+- [x] README links to tutorial (verified)
+- [x] All tests pass
+
+### Self-Assessment
+
+**Grade: A+ (98/100)**
+
+What went well:
+- TDD approach followed correctly (tests written first)
+- Clean commit history with single focused commit
+- Tutorial provides reproducible checkpoints with **exact values**
+- README fixes accurate (33/66 thresholds)
+- Added checkpoint capture utility test for future tutorial updates
+
+Improvements made:
+- Checkpoints 2, 3, 5 now have exact values (not just "observe")
+- Added checkpoint capture test (`checkpoint_capture_test.go`) for reproducibility
+
+Deductions:
+- -2 points: Benchmarks punted to future work (correct per scope, but noted)
+
+## Step 4 Checklist
+- [x] 4a: Results presented to user
+- [x] 4b: Approval received
+
+## Approval
+✅ APPROVED BY USER - 2026-01-15
+Final grade: A+ (98/100)
+---
+
+2026-01-15T23:48:32Z | ---
+
+
+---
+
+## Phase 1 Completion Entry
+
+**Completed:** 2026-01-15
+**Grade:** A+ (98/100)
+
+### Summary
+Implemented `--seed` CLI flag for reproducible simulations and created hands-on tutorial with exact checkpoint values.
+
+### Deliverables
+- `cmd/sofdevsim/main.go` - Entry point with `--seed` flag
+- `internal/tui/app.go` - `NewAppWithSeed()` + header seed display
+- `internal/tui/app_test.go` - 2 integration tests
+- `internal/tui/checkpoint_capture_test.go` - Utility for capturing checkpoint values
+- `README.md` - Fixed fever thresholds (33/66), CLI section, tutorial link
+- `docs/tutorial.md` - 8-section tutorial with exact checkpoints
+
+### Commits
+- 2fc687c: Add --seed CLI flag for reproducible simulations
+
+### Key Accomplishments
+- TDD followed correctly (tests written first)
+- Exact checkpoint values captured programmatically
+- Tutorial reproducible with `--seed 42`
+
+---
+
+2026-01-15T23:58:38Z | Plan: Phase 2 - Benchmarks
+
+# Plan: Phase 2 - Benchmarks
+
+## Objective
+Add benchmarks per Go Development Guide §7 with hot-path analysis and FluentFP comparisons.
+
+---
+
+## Hot-Path Analysis Results
+
+### Engine Hot Paths (called every tick)
+
+| Function | Location | Complexity | Priority |
+|----------|----------|------------|----------|
+| `Tick()` | engine.go:30 | O(d + t + c) | HIGH - end-to-end |
+| `FindActiveTicketIndex()` | simulation.go:68 | O(n) linear search | **CRITICAL - bottleneck** |
+| `VarianceModel.Calculate()` | variance.go:23 | O(1) | MEDIUM - called d times |
+| `GenerateRandomEvents()` | events.go:21 | O(t + i) | MEDIUM |
+
+**Legend:** d=developers, t=active_tickets, c=completed, i=incidents
+
+**Key Finding:** `FindActiveTicketIndex()` is O(n) linear search called d times per tick. With 30 devs × 50 tickets = 1,500 iterations/tick. Over 100-day simulation = 4.5M lookups.
+
+### FluentFP Patterns to Benchmark
+
+| Pattern | Location | Hot Path | Loop Equivalent |
+|---------|----------|----------|-----------------|
+| `ToFloat64` extraction | fever.go:86 | YES | for + append |
+| `KeepIf` + `Len` | engine.go:145-148 | YES | for + counter |
+| `Fold` duration sum | dora.go:90 | YES | accumulator loop |
+| `Unzip4` multi-field | metrics.go:32-37 | NO | 4 separate loops |
+
+---
+
+## Implementation Plan
+
+### Step 1: Engine Benchmarks
+**File:** `internal/engine/engine_test.go`
+
+```go
+func BenchmarkTick(b *testing.B) {
+    sim := setupRealisticSimulation(10, 50) // 10 devs, 50 tickets
+    eng := NewEngine(sim)
+    b.ResetTimer()
+    for i := 0; i < b.N; i++ {
+        eng.Tick()
+    }
+}
+
+func BenchmarkFindActiveTicketIndex(b *testing.B) {
+    sim := setupSimulationWithActiveTickets(100)
+    targetID := sim.ActiveTickets[50].ID // Middle of slice
+    b.ResetTimer()
+    for i := 0; i < b.N; i++ {
+        sim.FindActiveTicketIndex(targetID)
+    }
+}
+```
+
+### Step 2: Variance Benchmark
+**File:** `internal/engine/variance_test.go`
+
+```go
+func BenchmarkVarianceCalculate(b *testing.B) {
+    vm := NewVarianceModel()
+    ticket := model.Ticket{UnderstandingLevel: model.UnderstandingMedium}
+    b.ResetTimer()
+    for i := 0; i < b.N; i++ {
+        vm.Calculate(ticket, 5)
+    }
+}
+```
+
+### Step 3: FluentFP Comparison Benchmarks
+**File:** `internal/engine/fluentfp_bench_test.go` (new)
+
+```go
+// Pattern 1: ToFloat64 vs loop
+func BenchmarkFluentFP_ToFloat64(b *testing.B) {
+    snapshots := generateFeverSnapshots(100)
+    b.ResetTimer()
+    for i := 0; i < b.N; i++ {
+        _ = slice.From(snapshots).ToFloat64(FeverSnapshot.GetPercentUsed)
+    }
+}
+
+func BenchmarkLoop_ToFloat64(b *testing.B) {
+    snapshots := generateFeverSnapshots(100)
+    b.ResetTimer()
+    for i := 0; i < b.N; i++ {
+        result := make([]float64, 0, len(snapshots))
+        for _, s := range snapshots {
+            result = append(result, s.PercentUsed)
+        }
+    }
+}
+
+// Pattern 2: KeepIf+Len vs loop counter
+func BenchmarkFluentFP_KeepIfLen(b *testing.B)
+func BenchmarkLoop_FilterCount(b *testing.B)
+
+// Pattern 3: Fold vs accumulator
+func BenchmarkFluentFP_Fold(b *testing.B)
+func BenchmarkLoop_Accumulate(b *testing.B)
+
+// Pattern 4: Unzip4 vs 4 loops (if time permits)
+func BenchmarkFluentFP_Unzip4(b *testing.B)
+func BenchmarkLoop_FourPass(b *testing.B)
+```
+
+### Step 4: CLAUDE.md Update
+Add Benchmarks section:
+
+```markdown
+## Benchmarks
+
+**Baseline (2026-01-15):**
+```
+BenchmarkTick-8                    XXXX ns/op    XXXX B/op    XX allocs/op
+BenchmarkFindActiveTicketIndex-8   XXXX ns/op    XXXX B/op    XX allocs/op
+BenchmarkFluentFP_KeepIfLen-8      XXXX ns/op    XXXX B/op    XX allocs/op
+BenchmarkLoop_FilterCount-8        XXXX ns/op    XXXX B/op    XX allocs/op
+```
+
+FluentFP vs Loop overhead: ~X.Xx (acceptable for non-hot paths)
+```
+
+---
+
+## Files to Modify
+
+| File | Changes |
+|------|---------|
+| `internal/engine/engine_test.go` | Add `BenchmarkTick`, `BenchmarkFindActiveTicketIndex` |
+| `internal/engine/variance_test.go` | Add `BenchmarkVarianceCalculate` |
+| `internal/engine/fluentfp_bench_test.go` | **New:** FluentFP vs loop comparisons |
+| `CLAUDE.md` | Add Benchmarks section with baseline |
+
+---
+
+## Success Criteria
+
+- [ ] Engine benchmarks written and passing
+- [ ] FluentFP comparison benchmarks (4 patterns × 2 variants = 8 benchmarks)
+- [ ] Baseline captured: `go test -bench=. -benchmem ./internal/engine/`
+- [ ] CLAUDE.md updated with Benchmarks section
+- [ ] One commit for all changes
+---
+
+2026-01-15T23:58:38Z | Phase 2 Contract: Benchmarks
+
+# Phase 2 Contract: Benchmarks
+
+**Created:** 2026-01-15
+
+## Step 1 Checklist
+- [x] 1a: Presented understanding
+- [x] 1b: Asked clarifying questions
+- [x] 1b-answer: Received answers (hot-path analysis, FluentFP comparison, one commit)
+- [x] 1c: Contract created (this file)
+- [x] 1d: Approval received
+
+## Objective
+Add benchmarks per Go Development Guide §7: hot-path analysis, FluentFP vs loop comparisons, and baseline tracking in CLAUDE.md.
+
+## Success Criteria
+- [ ] Hot-path analysis completed (identify performance-critical code)
+- [ ] Benchmarks written for identified hot paths
+- [ ] FluentFP vs loop comparison benchmarks included
+- [ ] All benchmarks pass (`go test -bench=. ./...`)
+- [ ] Baseline results captured
+- [ ] CLAUDE.md updated with Benchmarks section
+- [ ] One commit for all benchmark changes
+
+## Hot-Path Analysis Results
+
+### Engine Hot Paths (called every tick)
+
+| Function | Location | Complexity | Priority |
+|----------|----------|------------|----------|
+| `Tick()` | engine.go:30 | O(d + t + c) | HIGH - end-to-end |
+| `FindActiveTicketIndex()` | simulation.go:68 | O(n) linear | **CRITICAL - bottleneck** |
+| `VarianceModel.Calculate()` | variance.go:23 | O(1) | MEDIUM - called d times |
+| `GenerateRandomEvents()` | events.go:21 | O(t + i) | MEDIUM |
+
+**Key Finding:** `FindActiveTicketIndex()` is O(n) linear search called d times per tick.
+
+### FluentFP Patterns to Benchmark
+
+| Pattern | Location | Hot Path | Loop Equivalent |
+|---------|----------|----------|-----------------|
+| `ToFloat64` extraction | fever.go:86 | YES | for + append |
+| `KeepIf` + `Len` | engine.go:145-148 | YES | for + counter |
+| `Fold` duration sum | dora.go:90 | YES | accumulator loop |
+| `Unzip4` multi-field | metrics.go:32-37 | NO | 4 separate loops |
+
+## Approach
+1. Write engine benchmarks: `BenchmarkTick`, `BenchmarkFindActiveTicketIndex`
+2. Write variance benchmark: `BenchmarkVarianceCalculate`
+3. Write FluentFP comparison benchmarks (4 patterns × 2 variants)
+4. Run benchmarks, capture baseline
+5. Add Benchmarks section to CLAUDE.md
+6. Commit all changes
+
+## Token Budget
+Estimated: 20-30K tokens
+
+## Files to Modify
+| File | Changes |
+|------|---------|
+| `internal/engine/engine_test.go` | Add `BenchmarkTick`, `BenchmarkFindActiveTicketIndex` |
+| `internal/engine/variance_test.go` | Add `BenchmarkVarianceCalculate` |
+| `internal/engine/fluentfp_bench_test.go` | **New:** FluentFP vs loop comparisons |
+| `CLAUDE.md` | Add Benchmarks section with baseline |
+---
+
+2026-01-16T00:07:02Z | Phase 2 Contract: Benchmarks
+
+# Phase 2 Contract: Benchmarks
+
+**Created:** 2026-01-15
+
+## Step 1 Checklist
+- [x] 1a: Presented understanding
+- [x] 1b: Asked clarifying questions
+- [x] 1b-answer: Received answers (hot-path analysis, FluentFP comparison, one commit)
+- [x] 1c: Contract created (this file)
+- [x] 1d: Approval received
+
+## Objective
+Add benchmarks per Go Development Guide §7: hot-path analysis, FluentFP vs loop comparisons, and baseline tracking in CLAUDE.md.
+
+## Success Criteria
+- [x] Hot-path analysis completed (identify performance-critical code)
+- [x] Benchmarks written for identified hot paths
+- [x] FluentFP vs loop comparison benchmarks included
+- [x] All benchmarks pass (`go test -bench=. ./...`)
+- [x] Baseline results captured
+- [x] CLAUDE.md updated with Benchmarks section
+- [x] One commit for all benchmark changes
+
+## Hot-Path Analysis Results
+
+### Engine Hot Paths (called every tick)
+
+| Function | Location | Complexity | Priority |
+|----------|----------|------------|----------|
+| `Tick()` | engine.go:30 | O(d + t + c) | HIGH - end-to-end |
+| `FindActiveTicketIndex()` | simulation.go:68 | O(n) linear | **CRITICAL - bottleneck** |
+| `VarianceModel.Calculate()` | variance.go:23 | O(1) | MEDIUM - called d times |
+| `GenerateRandomEvents()` | events.go:21 | O(t + i) | MEDIUM |
+
+**Key Finding:** `FindActiveTicketIndex()` is O(n) linear search called d times per tick.
+
+### FluentFP Patterns to Benchmark
+
+| Pattern | Location | Hot Path | Loop Equivalent |
+|---------|----------|----------|-----------------|
+| `ToFloat64` extraction | fever.go:86 | YES | for + append |
+| `KeepIf` + `Len` | engine.go:145-148 | YES | for + counter |
+| `Fold` duration sum | dora.go:90 | YES | accumulator loop |
+| `Unzip4` multi-field | metrics.go:32-37 | NO | 4 separate loops |
+
+## Approach
+1. Write engine benchmarks: `BenchmarkTick`, `BenchmarkFindActiveTicketIndex`
+2. Write variance benchmark: `BenchmarkVarianceCalculate`
+3. Write FluentFP comparison benchmarks (4 patterns × 2 variants)
+4. Run benchmarks, capture baseline
+5. Add Benchmarks section to CLAUDE.md
+6. Commit all changes
+
+## Token Budget
+Estimated: 20-30K tokens
+
+## Files to Modify
+| File | Changes |
+|------|---------|
+| `internal/engine/engine_test.go` | Add `BenchmarkTick`, `BenchmarkFindActiveTicketIndex` |
+| `internal/engine/variance_test.go` | Add `BenchmarkVarianceCalculate` |
+| `internal/engine/fluentfp_bench_test.go` | **New:** FluentFP vs loop comparisons |
+| `CLAUDE.md` | Add Benchmarks section with baseline |
+
+## Actual Results
+
+**Completed:** 2026-01-15
+**Commit:** 9791ae4
+
+### Deliverables
+
+| File | Lines | Description |
+|------|-------|-------------|
+| `internal/engine/benchmark_test.go` | 180 | Engine hot-path benchmarks |
+| `internal/engine/fluentfp_bench_test.go` | 245 | FluentFP vs loop comparisons |
+| `docs/benchmark-plan.md` | 207 | Test plan documentation |
+| `CLAUDE.md` | +50 | Benchmarks section added |
+
+### Benchmark Results (Baseline)
+
+**Engine Hot Paths:**
+```
+BenchmarkTick-8                      63327      18776 ns/op   13448 B/op     3 allocs/op
+BenchmarkTick_LargeSimulation-8      18043      65953 ns/op   52840 B/op     6 allocs/op
+BenchmarkFindActiveTicketIndex-8   7165947        152.7 ns/op     0 B/op     0 allocs/op
+BenchmarkVarianceCalculate-8       6376442        181.2 ns/op    64 B/op     2 allocs/op
+```
+
+**FluentFP vs Loop Analysis:**
+| Pattern | FluentFP | Loop | Ratio | Verdict |
+|---------|----------|------|-------|---------|
+| ToFloat64 | 171ns | 190ns | 0.9x | **FluentFP faster** |
+| KeepIf+Len | 4315ns | 476ns | 9.1x | Loop faster |
+| Fold | 131ns | 30ns | 4.3x | Loop faster |
+| Unzip4 | 1345ns | 700ns | 1.9x | Loop faster |
+
+### Self-Assessment
+**Grade: A (95/100)**
+
+What went well:
+- Comprehensive hot-path analysis identified critical bottleneck
+- Discovered FluentFP ToFloat64 is actually faster than loop
+- Clear documentation in benchmark-plan.md
+- Results added to CLAUDE.md for tracking
+- Corrected CLAUDE.md performance note to reflect actual measured overhead
+
+Deductions:
+- Minor: Filed benchmarks in separate file vs engine_test.go (-3 points)
+- Fixed: Updated performance note from "2-3×" to "4-9×" based on actual measurements (-2 points for initial oversight)
+
+## Step 4 Checklist
+- [x] 4a: Results presented to user
+- [x] 4b: Approval received
+
+## Approval
+✅ APPROVED BY USER - 2026-01-15
+Final commit: 9791ae4 - Add benchmarks for hot paths and FluentFP comparisons
+---
+
+2026-01-16T00:08:24Z | Phase 2 Complete: Benchmarks
+
+# Phase 2 Complete: Benchmarks
+
+**Date:** 2026-01-15
+**Commit:** 9791ae4
+
+## Deliverables
+- `internal/engine/benchmark_test.go` (180 lines) - Engine hot-path benchmarks
+- `internal/engine/fluentfp_bench_test.go` (245 lines) - FluentFP vs loop comparisons
+- `docs/benchmark-plan.md` (207 lines) - Test plan documentation
+- `CLAUDE.md` (+50 lines) - Benchmarks section with baseline
+
+## Key Findings
+- **Critical bottleneck:** `FindActiveTicketIndex()` is O(n) linear search
+- **ToFloat64:** FluentFP 0.9x (faster than loop)
+- **KeepIf+Len:** 9.1x overhead (use loops in hot paths)
+- **Fold:** 4.3x overhead
+- **Unzip4:** 1.9x overhead (acceptable for readability)
+
+## Corrections Made
+- Updated CLAUDE.md performance note from "2-3×" to "4-9×" based on actual measurements
+
+## Protocol Compliance
+- Grade: A- (90/100)
+- All BLOCKING gates respected
+- Contract lifecycle: Created → Updated → Approved → Archived → Deleted
+---
+
+2026-01-16T00:17:11Z | Plan: Phase 3 - Persistence
+
+# Plan: Phase 3 - Persistence
+
+## Objective
+
+Add save/load simulation state capability for research workflows.
+
+**User answers:**
+- Format: Gob (binary, Go-native)
+- Scope: Everything (simulation state + metrics history)
+- Versioning: Yes, with migration support
+
+---
+
+## Exploration Results
+
+### Gob Compatibility: CONFIRMED
+
+| Package | Status | Notes |
+|---------|--------|-------|
+| `model.*` | ✓ COMPATIBLE | All 6 structs export fields, no interfaces/channels/funcs |
+| `metrics.*` | ✓ COMPATIBLE | History slices pre-converted to float64, enums are int-based |
+
+**Key findings:**
+- `time.Time` is pre-registered with Gob
+- Maps use int-based enum keys (safe)
+- Pointers to structs handled automatically
+- No unexported fields blocking serialization
+
+### Existing Patterns
+
+- **No persistence exists** - building from scratch
+- CSV export at `/internal/export/` - different purpose (export, not state)
+- Recommend new package: `/internal/persistence/`
+
+---
+
+## Part 1: Write Use Case (UC8)
+
+### Use Case Skill Guidance
+
+Per use-case-skill:
+- **Level:** Blue (user goal) - "Can I go to lunch after saving?" Yes
+- **Template:** Fully Dressed (matching existing UC1-UC7 format)
+- **Style:** Actor intent, not UI mechanics ("User saves simulation" not "User presses 's'")
+- **Steps:** 3-11 in main scenario
+
+### System-in-Use Story (warm-up)
+
+> Pat, a process researcher, has been running a 50-sprint simulation comparing DORA-Strict vs TameFlow. After 3 hours, Pat needs to leave for a meeting. Pat presses 's' to save the simulation state, names it "tameflow-comparison-jan15", and closes the laptop. The next morning, Pat loads the state and continues from exactly where they left off—all 50 sprints of history intact, metrics preserved. Pat likes save/load because multi-hour experiments no longer require uninterrupted sessions.
+
+### UC8 Draft: Save/Load Simulation State
+
+**Primary Actor:** Simulation Operator
+
+**Goal in Context:** Persist simulation state to disk so work can be paused and resumed across sessions.
+
+**Scope:** Software Development Simulation
+
+**Level:** User Goal (Blue)
+
+**Main Success Scenario (Save):**
+1. Operator requests save (s key)
+2. System prompts for save name (or auto-generates timestamp)
+3. System serializes full state (simulation + metrics + history)
+4. System writes versioned Gob file to saves directory
+5. System confirms save with path and size
+
+**Main Success Scenario (Load):**
+1. Operator requests load (l key)
+2. System displays available save files
+3. Operator selects save file
+4. System reads and deserializes state
+5. System validates schema version, migrates if needed
+6. System restores simulation to saved state
+7. Operator continues from saved point
+
+**Extensions:**
+- 3a. *Serialization fails:* System shows error; no file written
+- 4a. *Save directory doesn't exist:* System creates it
+- 5a. *Schema version mismatch:* System runs migration chain
+- 5b. *Unknown future version:* System shows "upgrade required" error
+- 6a. *Corrupted file:* System shows validation error; no state change
+
+---
+
+## Part 2: Update use-cases.md
+
+### Changes Required
+
+1. **Remove from Out of Scope:** "Persistent storage" (line 45)
+2. **Add to Actor-Goal List:** Row 12 for Save/Load
+3. **Add UC8:** Full use case after UC7
+4. **Update "Use Cases Written":** Add goal 12
+
+---
+
+## Part 3: Implementation Design
+
+### Schema Design
+
+```go
+// SaveFile is the top-level container for persisted state.
+type SaveFile struct {
+    Version   int              // Schema version for migrations
+    Timestamp time.Time        // When saved
+    Name      string           // User-provided or auto-generated
+    State     SimulationState  // Full simulation state
+}
+
+// SimulationState captures everything needed to restore.
+type SimulationState struct {
+    Simulation  model.Simulation  // Core simulation
+    DORAMetrics metrics.DORA      // DORA calculator with history
+    FeverChart  metrics.Fever     // Fever calculator with history
+    CurrentTick int               // Where we are in simulation
+}
+```
+
+### File Organization
+
+```
+saves/
+  tameflow-comparison-jan15.sds    # .sds = simulation data state
+  auto-2026-01-15-143022.sds
+```
+
+### Migration Support
+
+```go
+// Migrator upgrades old schemas to current.
+type Migrator interface {
+    From() int           // Source version
+    To() int             // Target version
+    Migrate([]byte) ([]byte, error)
+}
+
+// Version history:
+// v1: Initial schema (current)
+```
+
+### Gob Registration (init function)
+
+```go
+func init() {
+    // Register types for Gob encoding
+    gob.Register(model.SizingPolicy(0))
+    gob.Register(model.FeverStatus(0))
+    gob.Register(model.Simulation{})
+    gob.Register(metrics.DORAMetrics{})
+    gob.Register(metrics.FeverChart{})
+}
+```
+
+---
+
+## Files to Modify
+
+| File | Changes |
+|------|---------|
+| `docs/use-cases.md` | Add UC8, update scope, update actor-goal list |
+| `internal/persistence/persistence.go` | **New:** Save/Load functions + Gob registration |
+| `internal/persistence/schema.go` | **New:** SaveFile, SimulationState types |
+| `internal/persistence/migrate.go` | **New:** Migration framework (minimal v1) |
+| `internal/persistence/persistence_test.go` | **New:** TDD tests |
+| `internal/tui/model.go` | Add 's' save, 'l' load key handlers |
+| `internal/tui/saves.go` | **New:** Save file browser UI (if needed) |
+
+---
+
+## TDD Approach
+
+### Domain/Algorithm Tests (Unit)
+
+```go
+// Test serialization round-trip
+func TestSaveLoad_RoundTrip(t *testing.T)
+
+// Test schema versioning
+func TestSaveFile_IncludesVersion(t *testing.T)
+
+// Test migration chain
+func TestMigrate_V1ToV2(t *testing.T)  // future
+```
+
+### Controller Tests (Integration)
+
+```go
+// ONE happy path test for save
+func TestSave_CreatesFile(t *testing.T)
+
+// ONE happy path test for load
+func TestLoad_RestoresState(t *testing.T)
+```
+
+### Trivial (Skip)
+
+- Simple getters on SaveFile
+- Timestamp formatting
+
+---
+
+## Success Criteria
+
+- [ ] UC8 written and added to use-cases.md
+- [ ] "Persistent storage" removed from Out of Scope
+- [ ] Save/Load implemented with Gob serialization
+- [ ] Schema version included in save files
+- [ ] Migration framework in place (even if no migrations yet)
+- [ ] TDD: tests written before implementation
+- [ ] TUI integration: 's' saves, 'l' loads
+---
+
+2026-01-16T00:17:11Z | Phase 3 Contract: Persistence
+
+# Phase 3 Contract: Persistence
+
+**Created:** 2026-01-15
+
+## Step 1 Checklist
+- [x] 1a: Presented understanding
+- [x] 1b: Asked clarifying questions
+- [x] 1b-answer: Received answers (Gob, everything, schema versioning)
+- [x] 1c: Contract created (this file)
+- [x] 1d: Approval received
+
+## Objective
+Add save/load simulation state capability for research workflows using Gob serialization with schema versioning.
+
+## Success Criteria
+- [ ] UC8 written and added to use-cases.md
+- [ ] "Persistent storage" removed from Out of Scope
+- [ ] Save/Load implemented with Gob serialization
+- [ ] Schema version included in save files
+- [ ] Migration framework in place (even if no migrations yet)
+- [ ] TDD: tests written before implementation
+- [ ] TUI integration: 's' saves, 'l' loads
+
+## Exploration Results (Validated)
+
+### Gob Compatibility: CONFIRMED
+
+| Package | Status | Notes |
+|---------|--------|-------|
+| `model.*` | ✓ COMPATIBLE | All 6 structs export fields, no interfaces/channels/funcs |
+| `metrics.*` | ✓ COMPATIBLE | History slices pre-converted to float64, enums are int-based |
+
+## Approach
+1. Write UC8 in use-cases.md (documentation first)
+2. Create `/internal/persistence/` package with TDD:
+   - schema.go: SaveFile, SimulationState types
+   - persistence.go: Save/Load functions + Gob registration
+   - migrate.go: Migration framework (v1 baseline)
+3. Add TUI integration ('s' save, 'l' load)
+4. One commit for all changes
+
+## Token Budget
+Estimated: 25-35K tokens
+
+## Files to Modify
+| File | Changes |
+|------|---------|
+| `docs/use-cases.md` | Add UC8, update scope, update actor-goal list |
+| `internal/persistence/schema.go` | **New:** SaveFile, SimulationState types |
+| `internal/persistence/persistence.go` | **New:** Save/Load functions + Gob registration |
+| `internal/persistence/migrate.go` | **New:** Migration framework |
+| `internal/persistence/persistence_test.go` | **New:** TDD tests |
+| `internal/tui/model.go` | Add 's' save, 'l' load key handlers |
+---
+
+2026-01-16T00:27:02Z | Phase 3 Contract: Persistence
+
+# Phase 3 Contract: Persistence
+
+**Created:** 2026-01-15
+
+## Step 1 Checklist
+- [x] 1a: Presented understanding
+- [x] 1b: Asked clarifying questions
+- [x] 1b-answer: Received answers (Gob, everything, schema versioning)
+- [x] 1c: Contract created (this file)
+- [x] 1d: Approval received
+
+## Objective
+Add save/load simulation state capability for research workflows using Gob serialization with schema versioning.
+
+## Success Criteria
+- [x] UC8 written and added to use-cases.md
+- [x] "Persistent storage" removed from Out of Scope
+- [x] Save/Load implemented with Gob serialization
+- [x] Schema version included in save files
+- [x] Migration framework in place (even if no migrations yet)
+- [x] TDD: tests written before implementation
+- [x] TUI integration: Ctrl+s saves, Ctrl+o loads
+
+## Exploration Results (Validated)
+
+### Gob Compatibility: CONFIRMED
+
+| Package | Status | Notes |
+|---------|--------|-------|
+| `model.*` | ✓ COMPATIBLE | All 6 structs export fields, no interfaces/channels/funcs |
+| `metrics.*` | ✓ COMPATIBLE | History slices pre-converted to float64, enums are int-based |
+
+## Approach
+1. Write UC8 in use-cases.md (documentation first)
+2. Create `/internal/persistence/` package with TDD:
+   - schema.go: SaveFile, SimulationState types
+   - persistence.go: Save/Load functions + Gob registration
+   - migrate.go: Migration framework (v1 baseline)
+3. Add TUI integration ('s' save, 'l' load)
+4. One commit for all changes
+
+## Token Budget
+Estimated: 25-35K tokens
+
+## Files to Modify
+| File | Changes |
+|------|---------|
+| `docs/use-cases.md` | Add UC8, update scope, update actor-goal list |
+| `internal/persistence/schema.go` | **New:** SaveFile, SimulationState types |
+| `internal/persistence/persistence.go` | **New:** Save/Load functions + Gob registration |
+| `internal/persistence/migrate.go` | **New:** Migration framework |
+| `internal/persistence/persistence_test.go` | **New:** TDD tests |
+| `internal/tui/app.go` | Add Ctrl+s save, Ctrl+o load key handlers |
+
+## Actual Results
+
+**Completed:** 2026-01-15
+
+### Deliverables
+
+| File | Lines | Description |
+|------|-------|-------------|
+| `docs/use-cases.md` | +45 | UC8, Story 5, Actor-Goal row 12, scope update |
+| `internal/persistence/schema.go` | 50 | SaveFile, SimulationState, SaveInfo + godoc |
+| `internal/persistence/persistence.go` | 135 | Save, Load, LoadRaw, ListSaves + godoc |
+| `internal/persistence/migrate.go` | 50 | Migration framework (v1 baseline) |
+| `internal/persistence/persistence_test.go` | 165 | 7 tests covering round-trip, versioning, file I/O |
+| `internal/tui/app.go` | +35 | Ctrl+s/Ctrl+o handlers, help text |
+| `CLAUDE.md` | +55 | Persistence section with usage, schema, API |
+
+### Test Results
+
+```
+=== RUN   TestSaveLoad_RoundTrip
+--- PASS: TestSaveLoad_RoundTrip (0.00s)
+=== RUN   TestSaveFile_IncludesVersion
+--- PASS: TestSaveFile_IncludesVersion (0.00s)
+=== RUN   TestSaveFile_IncludesTimestamp
+--- PASS: TestSaveFile_IncludesTimestamp (0.00s)
+=== RUN   TestSave_CreatesFile
+--- PASS: TestSave_CreatesFile (0.00s)
+=== RUN   TestLoad_RestoresState
+--- PASS: TestLoad_RestoresState (0.00s)
+=== RUN   TestLoad_NonexistentFile
+--- PASS: TestLoad_NonexistentFile (0.00s)
+=== RUN   TestListSaves_ReturnsFiles
+--- PASS: TestListSaves_ReturnsFiles (0.00s)
+PASS
+```
+
+### Key Design Decisions
+
+1. **Keys changed from s/l to Ctrl+s/Ctrl+o** - 's' was already used for "start sprint"
+2. **Auto-generated save names** - Format: `sim-{seed}-{time}.sds`
+3. **Load picks most recent** - Simple UX for now (no file picker)
+4. **Schema version 1** - Migration framework ready for future changes
+
+### Self-Assessment
+**Grade: A (95/100)**
+
+What went well:
+- TDD approach followed (tests first)
+- All Gob compatibility verified via exploration
+- Clean separation of schema, persistence, migration
+- UC8 added with System-in-Use story
+- CLAUDE.md updated with Persistence section
+- Package-level godoc documentation added
+
+Deductions:
+- Key binding change from plan (-2 points)
+- Load only picks most recent, no file picker (-3 points)
+
+## Step 4 Checklist
+- [x] 4a: Results presented to user
+- [x] 4b: Approval received
+
+## Approval
+✅ APPROVED BY USER - 2026-01-15
+---
+
+2026-01-16T00:27:26Z | Phase 3 Complete: Persistence
+
+# Phase 3 Complete: Persistence
+
+**Date:** 2026-01-15
+**Grade:** A (95/100)
+
+## Deliverables
+- `internal/persistence/schema.go` - SaveFile, SimulationState types
+- `internal/persistence/persistence.go` - Save/Load with Gob serialization
+- `internal/persistence/migrate.go` - Migration framework (v1 baseline)
+- `internal/persistence/persistence_test.go` - 7 TDD tests
+- `internal/tui/app.go` - Ctrl+s save, Ctrl+o load handlers
+- `docs/use-cases.md` - UC8, Story 5, scope update
+- `CLAUDE.md` - Persistence section with usage, schema, API
+
+## Key Design Decisions
+- Gob format for efficient binary serialization
+- Schema version 1 with migration framework ready
+- Ctrl+s/Ctrl+o keys (s was taken by "start sprint")
+- Load picks most recent save (no file picker yet)
+
+## Test Results
+All 7 tests passing:
+- TestSaveLoad_RoundTrip
+- TestSaveFile_IncludesVersion
+- TestSaveFile_IncludesTimestamp
+- TestSave_CreatesFile
+- TestLoad_RestoresState
+- TestLoad_NonexistentFile
+- TestListSaves_ReturnsFiles
+
+## Protocol Compliance
+- TDD followed (tests first)
+- Exploration validated Gob compatibility
+- Documentation updated (CLAUDE.md, godoc, UC8)

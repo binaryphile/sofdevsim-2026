@@ -414,7 +414,7 @@ func (a *App) headerView() string {
 		status = "RUNNING"
 	}
 
-	right := MutedStyle.Render(fmt.Sprintf("%s | %s | Day %d | Seed %d", policy, status, a.sim.CurrentTick, a.sim.Seed))
+	right := MutedStyle.Render(fmt.Sprintf("%s | %s | Day %d | Done: %d | Seed %d", policy, status, a.sim.CurrentTick, len(a.sim.CompletedTickets), a.sim.Seed))
 
 	return BoxStyle.Width(a.width - 2).Render(
 		lipgloss.JoinHorizontal(lipgloss.Top, tabs, "  ", right),
