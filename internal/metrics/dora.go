@@ -68,9 +68,11 @@ func (m *DORAMetrics) updateLeadTime(sim *model.Simulation) {
 	m.LeadTimes = m.LeadTimes[:0]
 
 	for _, ticket := range sim.CompletedTickets {
-		if !ticket.StartedAt.IsZero() && !ticket.CompletedAt.IsZero() {
-			leadTime := ticket.CompletedAt.Sub(ticket.StartedAt)
-			m.LeadTimes = append(m.LeadTimes, leadTime)
+		// Use tick-based calculation (1 tick = 1 day in simulation)
+		// Wall-clock time (StartedAt/CompletedAt) is unreliable in fast simulations
+		if ticket.StartedTick > 0 && ticket.CompletedTick > 0 {
+			leadTimeDays := ticket.CompletedTick - ticket.StartedTick
+			m.LeadTimes = append(m.LeadTimes, time.Duration(leadTimeDays)*24*time.Hour)
 		}
 	}
 

@@ -13,15 +13,15 @@ func TestDORAMetrics_Update(t *testing.T) {
 	sim := model.NewSimulation(model.PolicyNone, 12345)
 	sim.CurrentTick = 10
 
-	// Add completed tickets with known lead times (using ticks and time.Duration)
-	now := time.Now()
+	// Add completed tickets with known lead times (using ticks - 1 tick = 1 day)
 	sim.CompletedTickets = []model.Ticket{
-		{ID: "TKT-001", StartedAt: now.Add(-48 * time.Hour), CompletedAt: now, StartedTick: 1, CompletedTick: 8},  // 2 days lead time
-		{ID: "TKT-002", StartedAt: now.Add(-72 * time.Hour), CompletedAt: now.Add(-24 * time.Hour), StartedTick: 2, CompletedTick: 9}, // 2 days
-		{ID: "TKT-003", StartedAt: now.Add(-120 * time.Hour), CompletedAt: now.Add(-24 * time.Hour), StartedTick: 1, CompletedTick: 10}, // 4 days
+		{ID: "TKT-001", StartedTick: 1, CompletedTick: 3},  // 2 days lead time
+		{ID: "TKT-002", StartedTick: 2, CompletedTick: 4},  // 2 days lead time
+		{ID: "TKT-003", StartedTick: 1, CompletedTick: 5},  // 4 days lead time
 	}
 
-	// Add resolved incidents
+	// Add resolved incidents (MTTR still uses wall-clock time for now)
+	now := time.Now()
 	resolvedAt := now
 	sim.ResolvedIncidents = []model.Incident{
 		{ID: "INC-001", CreatedAt: now.Add(-24 * time.Hour), ResolvedAt: &resolvedAt}, // 1 day
@@ -49,6 +49,35 @@ func TestDORAMetrics_Update(t *testing.T) {
 	// Change fail rate: 2 incidents / 3 deploys = 66.7%
 	if dora.ChangeFailRatePct() < 60 || dora.ChangeFailRatePct() > 70 {
 		t.Errorf("ChangeFailRatePct() = %.1f%%, want ~66.7%%", dora.ChangeFailRatePct())
+	}
+}
+
+// Test that lead time uses tick-based calculation, not wall-clock time
+// This reproduces TKT-003: when simulation runs fast, time.Now() values are
+// nearly identical but tick values differ
+func TestDORAMetrics_LeadTime_UsesTicksNotWallClock(t *testing.T) {
+	sim := model.NewSimulation(model.PolicyNone, 12345)
+	sim.CurrentTick = 20
+
+	// Simulate fast execution: StartedAt and CompletedAt are the same instant
+	// but StartedTick and CompletedTick differ by 10 days
+	now := time.Now()
+	sim.CompletedTickets = []model.Ticket{
+		{
+			ID:            "TKT-001",
+			StartedAt:     now, // Same wall-clock time!
+			CompletedAt:   now, // Same wall-clock time!
+			StartedTick:   5,   // But tick difference = 10 days
+			CompletedTick: 15,
+		},
+	}
+
+	dora := metrics.NewDORAMetrics()
+	dora.Update(sim)
+
+	// Lead time should be 10 days (based on ticks), not 0 (based on wall clock)
+	if dora.LeadTimeAvgDays() < 9.5 || dora.LeadTimeAvgDays() > 10.5 {
+		t.Errorf("LeadTimeAvgDays() = %.2f, want 10.0 (tick-based)", dora.LeadTimeAvgDays())
 	}
 }
 
