@@ -30,25 +30,19 @@ Simulation keeps ticking after sprint ends, reaching Day 400+ with idle develope
 
 ---
 
+## Closed
+
 ### TKT-004: Comparison shows winner when both metrics are 0.0
 
-**Type:** Bug | **Priority:** P2 | **Effort:** S | **Status:** Open
+**Type:** Bug | **Priority:** P2 | **Effort:** S | **Status:** Auto-resolved
 
-Comparison view shows "TameFlow ✓" for Lead Time when both policies have 0.0d.
+Comparison view showed "TameFlow ✓" for Lead Time when both policies had 0.0d. Investigation confirmed the comparison logic was correct (`winnerStr` returns "TIE" when neither policy wins). The root cause was TKT-003 - both values were 0.0 due to the wall-clock bug.
 
-**Steps to Reproduce:**
-1. Press 'c' to run comparison
-2. Observe Lead Time row: `0.0d | 0.0d | TameFlow ✓`
+**Resolution:** Auto-resolved by TKT-003 fix. Now that Lead Time uses tick-based calculation, comparisons have real values.
 
-**Expected:** Should show "TIE" when values are equal
-
-**Blocked By:** TKT-003 (now fixed) - verify if this auto-resolved.
-
-**Location:** `internal/tui/comparison.go`, `internal/metrics/comparison.go:52-56`
+**Closed:** 2026-01-15
 
 ---
-
-## Closed
 
 ### TKT-003: DORA metrics show 0.0 for Lead Time and MTTR
 
