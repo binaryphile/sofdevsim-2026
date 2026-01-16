@@ -42,7 +42,6 @@ flowchart TB
 
 - Real code repositories
 - Actual CI/CD systems
-- Persistent storage
 - Multi-user access
 
 ---
@@ -87,6 +86,10 @@ None (self-contained simulation, no external services)
 
 > Morgan, a Lean/TOC coach, uses the simulation to teach a workshop. After a simulated sprint, Morgan exports the data and projects the CSV. "Look at the buffer consumption column—see how Low-understanding tickets consumed 3x more buffer than High? That's the Theory of Constraints in action. The constraint isn't developer speed; it's uncertainty. Now look at the variance_ratio versus expected bounds—the model predicted this." The export transforms abstract theory into concrete, discussable data.
 
+### Story 5: The Long-Running Experiment
+
+> Pat, a process researcher, has been running a 50-sprint simulation comparing DORA-Strict vs TameFlow. After 3 hours, Pat needs to leave for a meeting. Pat presses 's' to save the simulation state, names it "tameflow-comparison-jan15", and closes the laptop. The next morning, Pat loads the state and continues from exactly where they left off—all 50 sprints of history intact, metrics preserved. Pat likes save/load because multi-hour experiments no longer require uninterrupted sessions.
+
 ---
 
 ## Actor-Goal List
@@ -106,8 +109,9 @@ None (self-contained simulation, no external services)
 | 9 | Change sizing policy | Indigo | No - configuration | - |
 | 10 | Pause/resume simulation | Indigo | No - control | - |
 | 11 | Export simulation data to CSV | Blue | Yes - have file for analysis | Researcher - validate hypotheses; Educator - teach with data |
+| 12 | Save/load simulation state | Blue | Yes - can resume later | Researcher - long experiments; All - pause/resume workflow |
 
-**Use Cases Written:** Goals 1-7 (Blue level)
+**Use Cases Written:** Goals 1-7, 11-12 (Blue level)
 
 ---
 
@@ -296,6 +300,43 @@ None (self-contained simulation, no external services)
 - 3a. *Export directory exists:* System appends sequence number to directory name
 - 4a. *No comparison run:* System omits comparison.csv; notes in confirmation message
 - 5a. *Write error:* System shows error message with path attempted
+
+---
+
+### UC8: Save/Load Simulation State
+
+**Primary Actor:** Simulation Operator
+
+**Goal in Context:** Persist simulation state to disk so work can be paused and resumed across sessions.
+
+**Scope:** Software Development Simulation
+
+**Level:** User Goal (Blue)
+
+**Main Success Scenario (Save):**
+
+1. Operator requests save (Ctrl+s)
+2. System generates save name from seed and timestamp
+3. System serializes full state (simulation + metrics + history)
+4. System writes versioned file to saves directory
+5. System confirms save with path
+
+**Main Success Scenario (Load):**
+
+1. Operator requests load (Ctrl+o)
+2. System finds most recent save file
+3. System reads and deserializes state
+4. System validates schema version, migrates if needed
+5. System restores simulation to saved state
+6. Operator continues from saved point
+
+**Extensions:**
+
+- 3a. *Serialization fails:* System shows error; no file written
+- 4a. *Save directory doesn't exist:* System creates it
+- 5a. *Schema version mismatch:* System runs migration chain
+- 5b. *Unknown future version:* System shows "upgrade required" error
+- 6a. *Corrupted file:* System shows validation error; no state change
 
 ---
 

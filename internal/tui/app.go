@@ -3,12 +3,14 @@ package tui
 import (
 	"fmt"
 	"math/rand"
+	"path/filepath"
 	"time"
 
 	"github.com/binaryphile/sofdevsim-2026/internal/engine"
 	"github.com/binaryphile/sofdevsim-2026/internal/export"
 	"github.com/binaryphile/sofdevsim-2026/internal/metrics"
 	"github.com/binaryphile/sofdevsim-2026/internal/model"
+	"github.com/binaryphile/sofdevsim-2026/internal/persistence"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -218,6 +220,50 @@ func (a *App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		a.statusMessage = result.Summary()
 		a.statusExpiry = time.Now().Add(5 * time.Second)
 		return a, nil
+
+	case "ctrl+s":
+		// Save simulation state
+		saveName := fmt.Sprintf("sim-%d-%s", a.sim.Seed, time.Now().Format("150405"))
+		savePath := persistence.GenerateSavePath(persistence.DefaultSavesDir(), saveName)
+		err := persistence.Save(savePath, saveName, a.sim, a.tracker)
+		if err != nil {
+			a.statusMessage = fmt.Sprintf("Save failed: %v", err)
+			a.statusExpiry = time.Now().Add(5 * time.Second)
+			return a, nil
+		}
+		a.statusMessage = fmt.Sprintf("Saved to %s", savePath)
+		a.statusExpiry = time.Now().Add(3 * time.Second)
+		return a, nil
+
+	case "ctrl+o":
+		// Load simulation state (most recent save)
+		saves, err := persistence.ListSaves(persistence.DefaultSavesDir())
+		if err != nil || len(saves) == 0 {
+			a.statusMessage = "No saves found in saves/ directory"
+			a.statusExpiry = time.Now().Add(3 * time.Second)
+			return a, nil
+		}
+		// Find most recent save
+		latest := saves[0]
+		for _, s := range saves[1:] {
+			if s.Timestamp.After(latest.Timestamp) {
+				latest = s
+			}
+		}
+		sim, tracker, err := persistence.Load(latest.Path)
+		if err != nil {
+			a.statusMessage = fmt.Sprintf("Load failed: %v", err)
+			a.statusExpiry = time.Now().Add(5 * time.Second)
+			return a, nil
+		}
+		// Restore state
+		a.sim = sim
+		a.tracker = tracker
+		a.engine = engine.NewEngine(sim)
+		a.paused = true
+		a.statusMessage = fmt.Sprintf("Loaded %s (Day %d)", filepath.Base(latest.Path), sim.CurrentTick)
+		a.statusExpiry = time.Now().Add(3 * time.Second)
+		return a, nil
 	}
 
 	return a, nil
@@ -382,6 +428,8 @@ func (a *App) helpView() string {
 		{"+/-", "speed"},
 		{"c", "compare policies"},
 		{"e", "export"},
+		{"^s", "save"},
+		{"^o", "load"},
 		{"q", "quit"},
 	}
 

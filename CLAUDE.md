@@ -664,3 +664,64 @@ BenchmarkLoop_SinglePass-8             1703955       700.2 ns/op   3584 B/op    
 - Unzip4: Use FluentFP when readability matters (1.9x acceptable)
 
 **Future optimization candidate:** `FindActiveTicketIndex` is O(n) linear search. Consider hash map for large simulations.
+
+## Persistence
+
+Save and load simulation state for long-running experiments.
+
+### Usage
+
+| Key | Action |
+|-----|--------|
+| `Ctrl+s` | Save current state to `saves/` directory |
+| `Ctrl+o` | Load most recent save file |
+
+### Save File Format
+
+- **Format:** Go's `encoding/gob` (binary, efficient)
+- **Extension:** `.sds` (simulation data state)
+- **Location:** `saves/` directory (auto-created)
+
+### Schema Versioning
+
+Save files include a schema version for forward compatibility:
+
+```go
+type SaveFile struct {
+    Version   int              // Schema version (currently 1)
+    Timestamp time.Time        // When saved
+    Name      string           // Auto-generated or user-provided
+    State     SimulationState  // Full state
+}
+
+type SimulationState struct {
+    Simulation model.Simulation   // Core simulation
+    DORA       metrics.DORAMetrics // DORA with history
+    Fever      metrics.FeverChart  // Fever with history
+}
+```
+
+### Migration
+
+When schema changes are needed:
+1. Increment `CurrentVersion` in `persistence/schema.go`
+2. Add migration function in `persistence/migrate.go`
+3. `Load()` automatically runs migration chain
+
+### API
+
+```go
+import "github.com/binaryphile/sofdevsim-2026/internal/persistence"
+
+// Save simulation state
+err := persistence.Save(path, name, sim, tracker)
+
+// Load simulation state
+sim, tracker, err := persistence.Load(path)
+
+// List available saves
+saves, err := persistence.ListSaves(dir)
+
+// Generate save path with sanitized name
+path := persistence.GenerateSavePath(dir, name)
+```
