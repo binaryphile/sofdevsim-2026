@@ -2,23 +2,19 @@
 
 ## Open
 
----
+(No open tickets)
+
+## Closed
 
 ### TKT-002: Auto-pause when sprint ends
 
-**Type:** Feature | **Priority:** P2 | **Effort:** M | **Status:** Open
+**Type:** Feature | **Priority:** P2 | **Effort:** M | **Status:** Fixed
 
-Simulation keeps ticking after sprint ends, reaching Day 400+ with idle developers. Should auto-pause or prompt user.
+Simulation now auto-pauses when `CurrentTick >= CurrentSprint.EndDay` and shows status message prompting user to press 's' for next sprint.
 
-**Acceptance Criteria:**
-- Simulation pauses when `CurrentTick >= CurrentSprint.EndDay`
-- Status message: "Sprint complete - press 's' for next sprint"
-
-**Location:** `internal/tui/app.go` (tickMsg handler, around line 115)
+**Closed:** 2026-01-15
 
 ---
-
-## Closed
 
 ### TKT-001: Add backlog count to header
 

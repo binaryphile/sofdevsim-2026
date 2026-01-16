@@ -116,6 +116,13 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			events := a.engine.Tick()
 			a.events = append(a.events, events...)
 			a.tracker.Update(a.sim)
+
+			// Auto-pause when sprint ends
+			if a.sim.CurrentSprint != nil && a.sim.CurrentTick >= a.sim.CurrentSprint.EndDay {
+				a.paused = true
+				a.statusMessage = "Sprint complete - press 's' for next sprint"
+				a.statusExpiry = time.Now().Add(5 * time.Second) // matches error message duration
+			}
 		}
 		return a, a.tickCmd()
 	}
