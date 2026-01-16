@@ -9238,3 +9238,266 @@ All 7 tests passing:
 - TDD followed (tests first)
 - Exploration validated Gob compatibility
 - Documentation updated (CLAUDE.md, godoc, UC8)
+---
+
+2026-01-16T01:08:18Z | Plan: Documentation Cleanup
+
+# Plan: Documentation Cleanup
+
+## Objective
+
+Align documentation with current implementation state. Persistence and header "Done: N" were implemented but docs are out of sync.
+
+---
+
+## Exploration Results
+
+### Document Audit
+
+| Document | Line | Current State | Required State |
+|----------|------|---------------|----------------|
+| `docs/design.md` | 296 | "In-memory only" | Update to reflect persistence |
+| `docs/design.md` | 191-197 | TUI files listed, no persistence pkg | Add persistence package |
+| `docs/design.md` | after 241 | No header bar docs | Add header format section |
+| `docs/design.md` | after 388 (EOF) | No persistence section | Add brief arch section |
+| `docs/roadmap.md` | 20 | `[ ]` Persistence | `[x]` Persistence |
+| `CLAUDE.md` | 668-724 | ✓ Has full persistence docs | No changes (avoid duplication) |
+| `docs/use-cases.md` | 306-340 | ✓ Has UC8 Save/Load | No changes |
+
+### Key Insight: Avoid Duplication
+
+CLAUDE.md already has comprehensive persistence docs (API, keybindings, schema, migration).
+design.md should add *architectural* perspective only, referencing CLAUDE.md for details.
+
+---
+
+## Part 1: Update design.md
+
+### 1a. Fix Design Decision (line 296)
+
+**Location:** `docs/design.md:296`
+
+**Current:**
+```
+| In-memory only | MVP simplicity; no persistence complexity |
+```
+
+**Replace with:**
+```
+| Gob-based persistence | Versioned binary saves for research workflows (see CLAUDE.md) |
+```
+
+### 1b. Add Persistence Package to Architecture Diagram (line 197)
+
+**Location:** `docs/design.md:197` (after styles.go in TUI subgraph, before engine subgraph)
+
+**Insert after line 197:**
+```
+    end
+
+    subgraph persistence["internal/persistence/"]
+        schema["schema.go - SaveFile, SimulationState"]
+        persist["persistence.go - Save/Load/ListSaves"]
+        migrate["migrate.go - Version migrations"]
+```
+
+**Also update dependencies at line 234-238:**
+```mermaid
+graph LR
+    tui --> engine
+    tui --> metrics
+    tui --> persistence
+    engine --> model
+    metrics --> model
+    persistence --> model
+    persistence --> metrics
+```
+
+### 1c. Add Header Bar Section (after line 241)
+
+**Location:** `docs/design.md:241` (after "Packages only depend downward")
+
+**Insert:**
+```markdown
+
+### TUI Header Bar
+
+```
+[Planning] [Execution] [Metrics] [Comparison]  Policy: DORA-Strict | RUNNING | Day 42 | Done: 12 | Seed 1234567890
+```
+
+| Element | Description |
+|---------|-------------|
+| View tabs | Current view highlighted |
+| Policy | Active sizing policy |
+| Status | RUNNING or PAUSED |
+| Day | Current simulation tick |
+| Done | Count of completed tickets |
+| Seed | RNG seed for reproducibility |
+```
+
+### 1d. Add Persistence Section (at EOF, after line 388)
+
+**Location:** `docs/design.md:388` (append at end)
+
+**Insert:**
+```markdown
+
+---
+
+## Persistence
+
+Enables pause/resume for long-running experiments. Full state is captured including metrics history.
+
+### Architecture
+
+```mermaid
+flowchart LR
+    A[TUI: Ctrl+s] --> B[persistence.Save]
+    B --> C[gob.Encode]
+    C --> D[saves/*.sds]
+
+    E[TUI: Ctrl+o] --> F[persistence.Load]
+    F --> G[gob.Decode]
+    G --> H{Version check}
+    H -->|Current| I[Restore state]
+    H -->|Old| J[Migrate chain]
+    J --> I
+    H -->|Future| K[Error: upgrade required]
+```
+
+### Design Decisions
+
+| Decision | Rationale |
+|----------|-----------|
+| Gob format | Go-native, efficient binary, handles all model types |
+| Schema versioning | Forward compatibility for research data |
+| Auto-migration | Seamless upgrades without user intervention |
+| Most-recent load | Simple UX for common case (Ctrl+o loads latest) |
+
+For API details and keybindings, see CLAUDE.md § Persistence.
+```
+
+---
+
+## Part 2: Update roadmap.md
+
+### Check Off Persistence (line 20)
+
+**Location:** `docs/roadmap.md:20`
+
+**Current:**
+```
+1. [ ] **Persistence** - Save/load simulation state for research workflows
+```
+
+**Replace with:**
+```
+1. [x] **Persistence** - Save/load simulation state for research workflows
+```
+
+---
+
+## Files to Modify
+
+| File | Line(s) | Change |
+|------|---------|--------|
+| `docs/design.md` | 296 | Update design decision |
+| `docs/design.md` | 197 | Add persistence to architecture diagram |
+| `docs/design.md` | 234-238 | Update dependency graph |
+| `docs/design.md` | after 241 | Add header bar section |
+| `docs/design.md` | after 388 | Add persistence architecture section |
+| `docs/roadmap.md` | 20 | Check off persistence |
+
+---
+
+## Success Criteria
+
+- [ ] design.md no longer claims "In-memory only"
+- [ ] design.md architecture diagram includes persistence package
+- [ ] design.md dependency graph shows persistence relationships
+- [ ] design.md documents header bar format with "Done: N"
+- [ ] design.md has persistence architecture section (references CLAUDE.md for details)
+- [ ] roadmap.md shows Persistence as complete
+---
+
+2026-01-16T01:16:16Z | Documentation Cleanup Contract
+
+# Documentation Cleanup Contract
+
+**Created:** 2026-01-15
+
+## Step 1 Checklist
+- [x] 1a: Presented understanding
+- [x] 1b: Asked clarifying questions (scope: doc cleanup only)
+- [x] 1b-answer: Received answers
+- [x] 1c: Contract created (this file)
+- [x] 1d: Approval received (plan mode exit)
+
+## Objective
+
+Align documentation with current implementation state. Persistence and header "Done: N" were implemented but docs are out of sync.
+
+## Success Criteria
+
+- [x] design.md no longer claims "In-memory only" (line 296)
+- [x] design.md architecture diagram includes persistence package
+- [x] design.md dependency graph shows persistence relationships
+- [x] design.md documents header bar format with "Done: N"
+- [x] design.md has persistence architecture section (references CLAUDE.md)
+- [x] roadmap.md shows Persistence as complete (line 20)
+
+## Actual Results
+
+**Completed:** 2026-01-15
+
+### Changes Made
+
+| File | Change | Lines |
+|------|--------|-------|
+| `docs/design.md` | Updated "In-memory only" → "Gob-based persistence" | ~296 |
+| `docs/design.md` | Added persistence package to architecture diagram | ~198-203 |
+| `docs/design.md` | Updated dependency graph with persistence | ~240-248 |
+| `docs/design.md` | Added TUI Header Bar section | ~250-262 |
+| `docs/design.md` | Added Persistence section at EOF | ~413-440 |
+| `docs/roadmap.md` | Checked off persistence checkbox | 20 |
+
+### Self-Assessment
+
+Grade: A (95/100)
+
+What went well:
+- All 6 success criteria met
+- No duplication with CLAUDE.md (architectural perspective only)
+- Clean mermaid diagrams for persistence flow
+
+Deductions:
+- None significant
+
+## Step 4 Checklist
+- [x] 4a: Results presented to user
+- [x] 4b: Approval received
+
+## Approval
+✅ APPROVED BY USER - 2026-01-15
+---
+
+2026-01-16T01:16:32Z | Documentation Cleanup - COMPLETE
+
+## Documentation Cleanup - COMPLETE
+
+**Date:** 2026-01-15
+
+### Summary
+Aligned documentation with current implementation state after persistence and header "Done: N" features were added.
+
+### Changes
+- `docs/design.md`: Updated "In-memory only" → "Gob-based persistence"
+- `docs/design.md`: Added persistence package to architecture diagram
+- `docs/design.md`: Updated dependency graph with persistence relationships
+- `docs/design.md`: Added TUI Header Bar section (documents "Done: N")
+- `docs/design.md`: Added Persistence section with architecture flowchart
+- `docs/roadmap.md`: Checked off persistence checkbox
+
+### Verification
+All 9 checks passed (build, content, structure)

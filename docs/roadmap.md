@@ -17,7 +17,7 @@
 - [x] Seed-based reproducibility
 
 ### Remaining Work (Priority Order)
-1. [ ] **Persistence** - Save/load simulation state for research workflows
+1. [x] **Persistence** - Save/load simulation state for research workflows
 2. [ ] **Batch mode** - Headless runs for Monte Carlo analysis
 3. [ ] **Multi-seed runs** - Automated N-seed comparison with aggregate statistics
 4. [ ] **Parameter configuration** - Externalize variance bounds, phase distribution, incident rates (TOML or JSON)

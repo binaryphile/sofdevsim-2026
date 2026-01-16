@@ -197,6 +197,12 @@ flowchart TD
         styles["styles.go - Lipgloss styles"]
     end
 
+    subgraph persistence["internal/persistence/"]
+        schema["schema.go - SaveFile, SimulationState"]
+        persist["persistence.go - Save/Load/ListSaves"]
+        migrate["migrate.go - Version migrations"]
+    end
+
     subgraph engine["internal/engine/"]
         engine_go["engine.go - Tick loop, transitions"]
         policies["policies.go - Decomposition"]
@@ -234,11 +240,29 @@ flowchart TD
 graph LR
     tui --> engine
     tui --> metrics
+    tui --> persistence
     engine --> model
     metrics --> model
+    persistence --> model
+    persistence --> metrics
 ```
 
 **Dependency Rule:** Packages only depend downward. Model has no dependencies.
+
+### TUI Header Bar
+
+```
+[Planning] [Execution] [Metrics] [Comparison]  Policy: DORA-Strict | RUNNING | Day 42 | Done: 12 | Seed 1234567890
+```
+
+| Element | Description |
+|---------|-------------|
+| View tabs | Current view highlighted |
+| Policy | Active sizing policy |
+| Status | RUNNING or PAUSED |
+| Day | Current simulation tick |
+| Done | Count of completed tickets |
+| Seed | RNG seed for reproducibility |
 
 ---
 
@@ -293,7 +317,7 @@ flowchart LR
 | 8 phases | Based on Unified Workflow Rubric from industry research |
 | Variance by understanding | Core hypothesis: uncertainty causes unpredictability |
 | Seed-based RNG | Enables reproducible experiments |
-| In-memory only | MVP simplicity; no persistence complexity |
+| Gob-based persistence | Versioned binary saves for research workflows (see CLAUDE.md) |
 | Bubbletea TUI | Elm architecture, well-maintained, ntcharts compatible |
 
 ---
@@ -385,3 +409,37 @@ flowchart TD
     K --> M[Show confirmation<br/>path + row counts]
     L --> M
 ```
+
+---
+
+## Persistence
+
+Enables pause/resume for long-running experiments. Full state is captured including metrics history.
+
+### Architecture
+
+```mermaid
+flowchart LR
+    A[TUI: Ctrl+s] --> B[persistence.Save]
+    B --> C[gob.Encode]
+    C --> D[saves/*.sds]
+
+    E[TUI: Ctrl+o] --> F[persistence.Load]
+    F --> G[gob.Decode]
+    G --> H{Version check}
+    H -->|Current| I[Restore state]
+    H -->|Old| J[Migrate chain]
+    J --> I
+    H -->|Future| K[Error: upgrade required]
+```
+
+### Design Decisions
+
+| Decision | Rationale |
+|----------|-----------|
+| Gob format | Go-native, efficient binary, handles all model types |
+| Schema versioning | Forward compatibility for research data |
+| Auto-migration | Seamless upgrades without user intervention |
+| Most-recent load | Simple UX for common case (Ctrl+o loads latest) |
+
+For API details and keybindings, see CLAUDE.md § Persistence.
