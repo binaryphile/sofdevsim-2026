@@ -252,7 +252,7 @@ graph LR
 ### TUI Header Bar
 
 ```
-[Planning] [Execution] [Metrics] [Comparison]  Policy: DORA-Strict | RUNNING | Day 42 | Done: 12 | Seed 1234567890
+[Planning] [Execution] [Metrics] [Comparison]  Policy: DORA-Strict | RUNNING | Day 42 | Backlog: 5 | Done: 12 | Seed 1234567890
 ```
 
 | Element | Description |
@@ -261,6 +261,7 @@ graph LR
 | Policy | Active sizing policy |
 | Status | RUNNING or PAUSED |
 | Day | Current simulation tick |
+| Backlog | Count of tickets awaiting assignment |
 | Done | Count of completed tickets |
 | Seed | RNG seed for reproducibility |
 

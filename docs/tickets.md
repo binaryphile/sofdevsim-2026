@@ -2,18 +2,6 @@
 
 ## Open
 
-### TKT-001: Add backlog count to header
-
-**Type:** Feature | **Priority:** P2 | **Effort:** S | **Status:** Open
-
-Users have to manually count tickets in Planning view. Add `Backlog: N` to the header bar next to `Done: N`.
-
-**Acceptance Criteria:**
-- Header shows `Backlog: N` where N = len(sim.Backlog)
-- Updates in real-time as tickets are assigned/decomposed
-
-**Location:** `internal/tui/app.go:417` (headerView function)
-
 ---
 
 ### TKT-002: Auto-pause when sprint ends
@@ -31,6 +19,16 @@ Simulation keeps ticking after sprint ends, reaching Day 400+ with idle develope
 ---
 
 ## Closed
+
+### TKT-001: Add backlog count to header
+
+**Type:** Feature | **Priority:** P2 | **Effort:** S | **Status:** Fixed
+
+Added `Backlog: N` to header bar showing count of tickets in backlog. Updates in real-time.
+
+**Closed:** 2026-01-15
+
+---
 
 ### TKT-004: Comparison shows winner when both metrics are 0.0
 
