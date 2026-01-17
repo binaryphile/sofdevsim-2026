@@ -564,6 +564,82 @@ func TestFoo(t *testing.T) {
 Run tests: `go test ./...`
 Run with coverage: `go test -cover ./...`
 
+### Integration Testing Patterns
+
+Integration tests verify components work together. Use in-memory replacements for reliability and speed.
+
+**In-memory replacements:**
+
+| Dependency | Replacement | Why |
+|------------|-------------|-----|
+| HTTP server | `httptest.NewServer` | Random port, no conflicts |
+| Database | SQLite + txdb | In-memory, DML isolated per test (DDL auto-commits) |
+| File output | `bytes.Buffer` | Inspectable, no filesystem |
+
+**Table-driven integration tests:**
+```go
+func TestAPI_Lifecycle(t *testing.T) {
+    type want struct {
+        hasTickLink        bool
+        hasStartSprintLink bool
+    }
+
+    tests := []struct {
+        name string
+        seed int64
+        want want
+    }{
+        {
+            name: "sprint ends correctly",
+            seed: 42,
+            want: want{hasTickLink: false, hasStartSprintLink: true},
+        },
+    }
+
+    for _, tt := range tests {
+        t.Run(tt.name, func(t *testing.T) {
+            registry := NewSimRegistry()
+            srv := httptest.NewServer(NewRouter(registry))
+            defer srv.Close()
+
+            // ... run lifecycle ...
+
+            if diff := cmp.Diff(got, tt.want); diff != "" {
+                t.Errorf("mismatch (-got +want):\n%s", diff)
+            }
+        })
+    }
+}
+```
+
+**Use `cmp.Diff` for assertions** - single diff shows all differences.
+
+**Comprehensive docstrings** - explain test philosophy, not just what it tests.
+
+**Parallel testing** - tests with in-memory dependencies are naturally parallel-safe:
+```go
+func TestFeature(t *testing.T) {
+    t.Parallel()
+    srv := httptest.NewServer(handler)
+    defer srv.Close()
+    // ...
+}
+```
+
+**Spy pattern** - capture interactions for assertion:
+```go
+type SpyEmailGateway struct {
+    SendCalled bool
+    LastTo     string
+}
+
+func (s *SpyEmailGateway) Send(to, subject, body string) error {
+    s.SendCalled = true
+    s.LastTo = to
+    return nil
+}
+```
+
 ## Development Process
 
 Our development workflow follows this sequence:
