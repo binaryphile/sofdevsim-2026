@@ -197,6 +197,14 @@ flowchart TD
         styles["styles.go - Lipgloss styles"]
     end
 
+    subgraph api["internal/api/"]
+        server["server.go - HTTP router"]
+        handlers["handlers.go - Request handlers"]
+        registry["registry.go - SimRegistry"]
+        hypermedia["hypermedia.go - LinksFor()"]
+        resources["resources.go - SimulationState"]
+    end
+
     subgraph persistence["internal/persistence/"]
         schema["schema.go - SaveFile, SimulationState"]
         persist["persistence.go - Save/Load/ListSaves"]
@@ -228,8 +236,12 @@ flowchart TD
     end
 
     main --> app
+    main --> server
     app --> engine_go
     app --> dora
+    server --> registry
+    registry --> engine_go
+    registry --> dora
     engine_go --> simulation
     dora --> simulation
 ```
@@ -241,6 +253,8 @@ graph LR
     tui --> engine
     tui --> metrics
     tui --> persistence
+    api --> engine
+    api --> metrics
     engine --> model
     metrics --> model
     persistence --> model
@@ -444,3 +458,143 @@ flowchart LR
 | Most-recent load | Simple UX for common case (Ctrl+o loads latest) |
 
 For API details and keybindings, see CLAUDE.md § Persistence.
+
+---
+
+## HTTP API
+
+Enables programmatic simulation testing without TUI interaction. Supports UC9 (Test Simulation Behavior Programmatically).
+
+### Design: HATEOAS
+
+The API follows REST with hypermedia (HATEOAS). Each response includes `_links` that tell the client what actions are available based on current state.
+
+**Why HATEOAS for testing:**
+
+| Benefit | How It Helps Testing |
+|---------|---------------------|
+| Self-verifying | Link presence/absence proves state correctness |
+| Discoverable | Agent follows links, no hardcoded URLs |
+| State-driven | Links change when state changes (sprint ends → tick link disappears) |
+
+### Endpoints
+
+| Method | Path | Purpose | Links Returned |
+|--------|------|---------|----------------|
+| GET | `/` | Entry point | `simulations` |
+| POST | `/simulations` | Create simulation | `self`, `start-sprint` |
+| GET | `/simulations/{id}` | Get simulation state | `self`, `tick` or `start-sprint` |
+| POST | `/simulations/{id}/sprints` | Start sprint | `self`, `tick` |
+| POST | `/simulations/{id}/tick` | Advance one tick | `self`, `tick` or `start-sprint` |
+
+### Example Response (HAL+JSON style)
+
+```json
+{
+  "id": "sim-42",
+  "currentTick": 5,
+  "sprintActive": true,
+  "sprint": {
+    "number": 1,
+    "startDay": 1,
+    "durationDays": 10,
+    "bufferPctUsed": 0.23
+  },
+  "_links": {
+    "self": "/simulations/sim-42",
+    "tick": "/simulations/sim-42/tick"
+  }
+}
+```
+
+When sprint ends, `tick` link disappears and `start-sprint` appears—proving correct state transition.
+
+### Architecture: Value Semantics (No Mutex)
+
+```
+┌─────────────────────────────────────────────────┐
+│                   main.go                       │
+├─────────────────────────────────────────────────┤
+│  ┌─────────────┐          ┌─────────────────┐   │
+│  │   TUI       │          │    HTTP API     │   │
+│  │ (Bubbletea) │          │   (net/http)    │   │
+│  └──────┬──────┘          └────────┬────────┘   │
+│         │                          │            │
+│         ▼                          ▼            │
+│  ┌─────────────┐          ┌─────────────────┐   │
+│  │ TUI's own   │          │  SimRegistry    │   │
+│  │ Simulation  │          │ map[id]SimInst  │   │
+│  └─────────────┘          └─────────────────┘   │
+│                                    │            │
+│                           ┌────────┴────────┐   │
+│                           ▼                 ▼   │
+│                    ┌───────────┐     ┌───────────┐
+│                    │ SimInst 1 │     │ SimInst 2 │
+│                    │ (seed 42) │     │ (seed 99) │
+│                    └───────────┘     └───────────┘
+└─────────────────────────────────────────────────┘
+```
+
+**Why no mutex?**
+
+1. Each API simulation is independent (POST `/simulations` creates new instance)
+2. TUI doesn't share state with API (separate simulations)
+3. HTTP is request-per-goroutine (within handler, exclusive access)
+4. No concurrent access to same simulation = no mutex needed
+
+### SimRegistry
+
+```go
+// SimRegistry manages independent simulation instances
+type SimRegistry struct {
+    instances map[string]*SimInstance
+}
+
+// SimInstance owns its simulation - value semantics internally
+type SimInstance struct {
+    id      string
+    sim     model.Simulation  // Value, not pointer
+    engine  engine.Engine
+    tracker metrics.Tracker
+}
+```
+
+### Startup Sequence
+
+1. Create SimRegistry (empty, API creates simulations on demand)
+2. Start HTTP server on configurable port in goroutine
+3. Run TUI on main goroutine (Bubbletea requirement)
+4. Process exit terminates both (no graceful shutdown yet)
+
+### Hypermedia Logic (Pure, Unit Testable)
+
+```go
+// LinksFor is pure: state → links (unit testable)
+func LinksFor(state SimulationState) map[string]string {
+    links := map[string]string{
+        "self": "/simulations/" + state.ID,
+    }
+    if state.SprintActive {
+        links["tick"] = "/simulations/" + state.ID + "/tick"
+    } else {
+        links["start-sprint"] = "/simulations/" + state.ID + "/sprints"
+    }
+    return links
+}
+```
+
+This pure function enables unit testing of link logic without HTTP.
+
+### Test Strategy (Khorikov Quadrants)
+
+| Component | Quadrant | Complexity | Collaborators | Strategy |
+|-----------|----------|------------|---------------|----------|
+| `LinksFor()` | Domain | Medium | Few (state only) | Unit test heavily |
+| `ToState()` | Trivial | Low | Few | Don't test |
+| `resources.go` | Trivial | Low | Few | Don't test |
+| HTTP handlers | Controller | Low | Many | ONE integration test |
+| `SimRegistry` | Controller | Low | Many | Covered by integration |
+
+**Domain (unit test):** `LinksFor()` - test all state→link rules (sprint active = tick link, sprint ended = start-sprint link)
+
+**Controller (ONE integration test):** Full lifecycle test - create simulation, start sprint, tick until sprint ends, verify links change. HATEOAS link presence = correct behavior.

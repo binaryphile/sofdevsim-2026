@@ -8,23 +8,30 @@
 flowchart TB
     subgraph external[" "]
         operator["👤 Simulation Operator<br/><i>Team lead, scrum master, or developer<br/>exploring sizing strategies</i>"]
+        agent["🤖 Automated Test Agent<br/><i>Claude or script verifying<br/>simulation behavior</i>"]
     end
 
     subgraph system["Software Development Simulation"]
         tui["TUI Application<br/><i>Bubbletea terminal interface</i>"]
+        api["HTTP API<br/><i>HATEOAS REST interface</i>"]
         engine["Simulation Engine<br/><i>Tick loop, phase transitions, policies</i>"]
         metrics["Metrics Engine<br/><i>DORA calculations, fever chart</i>"]
     end
 
     operator -->|"keyboard"| tui
+    agent -->|"HTTP"| api
     tui --> engine
+    api --> engine
     tui --> metrics
+    api --> metrics
     engine --> metrics
 
     style external fill:none,stroke:none
     style system fill:#e8f4f8,stroke:#1168bd
     style operator fill:#08427b,color:#fff
+    style agent fill:#08427b,color:#fff
     style tui fill:#438dd5,color:#fff
+    style api fill:#438dd5,color:#fff
     style engine fill:#438dd5,color:#fff
     style metrics fill:#438dd5,color:#fff
 ```
@@ -32,6 +39,7 @@ flowchart TB
 ### In Scope (the system)
 
 - TUI application
+- HTTP API (HATEOAS REST interface)
 - Simulation engine (tick loop, phase transitions)
 - Ticket/developer/sprint management
 - DORA metrics calculation
@@ -43,14 +51,19 @@ flowchart TB
 - Real code repositories
 - Actual CI/CD systems
 - Multi-user access
+- API authentication/authorization
+- API rate limiting
+- Persistent API state (simulations are in-memory only)
 
 ---
 
 ## Actors
 
-### Primary Actor
+### Primary Actors
 
 **Simulation Operator** - Person running the TUI to explore sizing strategies
+
+**Automated Test Agent** - Claude or script verifying simulation behavior via HTTP API
 
 ### Secondary Actors
 
@@ -65,6 +78,8 @@ None (self-contained simulation, no external services)
 | Developer | Wants to see how understanding level affects outcomes |
 | Researcher | Wants reproducible experiments (same seed = same results); wants exportable data to validate hypotheses statistically |
 | Educator | Wants concrete data to teach TOC principles and demonstrate DORA metrics in action |
+| Developer (Claude) | Wants to verify simulation fixes without manual TUI interaction |
+| Human Developer | Wants to debug and explore simulation state via HTTP |
 
 ---
 
@@ -90,6 +105,10 @@ None (self-contained simulation, no external services)
 
 > Pat, a process researcher, has been running a 50-sprint simulation comparing DORA-Strict vs TameFlow. After 3 hours, Pat needs to leave for a meeting. Pat presses 's' to save the simulation state, names it "tameflow-comparison-jan15", and closes the laptop. The next morning, Pat loads the state and continues from exactly where they left off—all 50 sprints of history intact, metrics preserved. Pat likes save/load because multi-hour experiments no longer require uninterrupted sessions.
 
+### Story 6: The Automated Verifier
+
+> Claude, verifying a fix to sprint-end behavior, sends a POST to `/simulations` to create a new simulation with seed 42. Claude then POSTs to `/simulations/{id}/sprints` to start a sprint, followed by repeated POSTs to `/simulations/{id}/tick` until the sprint ends. After each tick, Claude GETs `/simulations/{id}` to inspect state. When the sprint ends, Claude verifies that the tick link disappears from the response—the HATEOAS contract proves the sprint ended correctly. Claude likes this API because each response includes links to available actions, so there's no need to hardcode URL patterns—just follow the hypermedia.
+
 ---
 
 ## Actor-Goal List
@@ -111,7 +130,13 @@ None (self-contained simulation, no external services)
 | 11 | Export simulation data to CSV | Blue | Yes - have file for analysis | Researcher - validate hypotheses; Educator - teach with data |
 | 12 | Save/load simulation state | Blue | Yes - can resume later | Researcher - long experiments; All - pause/resume workflow |
 
-**Use Cases Written:** Goals 1-7, 11-12 (Blue level)
+**Primary Actor:** Automated Test Agent (Claude or script)
+
+| # | Goal | Level | "Lunch Test" | Stakeholder Interest |
+|---|------|-------|--------------|---------------------|
+| 9 | Test simulation behavior programmatically | Blue | Yes - verification complete | Developer - verify fixes without TUI |
+
+**Use Cases Written:** Goals 1-9, 11-12 (Blue level)
 
 ---
 
@@ -337,6 +362,36 @@ None (self-contained simulation, no external services)
 - 5a. *Schema version mismatch:* System runs migration chain
 - 5b. *Unknown future version:* System shows "upgrade required" error
 - 6a. *Corrupted file:* System shows validation error; no state change
+
+---
+
+### UC9: Test Simulation Behavior Programmatically
+
+**Primary Actor:** Automated Test Agent (Claude or script)
+
+**Goal in Context:** Execute simulation scenarios and verify outcomes programmatically, enabling automated verification of simulation behavior without manual TUI interaction.
+
+**Scope:** Software Development Simulation
+
+**Level:** User Goal (Blue)
+
+**Main Success Scenario:**
+
+1. Agent creates a new simulation via POST (specifying seed)
+2. System returns simulation resource with links to available actions
+3. Agent starts a sprint via the provided start-sprint link
+4. System returns updated state with tick link available
+5. Agent advances simulation via tick link
+6. System returns events and updated state
+7. Agent inspects state to verify expected outcomes
+8. Agent verifies HATEOAS links match expected state (e.g., tick link absent after sprint ends)
+
+**Extensions:**
+
+- 1a. *Invalid configuration:* System returns 400 with problem details
+- 5a. *Sprint ends:* System clears sprint, tick link disappears, start-sprint link appears
+- 5b. *Ticket completes:* Event included in response
+- 7a. *Verification fails:* Agent reports test failure (external to system)
 
 ---
 
