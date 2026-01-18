@@ -33,9 +33,17 @@ func TestLinksFor(t *testing.T) {
 			wantAssign:      false,
 		},
 		{
-			name:            "no sprint has start-sprint link only",
+			name:            "no sprint with backlog has start-sprint and assign links",
 			sprintOption:    option.Basic[model.Sprint]{},
 			backlogCount:    5,
+			wantTick:        false,
+			wantStartSprint: true,
+			wantAssign:      true, // UC11: assign available for sprint planning
+		},
+		{
+			name:            "no sprint with empty backlog has start-sprint only",
+			sprintOption:    option.Basic[model.Sprint]{},
+			backlogCount:    0,
 			wantTick:        false,
 			wantStartSprint: true,
 			wantAssign:      false,
