@@ -8,81 +8,145 @@ import (
 	"testing"
 
 	"github.com/binaryphile/sofdevsim-2026/internal/api"
-	"github.com/google/go-cmp/cmp"
 )
 
-// TestAPI_SprintLifecycle tests the complete simulation lifecycle through HTTP.
+// NOTE: Controller integration test moved to TestTutorialWalkthrough in tutorial_walkthrough_test.go.
 // Per Khorikov, controllers get ONE integration test covering the happy path.
-// This test verifies HATEOAS behavior: links change based on simulation state.
-//
-// The test creates a simulation, starts a sprint, ticks until the sprint ends,
-// and verifies that the tick link disappears while the start-sprint link appears.
-// This validates the hypermedia-driven API contract without testing internal state.
-//
-// Dependencies use in-memory replacements:
-// - httptest.NewServer for HTTP (random port, no conflicts)
-// - Fresh SimRegistry per test (no shared state)
-//
-// No external boundaries to mock (no DB, no email, no third-party APIs).
-// Test is parallel-safe: each test case has isolated state.
-func TestAPI_SprintLifecycle(t *testing.T) {
-	type want struct {
-		HasTickLink        bool
-		HasStartSprintLink bool
-	}
-
-	tests := []struct {
-		name string
-		seed int64
-		want want
-	}{
-		{
-			name: "sprint lifecycle ends correctly",
-			seed: 42,
-			want: want{HasTickLink: false, HasStartSprintLink: true},
-		},
-		{
-			name: "different seed same behavior",
-			seed: 99,
-			want: want{HasTickLink: false, HasStartSprintLink: true},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			registry := api.NewSimRegistry()
-			srv := httptest.NewServer(api.NewRouter(registry))
-			defer srv.Close()
-
-			// Create simulation
-			resp := postJSON(t, srv.URL+"/simulations", map[string]any{"seed": tt.seed})
-
-			// Start sprint
-			resp = postJSON(t, srv.URL+resp.Links["start-sprint"], nil)
-
-			// Tick until sprint ends (tick link disappears)
-			for resp.Links["tick"] != "" {
-				resp = postJSON(t, srv.URL+resp.Links["tick"], nil)
-			}
-
-			got := want{
-				HasTickLink:        resp.Links["tick"] != "",
-				HasStartSprintLink: resp.Links["start-sprint"] != "",
-			}
-			if diff := cmp.Diff(got, tt.want); diff != "" {
-				t.Errorf("lifecycle mismatch (-got +want):\n%s", diff)
-			}
-		})
-	}
-}
+// TestTutorialWalkthrough is more comprehensive (includes assignments) and serves as
+// both the integration test and executable documentation.
 
 // halResponse is the expected HAL+JSON response structure for tests.
 // Test-only: not exported, used by postJSON helper.
 type halResponse struct {
 	Simulation json.RawMessage   `json:"simulation"`
 	Links      map[string]string `json:"_links"`
+}
+
+// TestAPI_AssignmentErrors tests assignment endpoint error cases.
+// Per Khorikov, this is domain logic (validation) so unit test the edge cases.
+func TestAPI_AssignmentErrors(t *testing.T) {
+	tests := []struct {
+		name       string
+		setup      func(t *testing.T, srv *httptest.Server) string // returns simID
+		ticketID   string
+		devID      string
+		wantStatus int
+		wantError  string
+	}{
+		{
+			name: "ticket not in backlog",
+			setup: func(t *testing.T, srv *httptest.Server) string {
+				resp := postJSON(t, srv.URL+"/simulations", map[string]any{"seed": 42})
+				postJSON(t, srv.URL+resp.Links["start-sprint"], nil)
+				return "sim-42"
+			},
+			ticketID:   "TKT-999", // doesn't exist
+			devID:      "dev-1",
+			wantStatus: http.StatusBadRequest,
+			wantError:  "ticket TKT-999 not found in backlog",
+		},
+		{
+			name: "developer not found",
+			setup: func(t *testing.T, srv *httptest.Server) string {
+				resp := postJSON(t, srv.URL+"/simulations", map[string]any{"seed": 42})
+				postJSON(t, srv.URL+resp.Links["start-sprint"], nil)
+				return "sim-42"
+			},
+			ticketID:   "TKT-001",
+			devID:      "dev-999", // doesn't exist
+			wantStatus: http.StatusBadRequest,
+			wantError:  "developer dev-999 not found",
+		},
+		{
+			name: "developer is busy",
+			setup: func(t *testing.T, srv *httptest.Server) string {
+				resp := postJSON(t, srv.URL+"/simulations", map[string]any{"seed": 42})
+				postJSON(t, srv.URL+resp.Links["start-sprint"], nil)
+				// Assign first ticket to dev-1
+				postJSONExpectOK(t, srv.URL+"/simulations/sim-42/assignments",
+					map[string]any{"ticketId": "TKT-001", "developerId": "dev-1"})
+				return "sim-42"
+			},
+			ticketID:   "TKT-002",
+			devID:      "dev-1", // already busy with TKT-001
+			wantStatus: http.StatusBadRequest,
+			wantError:  "developer dev-1 is busy with TKT-001",
+		},
+		{
+			name: "no idle developers for auto-assign",
+			setup: func(t *testing.T, srv *httptest.Server) string {
+				resp := postJSON(t, srv.URL+"/simulations", map[string]any{"seed": 42})
+				postJSON(t, srv.URL+resp.Links["start-sprint"], nil)
+				// Assign tickets to all 3 developers
+				postJSONExpectOK(t, srv.URL+"/simulations/sim-42/assignments",
+					map[string]any{"ticketId": "TKT-001", "developerId": "dev-1"})
+				postJSONExpectOK(t, srv.URL+"/simulations/sim-42/assignments",
+					map[string]any{"ticketId": "TKT-002", "developerId": "dev-2"})
+				postJSONExpectOK(t, srv.URL+"/simulations/sim-42/assignments",
+					map[string]any{"ticketId": "TKT-003", "developerId": "dev-3"})
+				return "sim-42"
+			},
+			ticketID:   "TKT-004",
+			devID:      "", // auto-assign
+			wantStatus: http.StatusBadRequest,
+			wantError:  "no idle developers",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			registry := api.NewSimRegistry()
+			srv := httptest.NewServer(api.NewRouter(registry))
+			defer srv.Close()
+
+			simID := tt.setup(t, srv)
+
+			body := map[string]any{"ticketId": tt.ticketID}
+			if tt.devID != "" {
+				body["developerId"] = tt.devID
+			}
+
+			status, errMsg := postJSONExpectError(t, srv.URL+"/simulations/"+simID+"/assignments", body)
+
+			if status != tt.wantStatus {
+				t.Errorf("status = %d, want %d", status, tt.wantStatus)
+			}
+			if errMsg != tt.wantError {
+				t.Errorf("error = %q, want %q", errMsg, tt.wantError)
+			}
+		})
+	}
+}
+
+// postJSONExpectOK sends a POST and expects success (for setup steps).
+func postJSONExpectOK(t *testing.T, url string, body any) {
+	t.Helper()
+	reqBody, _ := json.Marshal(body)
+	resp, err := http.Post(url, "application/json", bytes.NewReader(reqBody))
+	if err != nil {
+		t.Fatalf("POST %s failed: %v", url, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		t.Fatalf("POST %s returned status %d", url, resp.StatusCode)
+	}
+}
+
+// postJSONExpectError sends a POST and returns status code and error message.
+func postJSONExpectError(t *testing.T, url string, body any) (int, string) {
+	t.Helper()
+	reqBody, _ := json.Marshal(body)
+	resp, err := http.Post(url, "application/json", bytes.NewReader(reqBody))
+	if err != nil {
+		t.Fatalf("POST %s failed: %v", url, err)
+	}
+	defer resp.Body.Close()
+
+	var errResp struct {
+		Error string `json:"error"`
+	}
+	json.NewDecoder(resp.Body).Decode(&errResp)
+	return resp.StatusCode, errResp.Error
 }
 
 // postJSON sends a POST request with optional JSON body and returns parsed HAL response.

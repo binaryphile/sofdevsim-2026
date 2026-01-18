@@ -486,6 +486,7 @@ The API follows REST with hypermedia (HATEOAS). Each response includes `_links` 
 | GET | `/simulations/{id}` | Get simulation state | `self`, `tick` or `start-sprint` |
 | POST | `/simulations/{id}/sprints` | Start sprint | `self`, `tick` |
 | POST | `/simulations/{id}/tick` | Advance one tick | `self`, `tick` or `start-sprint` |
+| POST | `/simulations/{id}/assignments` | Assign ticket to developer | `self`, `tick` |
 
 ### Example Response (HAL+JSON style)
 
@@ -494,6 +495,7 @@ The API follows REST with hypermedia (HATEOAS). Each response includes `_links` 
   "id": "sim-42",
   "currentTick": 5,
   "sprintActive": true,
+  "backlogCount": 8,
   "sprint": {
     "number": 1,
     "startDay": 1,
@@ -502,12 +504,35 @@ The API follows REST with hypermedia (HATEOAS). Each response includes `_links` 
   },
   "_links": {
     "self": "/simulations/sim-42",
-    "tick": "/simulations/sim-42/tick"
+    "tick": "/simulations/sim-42/tick",
+    "assign": "/simulations/sim-42/assignments"
   }
 }
 ```
 
-When sprint ends, `tick` link disappears and `start-sprint` appears—proving correct state transition.
+**Link transitions:**
+- Sprint ends → `tick` disappears, `start-sprint` appears
+- Backlog empty → `assign` disappears (nothing to assign)
+
+### Assignment Request
+
+```json
+POST /simulations/{id}/assignments
+
+// Explicit assignment
+{ "ticketId": "TKT-001", "developerId": "dev-1" }
+
+// Auto-assign to first idle developer
+{ "ticketId": "TKT-001" }
+```
+
+**Success:** Returns updated simulation state (same format as GET).
+
+**Errors:**
+- 400: Ticket not in backlog
+- 400: Developer not found
+- 400: Developer is busy
+- 400: No idle developers (auto-assign only)
 
 ### Architecture: Value Semantics (No Mutex)
 
@@ -576,6 +601,9 @@ func LinksFor(state SimulationState) map[string]string {
     }
     if state.SprintActive {
         links["tick"] = "/simulations/" + state.ID + "/tick"
+        if state.BacklogCount > 0 {
+            links["assign"] = "/simulations/" + state.ID + "/assignments"
+        }
     } else {
         links["start-sprint"] = "/simulations/" + state.ID + "/sprints"
     }

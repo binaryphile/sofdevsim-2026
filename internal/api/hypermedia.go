@@ -15,6 +15,9 @@ func LinksFor(state SimulationState) map[string]string {
 
 	if sprintIsActive(state) {
 		links["tick"] = "/simulations/" + state.ID + "/tick"
+		if state.BacklogCount > 0 {
+			links["assign"] = "/simulations/" + state.ID + "/assignments"
+		}
 	} else {
 		links["start-sprint"] = "/simulations/" + state.ID + "/sprints"
 	}

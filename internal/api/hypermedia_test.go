@@ -11,20 +11,34 @@ func TestLinksFor(t *testing.T) {
 	tests := []struct {
 		name            string
 		sprintOption    option.Basic[model.Sprint]
+		backlogCount    int
 		wantTick        bool
 		wantStartSprint bool
+		wantAssign      bool
 	}{
 		{
-			name:            "sprint active has tick link",
+			name:            "sprint active with backlog has tick and assign links",
 			sprintOption:    option.Of(model.Sprint{EndDay: 10}),
+			backlogCount:    5,
 			wantTick:        true,
 			wantStartSprint: false,
+			wantAssign:      true,
 		},
 		{
-			name:            "no sprint has start-sprint link",
+			name:            "sprint active with empty backlog has tick but no assign",
+			sprintOption:    option.Of(model.Sprint{EndDay: 10}),
+			backlogCount:    0,
+			wantTick:        true,
+			wantStartSprint: false,
+			wantAssign:      false,
+		},
+		{
+			name:            "no sprint has start-sprint link only",
 			sprintOption:    option.Basic[model.Sprint]{},
+			backlogCount:    5,
 			wantTick:        false,
 			wantStartSprint: true,
+			wantAssign:      false,
 		},
 	}
 
@@ -33,6 +47,7 @@ func TestLinksFor(t *testing.T) {
 			state := SimulationState{
 				ID:                  "sim-42",
 				CurrentSprintOption: tt.sprintOption,
+				BacklogCount:        tt.backlogCount,
 			}
 
 			links := LinksFor(state)
@@ -50,6 +65,9 @@ func TestLinksFor(t *testing.T) {
 			}
 			if gotStartSprint := links["start-sprint"] != ""; gotStartSprint != tt.wantStartSprint {
 				t.Errorf("start-sprint link: got %v, want %v", gotStartSprint, tt.wantStartSprint)
+			}
+			if gotAssign := links["assign"] != ""; gotAssign != tt.wantAssign {
+				t.Errorf("assign link: got %v, want %v", gotAssign, tt.wantAssign)
 			}
 		})
 	}

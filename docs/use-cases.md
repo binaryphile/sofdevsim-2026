@@ -277,7 +277,7 @@ None (self-contained simulation, no external services)
 
 ### UC6: Assign Tickets to Developers
 
-**Primary Actor:** Simulation Operator
+**Primary Actor:** Simulation Operator / Automated Agent
 
 **Goal in Context:** Assign a ticket from the backlog to an available developer so work can begin.
 
@@ -285,19 +285,42 @@ None (self-contained simulation, no external services)
 
 **Level:** User Goal (Blue)
 
+**Stakeholders and Interests:**
+
+- *Operator:* Wants efficient assignment without memorizing developer names
+- *Automated Agent:* Wants explicit control over which developer gets which ticket
+
+**Preconditions:**
+
+- Simulation exists with at least one ticket in backlog
+- At least one developer exists in the simulation
+
+**Postconditions (Guarantees):**
+
+- *Success:* Ticket assigned to developer, TicketAssigned event emitted
+- *Failure:* No state change, error reported to actor
+
 **Main Success Scenario:**
 
-1. Operator selects ticket in backlog (j/k or arrow keys)
-2. Operator requests assignment (a key)
-3. System finds first idle developer
+1. Actor selects a ticket from the backlog
+2. Actor specifies target developer
+3. System validates developer is idle
 4. System assigns ticket to developer
 5. Ticket moves from Backlog to ActiveTickets
 6. Developer status changes from idle to busy
+7. System emits TicketAssigned event
 
 **Extensions:**
 
-- 3a. *No idle developers:* Assignment fails silently; all developers are busy
-- 3b. *Multiple idle developers:* System assigns to first available (Alice, Bob, Carol order)
+- 2a. *No developer specified:* System auto-assigns to first idle developer (Alice, Bob, Carol order)
+- 3a. *Developer is busy:* System rejects assignment with error
+- 3b. *No idle developers:* Assignment fails; all developers are busy
+- 3c. *Ticket not in backlog:* System rejects with "ticket not found"
+
+**Technology & Data Variations:**
+
+- TUI: Navigate backlog with j/k, press 'a' to auto-assign selected ticket
+- API: POST /simulations/{id}/assignments with ticketId and developerId
 
 ---
 

@@ -167,3 +167,51 @@ func clearSprintIfEnded(sim *model.Simulation) {
 		sim.CurrentSprintOption = model.NoSprint
 	}
 }
+
+// AssignTicketRequest is the request body for assigning a ticket.
+type AssignTicketRequest struct {
+	TicketID    string `json:"ticketId"`
+	DeveloperID string `json:"developerId"`
+}
+
+// HandleAssignTicket assigns a ticket to a developer.
+// If developerId is omitted, auto-assigns to first idle developer.
+// Returns 400 if ticket/developer not found or developer is busy.
+func (r *SimRegistry) HandleAssignTicket(w http.ResponseWriter, req *http.Request) {
+	id := req.PathValue("id")
+
+	inst, ok := r.getInstance(id)
+	if !ok {
+		writeError(w, http.StatusNotFound, "simulation not found")
+		return
+	}
+
+	var body AssignTicketRequest
+	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	// Auto-assign if no developer specified
+	devID := body.DeveloperID
+	if devID == "" {
+		idle := inst.sim.IdleDevelopers()
+		if len(idle) == 0 {
+			writeError(w, http.StatusBadRequest, "no idle developers")
+			return
+		}
+		devID = idle[0].ID
+	}
+
+	if err := inst.engine.AssignTicket(body.TicketID, devID); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	state := ToState(*inst.sim)
+	response := HALResponse{
+		State: state,
+		Links: LinksFor(state),
+	}
+	writeJSON(w, http.StatusOK, response)
+}
