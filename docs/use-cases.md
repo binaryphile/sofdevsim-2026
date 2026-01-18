@@ -463,7 +463,7 @@ None (self-contained simulation, no external services)
 2. API client lists active simulations to discover available IDs
 3. API client selects simulation and gets current state
 4. API client advances tick via POST
-5. TUI receives event notification and updates display
+5. TUI receives event notification and updates display (switches to Execution view on sprint start)
 6. Operator views updated state in TUI
 7. Operator assigns ticket via TUI
 8. API client sees assignment reflected in next GET

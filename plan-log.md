@@ -14292,3 +14292,187 @@ Implemented POST /comparisons endpoint that runs DORA-strict vs TameFlow-cogniti
 
 **Why it matters:**
 Enables API clients to compare policy effectiveness programmatically. Value semantics eliminates nil-check bugs and enables FluentFP method expressions.
+
+---
+
+## Approved Plan: 2026-01-18
+
+# Plan: Update Design Doc TUI Integration - View Switching
+
+## Context
+
+UC10 step 5: "TUI receives event notification and updates display (switches to Execution view on sprint start)"
+
+Design doc shows event sourcing with `Projection` pattern - this is the **target architecture**.
+
+## Current State vs Target
+
+| Aspect | Current (`app.go`) | Target (design doc) |
+|--------|-------------------|---------------------|
+| State update | `tracker.Updated(sim)` | `projection.Apply(event)` |
+| View switch | Missing | Should be in event handler |
+
+**Direction confirmed:** Event sourcing is the architecture. Design doc shows target state.
+
+## Proposed Change
+
+Update design doc TUI Integration example (~line 910) to show view switching:
+
+**Before:**
+```go
+func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+    switch m := msg.(type) {
+    case eventMsg:
+        a.projection.Apply(m.event)
+        return a, nil
+    // ... other message handling
+    }
+}
+```
+
+**After:**
+```go
+func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+    switch m := msg.(type) {
+    case eventMsg:
+        a.projection.Apply(m.event)
+        // React to significant events
+        if m.event.EventType() == "SprintStarted" {
+            a.currentView = ExecutionView
+        }
+        return a, nil
+    // ... other message handling
+    }
+}
+```
+
+## Files to Modify
+
+| File | Purpose |
+|------|---------|
+| `docs/design.md` | Update TUI Integration example (~line 910) |
+
+## Implementation Bug (separate task)
+
+`internal/tui/app.go` lines 173-175 needs view switch - but that's implementation, not doc.
+
+---
+
+## Approved Contract: 2026-01-18
+
+# Phase 11 Contract
+
+**Created:** 2026-01-18
+
+## Step 1 Checklist
+- [x] 1a: Presented understanding
+- [x] 1b: Asked clarifying questions
+- [x] 1b-answer: Received answers (contract standalone, plan separate)
+- [x] 1c: Contract created (this file)
+- [x] 1d: Approval received
+- [x] 1e: Plan + contract archived
+
+## Objective
+
+Update design doc TUI Integration example to show view switching on sprint start, aligning documentation with UC10 step 5.
+
+## Success Criteria
+
+- [ ] `docs/design.md` TUI Integration example (~line 910) shows `SprintStarted` event triggering view switch to `ExecutionView`
+- [ ] Example maintains Projection-based architecture pattern (target state)
+- [ ] Aligns with UC10 step 5: "switches to Execution view on sprint start"
+
+## Scope
+
+**In scope:**
+- Design doc code example update
+
+**Out of scope:**
+- Implementation fix in `internal/tui/app.go` (separate task)
+- Other event types (SprintEnded, etc.)
+
+## Plan Reference
+
+Implementation details: `/home/ted/.claude/plans/humming-cuddling-wigderson.md`
+# Phase 11 Contract
+
+**Created:** 2026-01-18
+
+## Step 1 Checklist
+- [x] 1a: Presented understanding
+- [x] 1b: Asked clarifying questions
+- [x] 1b-answer: Received answers (contract standalone, plan separate)
+- [x] 1c: Contract created (this file)
+- [x] 1d: Approval received
+- [x] 1e: Plan + contract archived
+
+## Objective
+
+Update design doc TUI Integration example to show view switching on sprint start, aligning documentation with UC10 step 5.
+
+## Success Criteria
+
+- [x] `docs/design.md` TUI Integration example (~line 910) shows `SprintStarted` event triggering view switch to `ExecutionView`
+- [x] Example maintains Projection-based architecture pattern (target state)
+- [x] Aligns with UC10 step 5: "switches to Execution view on sprint start"
+
+## Scope
+
+**In scope:**
+- Design doc code example update
+
+**Out of scope:**
+- Implementation fix in `internal/tui/app.go` (separate task)
+- Other event types (SprintEnded, etc.)
+
+## Plan Reference
+
+Implementation details: `/home/ted/.claude/plans/humming-cuddling-wigderson.md`
+
+## Actual Results
+
+**Completed:** 2026-01-18
+
+### Change Made
+
+`docs/design.md` lines 910-921 - Updated TUI Integration example:
+
+```go
+func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+    switch m := msg.(type) {
+    case eventMsg:
+        a.projection.Apply(m.event)
+        // React to significant events
+        if m.event.EventType() == "SprintStarted" {
+            a.currentView = ExecutionView
+        }
+        return a, nil
+    // ... other message handling
+    }
+}
+```
+
+### Verification
+- Projection-based architecture preserved (`a.projection.Apply(m.event)`)
+- View switch on SprintStarted added
+- Aligns with UC10 step 5 requirement
+
+## Step 4 Checklist
+- [x] 4a: Results presented to user
+- [x] 4b: Approval received
+
+## Approval
+APPROVED BY USER - 2026-01-18
+
+---
+
+## Log: 2026-01-18 - Phase 11: Design Doc View Switching
+
+**What was done:**
+Updated `docs/design.md` TUI Integration example to show view switching to ExecutionView when SprintStarted event is received, aligning documentation with UC10 step 5 requirements.
+
+**Key files changed:**
+- `docs/design.md`: Added SprintStarted → ExecutionView logic in Update() example (lines 914-917)
+
+**Why it matters:**
+Documents expected TUI behavior for event sourcing architecture, serving as specification for future implementation fix in `internal/tui/app.go`.

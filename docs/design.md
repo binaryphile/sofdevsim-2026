@@ -911,6 +911,10 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
     switch m := msg.(type) {
     case eventMsg:
         a.projection.Apply(m.event)
+        // React to significant events
+        if m.event.EventType() == "SprintStarted" {
+            a.currentView = ExecutionView
+        }
         return a, nil
     // ... other message handling
     }
