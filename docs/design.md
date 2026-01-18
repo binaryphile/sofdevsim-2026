@@ -481,13 +481,14 @@ The API follows REST with hypermedia (HATEOAS). Each response includes `_links` 
 
 | Method | Path | Purpose | Links Returned |
 |--------|------|---------|----------------|
-| GET | `/` | Entry point | `simulations` |
+| GET | `/` | Entry point | `simulations`, `comparisons` |
 | GET | `/simulations` | List active simulations | `self`, per-simulation links |
 | POST | `/simulations` | Create simulation | `self`, `start-sprint` |
 | GET | `/simulations/{id}` | Get simulation state | `self`, `tick` or `start-sprint` |
 | POST | `/simulations/{id}/sprints` | Start sprint | `self`, `tick` |
 | POST | `/simulations/{id}/tick` | Advance one tick | `self`, `tick` or `start-sprint` |
 | POST | `/simulations/{id}/assignments` | Assign ticket to developer | `self`, `tick` |
+| POST | `/comparisons` | Run policy comparison | `self` |
 
 ### Example Response (HAL+JSON style)
 
@@ -535,6 +536,74 @@ POST /simulations/{id}/assignments
 - 400: Developer not found
 - 400: Developer is busy
 - 400: No idle developers (auto-assign only)
+
+### Comparison Request
+
+```json
+POST /comparisons
+
+{
+  "seed": 12345,
+  "sprints": 3
+}
+```
+
+**Fields:**
+- `seed`: Random seed for reproducibility (optional, defaults to current time)
+- `sprints`: Sprints per policy (optional, defaults to 3)
+
+**Success:** Returns comparison result with full DORA metrics for each policy.
+
+**Note:** Blocking, synchronous operation. Runs both policy simulations to completion before returning.
+
+**Errors:**
+- 400: Invalid sprints count
+- 500: Simulation error
+
+### Comparison Response
+
+```json
+{
+  "seed": 12345,
+  "sprints": 3,
+  "policyA": {
+    "name": "dora-strict",
+    "ticketsComplete": 15,
+    "incidentCount": 2,
+    "metrics": {
+      "leadTimeAvgDays": 4.2,
+      "deployFrequency": 1.8,
+      "mttrAvgDays": 0.5,
+      "changeFailRatePct": 13.3
+    }
+  },
+  "policyB": {
+    "name": "tameflow-cognitive",
+    "ticketsComplete": 12,
+    "incidentCount": 1,
+    "metrics": {
+      "leadTimeAvgDays": 5.1,
+      "deployFrequency": 1.4,
+      "mttrAvgDays": 0.3,
+      "changeFailRatePct": 8.3
+    }
+  },
+  "winners": {
+    "leadTime": "dora-strict",
+    "deployFrequency": "dora-strict",
+    "mttr": "tameflow-cognitive",
+    "changeFailRate": "tameflow-cognitive",
+    "overall": "tie"
+  },
+  "winsA": 2,
+  "winsB": 2,
+  "_links": {
+    "self": "/comparisons"
+  }
+}
+```
+
+**Note:** Response mirrors `metrics.ComparisonResult` struct. See `internal/metrics/comparison.go:8-26`.
 
 ### Architecture: Value Semantics (No Mutex)
 

@@ -13843,3 +13843,201 @@ Added UC12 (Compare Policies via API) to use-cases.md following Go Development G
 
 **Why it matters:**
 Completes documentation phase for API-based policy comparison. Next phases will add design doc and implementation per docs-first approach.
+
+---
+
+## Approved Plan: 2026-01-18 - Phase 9 (API Comparison Design)
+
+# Plan: API Comparison Endpoint Design - Phase 9
+
+## Overview
+
+Add design documentation for `POST /comparisons` endpoint to `docs/design.md`, following Go Development Guide §15 (use cases → design doc → implementation).
+
+---
+
+## Verified Locations in design.md
+
+| Content | Line | Action |
+|---------|------|--------|
+| Entry point row | 484 | Update links column to include `comparisons` |
+| Last endpoint row | 490 | Add new row after for `POST /comparisons` |
+| Assignment Request section | 519 | Add Comparison section after similar pattern |
+
+---
+
+## Clarified Decisions (from Step 1b)
+
+| Question | Answer |
+|----------|--------|
+| Response detail? | **Full metrics** - all 4 DORA metrics per policy + winners |
+| History endpoint? | **No** - stateless, ephemeral comparisons |
+
+---
+
+## Draft Schemas
+
+### Request
+
+```json
+POST /comparisons
+
+{
+  "seed": 12345,
+  "sprints": 3
+}
+```
+
+### Response
+
+Based on `metrics.ComparisonResult` (comparison.go:8-26):
+
+```json
+{
+  "seed": 12345,
+  "sprints": 3,
+  "policyA": { "name": "dora-strict", "ticketsComplete": 15, "metrics": {...} },
+  "policyB": { "name": "tameflow-cognitive", "ticketsComplete": 12, "metrics": {...} },
+  "winners": { "leadTime": "dora-strict", "overall": "tie" },
+  "winsA": 2,
+  "winsB": 2,
+  "_links": { "self": "/comparisons" }
+}
+```
+
+---
+
+## Approved Contract: 2026-01-18
+
+# Phase 9 Contract
+
+**Created:** 2026-01-18
+
+## Step 1 Checklist
+- [x] 1a: Presented understanding (add comparison endpoint to design.md)
+- [x] 1b: Asked clarifying questions (response detail, history)
+- [x] 1b-answer: Full metrics, stateless (no history)
+- [x] 1c: Contract created (this file)
+- [x] 1d: Approval received
+- [x] 1e: Plan + contract archived
+
+## Objective
+
+Add design documentation for API comparison endpoint to `docs/design.md`, following Go Development Guide §15 (use cases → design doc → implementation).
+
+## Clarified Decisions
+
+| Question | Answer |
+|----------|--------|
+| Response detail? | **Full metrics** - all 4 DORA metrics per policy + winners |
+| History endpoint? | **No** - stateless, ephemeral comparisons |
+
+## Success Criteria
+
+- [ ] Entry point `/` updated to include `comparisons` link
+- [ ] Endpoints table updated with `POST /comparisons`
+- [ ] Comparison request schema documented
+- [ ] Comparison response schema documented (full metrics + winners)
+- [ ] Example response provided
+- [ ] References `metrics.ComparisonResult` struct
+
+## Deliverable
+
+Updated `docs/design.md` HTTP API section with:
+1. Updated entry point links
+2. `POST /comparisons` in endpoints table
+3. Comparison Request/Response schemas
+4. Example JSON response
+
+---
+
+## Archived: 2026-01-18
+
+# Phase 9 Contract
+
+**Created:** 2026-01-18
+
+## Step 1 Checklist
+- [x] 1a: Presented understanding (add comparison endpoint to design.md)
+- [x] 1b: Asked clarifying questions (response detail, history)
+- [x] 1b-answer: Full metrics, stateless (no history)
+- [x] 1c: Contract created (this file)
+- [x] 1d: Approval received
+- [x] 1e: Plan + contract archived
+
+## Objective
+
+Add design documentation for API comparison endpoint to `docs/design.md`, following Go Development Guide §15 (use cases → design doc → implementation).
+
+## Clarified Decisions
+
+| Question | Answer |
+|----------|--------|
+| Response detail? | **Full metrics** - all 4 DORA metrics per policy + winners |
+| History endpoint? | **No** - stateless, ephemeral comparisons |
+
+## Success Criteria
+
+- [x] Entry point `/` updated to include `comparisons` link (line 484)
+- [x] Endpoints table updated with `POST /comparisons` (line 491)
+- [x] Comparison request schema documented (lines 540-559)
+- [x] Comparison response schema documented (full metrics + winners) (lines 561-604)
+- [x] Example response provided (lines 563-601)
+- [x] References `metrics.ComparisonResult` struct (line 604)
+
+## Deliverable
+
+Updated `docs/design.md` HTTP API section with:
+1. Updated entry point links
+2. `POST /comparisons` in endpoints table
+3. Comparison Request/Response schemas
+4. Example JSON response
+
+## Actual Results
+
+**Completed:** 2026-01-18
+
+### Changes Made
+
+| Location | Change |
+|----------|--------|
+| Line 484 | Entry point links: `simulations` → `simulations`, `comparisons` |
+| Line 491 | New row: `POST /comparisons` with purpose and links |
+| Lines 540-606 | New sections: Comparison Request + Comparison Response |
+| Line 557 | Added "Note: Blocking, synchronous operation" per UC12 |
+
+### Self-Assessment
+
+Grade: **A+** (98/100)
+
+What went well:
+- All 6 success criteria met
+- Response schema includes full DORA metrics per policy + winners
+- References struct location for implementation traceability
+- Blocking/synchronous behavior documented (matches UC12)
+
+Deductions:
+- -2: Line references in contract may drift if file edited before commit
+
+## Step 4 Checklist
+
+- [x] 4a: Results presented to user
+- [x] 4b: Approval received
+
+## Approval
+
+✅ APPROVED BY USER - 2026-01-18
+Final: Added comparison endpoint design to docs/design.md (67 lines)
+
+---
+
+## Log: 2026-01-18 - Phase 9: API Comparison Endpoint Design
+
+**What was done:**
+Added design documentation for `POST /comparisons` endpoint to docs/design.md. This includes request/response schemas with full DORA metrics for each policy, per-metric winners, and overall winner determination.
+
+**Key files changed:**
+- `docs/design.md`: Entry point links updated, new endpoint row, Comparison Request/Response sections (67 lines added)
+
+**Why it matters:**
+Completes the design documentation phase for UC12 (Compare Policies via API), enabling implementation to proceed with clear API contract.
