@@ -13644,3 +13644,18 @@ Deductions:
 ✅ APPROVED BY USER - 2026-01-17
 
 Final results: Use case documentation restructured with clean Operator/Agent goal separation, UC11 added for sprint planning via API, Story 7 extended with planning workflow.
+
+---
+
+## Log: 2026-01-17 - Phase 7: Use Case Documentation
+
+**What was done:**
+Restructured Actor-Goal list to separate TUI-focused (Operator: 1-12) and API-focused (Agent: 13-16) goals. Added UC11 for sprint planning via API. Implemented `assign` link availability before sprint start.
+
+**Key files changed:**
+- docs/use-cases.md: Restructured goals, added UC11, merged Story 7+8
+- internal/api/hypermedia.go: `assign` link now appears when backlog has tickets (not just during sprint)
+- internal/api/hypermedia_test.go: Added test cases for pre-sprint assignment
+
+**Why it matters:**
+Enables proper sprint planning workflow via API - assign tickets to developers before committing to sprint start.
