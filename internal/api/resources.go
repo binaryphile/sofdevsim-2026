@@ -112,3 +112,18 @@ type MetricWinners struct {
 	ChangeFailRate  string `json:"changeFailRate"`
 	Overall         string `json:"overall"`
 }
+
+// LessonResponse is the JSON representation of a lesson.
+type LessonResponse struct {
+	ID      string   `json:"id"`
+	Title   string   `json:"title"`
+	Content string   `json:"content"`
+	Tips    []string `json:"tips,omitempty"`
+}
+
+// LessonsResponse is returned by GET /simulations/{id}/lessons.
+type LessonsResponse struct {
+	CurrentLesson LessonResponse    `json:"currentLesson"`
+	Progress      string            `json:"progress"`
+	Links         map[string]string `json:"_links"`
+}

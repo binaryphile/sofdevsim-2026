@@ -276,6 +276,70 @@ func TestAPI_Compare_DefaultSprints(t *testing.T) {
 	}
 }
 
+// TestAPI_GetLessons tests the GET /simulations/{id}/lessons endpoint.
+// Per Khorikov: Controller gets ONE integration test for happy path.
+func TestAPI_GetLessons(t *testing.T) {
+	registry := api.NewSimRegistry()
+	srv := httptest.NewServer(api.NewRouter(registry))
+	defer srv.Close()
+
+	// Create a simulation first
+	postJSON(t, srv.URL+"/simulations", map[string]any{"seed": 42})
+
+	// GET lessons for the simulation
+	resp, err := http.Get(srv.URL + "/simulations/sim-42/lessons")
+	if err != nil {
+		t.Fatalf("GET /simulations/sim-42/lessons failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	var result api.LessonsResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	// Verify response structure
+	if result.CurrentLesson.ID == "" {
+		t.Error("currentLesson.id is empty")
+	}
+	if result.CurrentLesson.Title == "" {
+		t.Error("currentLesson.title is empty")
+	}
+	if result.CurrentLesson.Content == "" {
+		t.Error("currentLesson.content is empty")
+	}
+	if result.Progress == "" {
+		t.Error("progress is empty")
+	}
+	if result.Links["self"] != "/simulations/sim-42/lessons" {
+		t.Errorf("links.self = %q, want /simulations/sim-42/lessons", result.Links["self"])
+	}
+	if result.Links["simulation"] != "/simulations/sim-42" {
+		t.Errorf("links.simulation = %q, want /simulations/sim-42", result.Links["simulation"])
+	}
+}
+
+// TestAPI_GetLessons_NotFound tests lessons endpoint with invalid simulation ID.
+func TestAPI_GetLessons_NotFound(t *testing.T) {
+	registry := api.NewSimRegistry()
+	srv := httptest.NewServer(api.NewRouter(registry))
+	defer srv.Close()
+
+	resp, err := http.Get(srv.URL + "/simulations/nonexistent/lessons")
+	if err != nil {
+		t.Fatalf("GET failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("status = %d, want %d", resp.StatusCode, http.StatusNotFound)
+	}
+}
+
 // TestAPI_ListSimulations tests the GET /simulations discovery endpoint.
 // Per UC10: "API client lists active simulations to discover available IDs"
 func TestAPI_ListSimulations(t *testing.T) {

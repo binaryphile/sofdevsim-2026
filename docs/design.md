@@ -279,6 +279,83 @@ graph LR
 | Done | Count of completed tickets |
 | Seed | RNG seed for reproducibility |
 
+### Lessons Panel
+
+Contextual teaching that adapts to current view and simulation state. Press 'h' to toggle.
+
+**Architecture:**
+```
+┌────────────────────────────────┬──────────────────┐
+│                                │ 💡 Lesson Title  │
+│   View Content (2/3 width)     │                  │
+│                                │ Content...       │
+│                                │                  │
+│                                │ • Tip 1          │
+│                                │ • Tip 2          │
+│                                │                  │
+│                                │ Progress: 3/8    │
+└────────────────────────────────┴──────────────────┘
+```
+
+**State (value semantics):**
+
+| Field | Type | Purpose |
+|-------|------|---------|
+| Visible | bool | Toggle with 'h' key |
+| SeenMap | map[LessonID]bool | Progress tracking (which lessons viewed) |
+| Current | LessonID | Currently displayed lesson |
+
+**Lesson Selection (pure function):**
+
+`lessons.Select(view, state, hasActiveSprint, hasComparisonResult) → Lesson`
+
+| View | Condition | Lesson |
+|------|-----------|--------|
+| (any) | First enable | Orientation (simulation intro) |
+| Planning | — | Understanding levels (±5%, ±20%, ±50%) |
+| Execution | Sprint active | Fever chart (buffer consumption) |
+| Execution | Sprint ended | Phase progress (ticket phases) |
+| Metrics | — | DORA metrics (4 metrics + direction) |
+| Comparison | Has results | Policy comparison (DORA vs TameFlow) |
+| Comparison | No results | Comparison intro (how to run) |
+
+**8 Teaching Concepts:**
+
+1. **Orientation** — Simulation intro, understanding→variance insight
+2. **Understanding** — Understanding levels and their variance bounds
+3. **Fever Chart** — Buffer consumption and traffic-light zones
+4. **Phase Progress** — 8-phase ticket workflow
+5. **DORA Metrics** — Four DevOps Research metrics
+6. **Policy Comparison** — DORA-Strict vs TameFlow-Cognitive
+7. **Variance Expected** — Per-ticket variance prediction
+8. **Variance Analysis** — Post-sprint actual vs estimated
+
+**API Endpoint:**
+
+`GET /simulations/{id}/lessons` returns current lesson for external UI consumers (UC10 compatible).
+
+```json
+{
+  "currentLesson": {
+    "id": "orientation",
+    "title": "Welcome to the Simulation",
+    "content": "...",
+    "tips": ["Tab switches views", "Space pauses/resumes"]
+  },
+  "progress": "0/8 concepts",
+  "_links": {
+    "self": "/simulations/sim-1/lessons",
+    "simulation": "/simulations/sim-1"
+  }
+}
+```
+
+**Package Structure:**
+
+- `internal/lessons/` — Shared types and Select() logic (avoids import cycle)
+- `internal/tui/lessons.go` — Re-exports + lessonsPanel() rendering
+- `internal/api/handlers.go` — HandleGetLessons endpoint
+
 ---
 
 ## Data Flow

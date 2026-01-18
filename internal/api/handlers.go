@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/binaryphile/sofdevsim-2026/internal/engine"
+	"github.com/binaryphile/sofdevsim-2026/internal/lessons"
 	"github.com/binaryphile/sofdevsim-2026/internal/metrics"
 	"github.com/binaryphile/sofdevsim-2026/internal/model"
 )
@@ -392,4 +393,43 @@ func buildWinners(c metrics.ComparisonResult) MetricWinners {
 		ChangeFailRate:  policyName(c.CFRWinner),
 		Overall:         overall,
 	}
+}
+
+// HandleGetLessons returns contextual lessons for a simulation.
+// Reuses shared lesson selection logic - API is stateless so always starts fresh.
+func (r *SimRegistry) HandleGetLessons(w http.ResponseWriter, req *http.Request) {
+	id := req.PathValue("id")
+	inst, ok := r.getInstance(id)
+	if !ok {
+		writeError(w, http.StatusNotFound, "simulation not found")
+		return
+	}
+
+	// Determine view context from simulation state
+	_, hasActiveSprint := inst.sim.CurrentSprintOption.Get()
+	var view lessons.ViewContext
+	if hasActiveSprint {
+		view = lessons.ViewExecution
+	} else if len(inst.sim.CompletedTickets) > 0 {
+		view = lessons.ViewMetrics
+	} else {
+		view = lessons.ViewPlanning
+	}
+
+	// API is stateless - always show orientation for fresh consumers
+	lesson := lessons.Select(view, lessons.State{}, hasActiveSprint, false)
+
+	writeJSON(w, http.StatusOK, LessonsResponse{
+		CurrentLesson: LessonResponse{
+			ID:      string(lesson.ID),
+			Title:   lesson.Title,
+			Content: lesson.Content,
+			Tips:    lesson.Tips,
+		},
+		Progress: "0/8 concepts",
+		Links: map[string]string{
+			"self":       "/simulations/" + id + "/lessons",
+			"simulation": "/simulations/" + id,
+		},
+	})
 }

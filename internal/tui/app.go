@@ -50,6 +50,9 @@ type App struct {
 	comparisonResult *metrics.ComparisonResult
 	comparisonSeed   int64
 
+	// Lessons panel
+	lessonState LessonState
+
 	// Dimensions
 	width, height int
 
@@ -361,6 +364,17 @@ func (a *App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		a.statusExpiry = time.Now().Add(3 * time.Second)
 		// Start listening for events from new subscription
 		return a, a.listenForEvents()
+
+	case "h":
+		// Toggle lessons panel
+		a.lessonState = a.lessonState.WithVisible(!a.lessonState.Visible)
+		if a.lessonState.Visible {
+			a.statusMessage = "Lessons enabled"
+		} else {
+			a.statusMessage = "Lessons hidden"
+		}
+		a.statusExpiry = time.Now().Add(2 * time.Second)
+		return a, nil
 	}
 
 	return a, nil
@@ -483,6 +497,18 @@ func (a *App) View() string {
 		content = a.comparisonView()
 	}
 
+	// Compose with lessons panel when visible
+	if a.lessonState.Visible {
+		_, hasActiveSprint := a.sim.CurrentSprintOption.Get()
+		lesson := SelectLesson(a.currentView, a.lessonState, hasActiveSprint, a.comparisonResult != nil)
+		a.lessonState = a.lessonState.WithSeen(lesson.ID)
+		lessonPanel := a.lessonsPanel(lesson)
+		content = lipgloss.JoinHorizontal(lipgloss.Top,
+			lipgloss.NewStyle().Width(a.width*2/3-2).Render(content),
+			lessonPanel,
+		)
+	}
+
 	// Add header and help
 	header := a.headerView()
 	help := a.helpView()
@@ -527,6 +553,7 @@ func (a *App) helpView() string {
 		{"+/-", "speed"},
 		{"c", "compare policies"},
 		{"e", "export"},
+		{"h", "lessons"},
 		{"^s", "save"},
 		{"^o", "load"},
 		{"q", "quit"},

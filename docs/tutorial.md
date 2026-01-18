@@ -309,4 +309,5 @@ You've learned:
 | s | Start sprint |
 | c | Run comparison |
 | e | Export data |
+| h | Toggle lessons |
 | q | Quit |
