@@ -21,8 +21,10 @@ func main() {
 		*seed = 0
 	}
 
-	// Start HTTP API server in goroutine
+	// Create shared registry for both API and TUI
 	registry := api.NewSimRegistry()
+
+	// Start HTTP API server in goroutine
 	router := api.NewRouter(registry)
 	go func() {
 		addr := fmt.Sprintf(":%d", *apiPort)
@@ -32,7 +34,8 @@ func main() {
 	}()
 
 	// Run TUI on main goroutine (Bubbletea requirement)
-	app := tui.NewAppWithSeed(*seed)
+	// Pass shared registry so TUI simulation is accessible via API
+	app := tui.NewAppWithRegistry(*seed, registry)
 	p := tea.NewProgram(app, tea.WithAltScreen())
 
 	if _, err := p.Run(); err != nil {

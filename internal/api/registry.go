@@ -5,6 +5,7 @@ import (
 	"math/rand"
 
 	"github.com/binaryphile/sofdevsim-2026/internal/engine"
+	"github.com/binaryphile/sofdevsim-2026/internal/events"
 	"github.com/binaryphile/sofdevsim-2026/internal/metrics"
 	"github.com/binaryphile/sofdevsim-2026/internal/model"
 )
@@ -13,13 +14,20 @@ import (
 // Uses pointer receiver because map is reference type.
 type SimRegistry struct {
 	instances map[string]SimInstance
+	store     events.Store // shared event store for all simulations
 }
 
-// NewSimRegistry creates an empty registry.
+// NewSimRegistry creates an empty registry with an in-memory event store.
 func NewSimRegistry() *SimRegistry {
 	return &SimRegistry{
 		instances: make(map[string]SimInstance),
+		store:     events.NewMemoryStore(),
 	}
+}
+
+// Store returns the shared event store for subscriptions.
+func (r *SimRegistry) Store() events.Store {
+	return r.store
 }
 
 // SimInstance owns a simulation.
@@ -33,7 +41,10 @@ type SimInstance struct {
 
 // CreateSimulation creates a new simulation with given seed and policy.
 func (r *SimRegistry) CreateSimulation(seed int64, policy model.SizingPolicy) string {
+	id := fmt.Sprintf("sim-%d", seed)
+
 	sim := model.NewSimulation(policy, seed)
+	sim.ID = id // Set ID for event sourcing
 
 	// Add default team (matching TUI pattern)
 	sim.AddDeveloper(model.NewDeveloper("dev-1", "Alice", 1.0))
@@ -48,14 +59,32 @@ func (r *SimRegistry) CreateSimulation(seed int64, policy model.SizingPolicy) st
 		sim.AddTicket(t)
 	}
 
-	id := fmt.Sprintf("sim-%d", seed)
+	eng := engine.NewEngineWithStore(sim, r.store)
+	eng.EmitCreated() // Emit after setup complete
+
 	r.instances[id] = SimInstance{
 		sim:     sim,
-		engine:  engine.NewEngine(sim),
+		engine:  eng,
 		tracker: metrics.NewTracker(),
 	}
 
 	return id
+}
+
+// RegisterSimulation registers an existing simulation with the shared event store.
+// Returns the engine configured to emit to the shared store.
+// Use this to share simulations between TUI and API.
+func (r *SimRegistry) RegisterSimulation(sim *model.Simulation, tracker *metrics.Tracker) *engine.Engine {
+	eng := engine.NewEngineWithStore(sim, r.store)
+	eng.EmitCreated()
+
+	r.instances[sim.ID] = SimInstance{
+		sim:     sim,
+		engine:  eng,
+		tracker: tracker,
+	}
+
+	return eng
 }
 
 // getInstance returns simulation instance using comma-ok pattern.

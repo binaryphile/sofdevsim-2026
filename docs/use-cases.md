@@ -129,6 +129,7 @@ None (self-contained simulation, no external services)
 | 10 | Pause/resume simulation | Indigo | No - control | - |
 | 11 | Export simulation data to CSV | Blue | Yes - have file for analysis | Researcher - validate hypotheses; Educator - teach with data |
 | 12 | Save/load simulation state | Blue | Yes - can resume later | Researcher - long experiments; All - pause/resume workflow |
+| 10 | Access shared simulation (TUI + API) | Blue | Yes - see same state from both | Developer - debug via API while TUI runs |
 
 **Primary Actor:** Automated Test Agent (Claude or script)
 
@@ -136,7 +137,7 @@ None (self-contained simulation, no external services)
 |---|------|-------|--------------|---------------------|
 | 9 | Test simulation behavior programmatically | Blue | Yes - verification complete | Developer - verify fixes without TUI |
 
-**Use Cases Written:** Goals 1-9, 11-12 (Blue level)
+**Use Cases Written:** Goals 1-10 (Blue level)
 
 ---
 
@@ -392,6 +393,42 @@ None (self-contained simulation, no external services)
 - 5a. *Sprint ends:* System clears sprint, tick link disappears, start-sprint link appears
 - 5b. *Ticket completes:* Event included in response
 - 7a. *Verification fails:* Agent reports test failure (external to system)
+
+---
+
+### UC10: Shared Simulation via Events
+
+**Primary Actor:** Simulation Operator / Automated Test Agent
+
+**Goal in Context:** Access and interact with the same simulation from both TUI and API, with changes visible to both in real-time.
+
+**Scope:** Software Development Simulation
+
+**Level:** User Goal (Blue)
+
+**Main Success Scenario:**
+
+1. Operator starts simulation in TUI
+2. API client connects and gets simulation state via GET
+3. API client advances tick via POST
+4. TUI receives event notification and updates display
+5. Operator views updated state in TUI
+6. Operator assigns ticket via TUI
+7. API client sees assignment reflected in next GET
+
+**Extensions:**
+
+- 2a. *No simulation exists:* API returns 404 or creates new simulation
+- 4a. *TUI disconnected:* Events queued; TUI catches up on reconnect
+- 6a. *Conflicting action:* Event ordering resolves conflict (last write wins within tick)
+
+**Technical Notes:**
+
+This use case requires event sourcing architecture:
+- Single event stream per simulation
+- TUI and API both subscribe to events
+- Each maintains projection of current state
+- Events are the source of truth
 
 ---
 

@@ -3,6 +3,8 @@ package tui
 import (
 	"testing"
 	"time"
+
+	"github.com/binaryphile/sofdevsim-2026/internal/api"
 )
 
 // TestNewAppWithSeed_Reproducibility verifies same seed produces identical initial state.
@@ -37,7 +39,7 @@ func TestNewAppWithSeed_ZeroUsesRandomSeed(t *testing.T) {
 // TestSprintEndsWhenDurationReached verifies sprint is cleared after end day.
 func TestSprintEndsWhenDurationReached(t *testing.T) {
 	app := NewAppWithSeed(42)
-	app.sim.StartSprint()
+	app.engine.StartSprint() // Use engine to emit events
 	app.paused = false                // Enable tick processing
 	app.currentView = ViewExecution   // Required for tick processing
 
@@ -59,5 +61,43 @@ func TestSprintEndsWhenDurationReached(t *testing.T) {
 	}
 	if !app.paused {
 		t.Error("Should be paused after sprint ends")
+	}
+}
+
+// TestNewAppWithRegistry_SubscribesToEvents verifies TUI subscribes to event store.
+func TestNewAppWithRegistry_SubscribesToEvents(t *testing.T) {
+	registry := api.NewSimRegistry()
+	app := NewAppWithRegistry(42, registry)
+
+	// TUI should have a subscription channel
+	if app.eventSub == nil {
+		t.Fatal("Expected eventSub channel to be set")
+	}
+
+	// TUI should be registered in the shared registry
+	// (accessible via API)
+	evts := registry.Store().Replay(app.sim.ID)
+	if len(evts) == 0 {
+		t.Error("Expected SimulationCreated event in shared store")
+	}
+}
+
+// TestTUI_ReceivesExternalEvents verifies TUI receives events from API actions.
+func TestTUI_ReceivesExternalEvents(t *testing.T) {
+	registry := api.NewSimRegistry()
+	app := NewAppWithRegistry(42, registry)
+
+	// Simulate API starting a sprint (external to TUI)
+	// This goes through the same engine, which emits to shared store
+	app.engine.StartSprint()
+
+	// TUI should receive the event via subscription
+	select {
+	case evt := <-app.eventSub:
+		if evt.EventType() != "SprintStarted" {
+			t.Errorf("Expected SprintStarted event, got %s", evt.EventType())
+		}
+	case <-time.After(100 * time.Millisecond):
+		t.Error("Timed out waiting for SprintStarted event")
 	}
 }

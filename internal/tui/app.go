@@ -6,7 +6,9 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/binaryphile/sofdevsim-2026/internal/api"
 	"github.com/binaryphile/sofdevsim-2026/internal/engine"
+	"github.com/binaryphile/sofdevsim-2026/internal/events"
 	"github.com/binaryphile/sofdevsim-2026/internal/export"
 	"github.com/binaryphile/sofdevsim-2026/internal/metrics"
 	"github.com/binaryphile/sofdevsim-2026/internal/model"
@@ -28,9 +30,12 @@ const (
 // App is the main bubbletea model
 type App struct {
 	// Simulation state
-	sim     *model.Simulation
-	engine  *engine.Engine
-	tracker *metrics.Tracker
+	sim      *model.Simulation
+	engine   *engine.Engine
+	tracker  *metrics.Tracker
+	store    events.Store       // event store for event sourcing
+	registry *api.SimRegistry   // optional shared registry
+	eventSub <-chan events.Event // subscription channel for live updates
 
 	// UI state
 	currentView View
@@ -38,8 +43,8 @@ type App struct {
 	speed       int // ticks per update
 	selected    int // selected item in lists
 
-	// Events log
-	events []model.Event
+	// Events log (model events for display)
+	modelEvents []model.Event
 
 	// Comparison mode
 	comparisonResult *metrics.ComparisonResult
@@ -59,13 +64,27 @@ type App struct {
 // tickMsg is sent on each simulation tick
 type tickMsg time.Time
 
+// eventMsg is sent when an event is received from the store subscription
+type eventMsg events.Event
+
 // NewAppWithSeed creates a new App with the specified random seed.
 // If seed is 0, uses current time for randomness.
+// Deprecated: Use NewAppWithRegistry for shared simulation access.
 func NewAppWithSeed(seed int64) *App {
+	return NewAppWithRegistry(seed, nil)
+}
+
+// NewAppWithRegistry creates a new App that shares simulations via the registry.
+// If registry is nil, creates a standalone app with its own event store.
+// If seed is 0, uses current time for randomness.
+func NewAppWithRegistry(seed int64, registry *api.SimRegistry) *App {
 	if seed == 0 {
 		seed = time.Now().UnixNano()
 	}
+
+	simID := fmt.Sprintf("sim-%d", seed)
 	sim := model.NewSimulation(model.PolicyDORAStrict, seed)
+	sim.ID = simID
 
 	// Add default team
 	sim.AddDeveloper(model.NewDeveloper("dev-1", "Alice", 1.0))
@@ -80,24 +99,58 @@ func NewAppWithSeed(seed int64) *App {
 		sim.AddTicket(t)
 	}
 
-	eng := engine.NewEngine(sim)
 	tracker := metrics.NewTracker()
+
+	var store events.Store
+	var eng *engine.Engine
+
+	if registry != nil {
+		// Use shared registry - simulation accessible by both TUI and API
+		store = registry.Store()
+		eng = registry.RegisterSimulation(sim, tracker)
+	} else {
+		// Standalone mode - own event store
+		store = events.NewMemoryStore()
+		eng = engine.NewEngineWithStore(sim, store)
+		eng.EmitCreated()
+	}
+
+	// Subscribe to event store for live updates
+	eventSub := store.Subscribe(simID)
 
 	return &App{
 		sim:          sim,
 		engine:       eng,
 		tracker:      tracker,
+		store:        store,
+		registry:     registry,
+		eventSub:     eventSub,
 		currentView:  ViewPlanning,
 		paused:       true,
 		speed:        1,
-		events:       make([]model.Event, 0),
+		modelEvents:  make([]model.Event, 0),
 		tickInterval: 500 * time.Millisecond,
 	}
 }
 
 // Init implements tea.Model
 func (a *App) Init() tea.Cmd {
-	return nil
+	// Start listening for events from the store subscription
+	return a.listenForEvents()
+}
+
+// listenForEvents returns a Cmd that waits for the next event from the subscription
+func (a *App) listenForEvents() tea.Cmd {
+	return func() tea.Msg {
+		if a.eventSub == nil {
+			return nil
+		}
+		evt, ok := <-a.eventSub
+		if !ok {
+			return nil // Channel closed
+		}
+		return eventMsg(evt)
+	}
 }
 
 // Update implements tea.Model
@@ -111,10 +164,29 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.height = msg.Height
 		return a, nil
 
+	case eventMsg:
+		// Received event from subscription - update display
+		// This enables live updates when API modifies the simulation
+		a.tracker.Update(a.sim)
+		// Show status for significant events
+		switch events.Event(msg).EventType() {
+		case "SprintStarted":
+			a.statusMessage = "Sprint started (external)"
+			a.statusExpiry = time.Now().Add(2 * time.Second)
+		case "TicketAssigned":
+			a.statusMessage = "Ticket assigned (external)"
+			a.statusExpiry = time.Now().Add(2 * time.Second)
+		case "Ticked":
+			a.statusMessage = fmt.Sprintf("Tick %d (external)", a.sim.CurrentTick)
+			a.statusExpiry = time.Now().Add(1 * time.Second)
+		}
+		// Continue listening for more events
+		return a, a.listenForEvents()
+
 	case tickMsg:
 		if !a.paused && a.currentView == ViewExecution {
-			events := a.engine.Tick()
-			a.events = append(a.events, events...)
+			tickEvents := a.engine.Tick()
+			a.modelEvents = append(a.modelEvents, tickEvents...)
 			a.tracker.Update(a.sim)
 
 			// End sprint when duration reached
@@ -165,7 +237,7 @@ func (a *App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "s":
 		// Start sprint (from planning view)
 		if _, ok := a.sim.CurrentSprintOption.Get(); a.currentView == ViewPlanning && !ok {
-			a.sim.StartSprint()
+			a.engine.StartSprint()
 			a.currentView = ViewExecution
 			a.paused = false
 			return a, a.tickCmd()
@@ -267,11 +339,26 @@ func (a *App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// Restore state
 		a.sim = sim
 		a.tracker = tracker
-		a.engine = engine.NewEngine(sim)
+		// Ensure simulation has ID for event sourcing
+		if sim.ID == "" {
+			sim.ID = fmt.Sprintf("sim-%d", sim.Seed)
+		}
+		// Re-register with shared registry if available, else use standalone store
+		if a.registry != nil {
+			a.store = a.registry.Store()
+			a.engine = a.registry.RegisterSimulation(sim, tracker)
+		} else {
+			a.store = events.NewMemoryStore()
+			a.engine = engine.NewEngineWithStore(sim, a.store)
+			a.engine.EmitCreated()
+		}
+		// Re-subscribe to new simulation's events
+		a.eventSub = a.store.Subscribe(sim.ID)
 		a.paused = true
 		a.statusMessage = fmt.Sprintf("Loaded %s (Day %d)", filepath.Base(latest.Path), sim.CurrentTick)
 		a.statusExpiry = time.Now().Add(3 * time.Second)
-		return a, nil
+		// Start listening for events from new subscription
+		return a, a.listenForEvents()
 	}
 
 	return a, nil

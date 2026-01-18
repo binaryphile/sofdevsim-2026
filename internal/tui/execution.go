@@ -131,13 +131,13 @@ func (a *App) eventsPanel() string {
 
 	// Show last 8 events
 	start := 0
-	if len(a.events) > 8 {
-		start = len(a.events) - 8
+	if len(a.modelEvents) > 8 {
+		start = len(a.modelEvents) - 8
 	}
 
 	var rows []string
-	for i := len(a.events) - 1; i >= start; i-- {
-		evt := a.events[i]
+	for i := len(a.modelEvents) - 1; i >= start; i-- {
+		evt := a.modelEvents[i]
 		row := fmt.Sprintf("Day %d: %s", evt.Day, evt.Message)
 		if len(row) > 40 {
 			row = row[:40] + "..."

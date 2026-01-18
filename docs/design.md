@@ -598,3 +598,264 @@ This pure function enables unit testing of link logic without HTTP.
 **Domain (unit test):** `LinksFor()` - test all state→link rules (sprint active = tick link, sprint ended = start-sprint link)
 
 **Controller (ONE integration test):** Full lifecycle test - create simulation, start sprint, tick until sprint ends, verify links change. HATEOAS link presence = correct behavior.
+
+---
+
+## Event Sourcing Architecture
+
+### Overview
+
+The simulation uses event sourcing to enable shared access between TUI and API. Instead of mutating state directly, the engine emits events. State is derived by replaying events through a projection.
+
+```
+Commands (Tick, Assign, Decompose)
+    │
+    ▼
+┌─────────────────────────────────────────┐
+│           Event Store                    │
+│  (append-only log per simulation)        │
+│                                          │
+│  sim-1: [Created, SprintStarted, Tick,  │
+│          Assigned, Tick, Completed...]   │
+└─────────────────────────────────────────┘
+    │
+    ├──→ TUI (subscribes, projects state)
+    └──→ API (subscribes, returns state)
+```
+
+### Why Event Sourcing?
+
+| Benefit | How It Helps |
+|---------|--------------|
+| **Shared state** | TUI and API see same simulation via same event stream |
+| **Audit trail** | Every action recorded; replay for debugging |
+| **Decoupling** | No `p.Send()` coupling between engine and TUI |
+| **Replay** | Recreate any historical state by replaying events |
+
+Per Martin Fowler: "CQRS is suited to complex domains" - simulation qualifies.
+
+### Event Types
+
+```go
+// Event is the base interface for all simulation events
+type Event interface {
+    SimulationID() string
+    Timestamp() time.Time
+    EventType() string
+}
+
+// Simulation lifecycle
+type SimulationCreated struct {
+    ID     string
+    Seed   int64
+    Policy model.SizingPolicy
+}
+
+// Sprint lifecycle
+type SprintStarted struct {
+    SprintNumber int
+    StartDay     int
+    DurationDays int
+    BufferDays   float64
+}
+
+type SprintEnded struct {
+    SprintNumber     int
+    EndDay           int
+    TicketsCompleted int
+}
+
+// Tick events
+type Ticked struct {
+    Day int
+}
+
+// Ticket events
+type TicketAssigned struct {
+    TicketID    string
+    DeveloperID string
+}
+
+type TicketPhaseChanged struct {
+    TicketID  string
+    FromPhase model.WorkflowPhase
+    ToPhase   model.WorkflowPhase
+}
+
+type TicketCompleted struct {
+    TicketID   string
+    ActualDays float64
+}
+
+type TicketDecomposed struct {
+    ParentID  string
+    ChildIDs  []string
+}
+
+// Incident events
+type IncidentCreated struct {
+    IncidentID string
+    TicketID   string
+    Severity   string
+}
+
+type IncidentResolved struct {
+    IncidentID string
+}
+```
+
+### EventStore Interface
+
+```go
+// EventStore provides append-only storage and subscription
+type EventStore interface {
+    // Append adds events to a simulation's stream
+    Append(simID string, events ...Event) error
+
+    // Replay returns all events for a simulation in order
+    Replay(simID string) ([]Event, error)
+
+    // Subscribe returns a channel that receives new events
+    Subscribe(simID string) <-chan Event
+
+    // Unsubscribe stops receiving events
+    Unsubscribe(simID string, ch <-chan Event)
+}
+```
+
+### Projection
+
+The projection rebuilds simulation state from events:
+
+```go
+// Projection applies events to build current state
+type Projection struct {
+    sim     *model.Simulation
+    tracker *metrics.Tracker
+}
+
+// Apply processes a single event, updating internal state
+func (p *Projection) Apply(event Event) {
+    switch e := event.(type) {
+    case *SimulationCreated:
+        p.sim = model.NewSimulation(e.Seed, e.Policy)
+    case *SprintStarted:
+        p.sim.CurrentSprint = &model.Sprint{
+            Number:       e.SprintNumber,
+            StartDay:     e.StartDay,
+            DurationDays: e.DurationDays,
+            BufferDays:   e.BufferDays,
+        }
+    case *Ticked:
+        p.sim.CurrentTick = e.Day
+    case *TicketAssigned:
+        // Update ticket and developer state
+    case *TicketCompleted:
+        // Move ticket, update metrics
+    // ... other event types
+    }
+}
+
+// State returns the current projected state
+func (p *Projection) State() *model.Simulation {
+    return p.sim
+}
+```
+
+### Data Flow with Event Sourcing
+
+```mermaid
+flowchart TD
+    subgraph Commands
+        A[TUI: Press space] --> B[Tick Command]
+        C[API: POST /tick] --> B
+        D[TUI: Press 'a'] --> E[Assign Command]
+    end
+
+    subgraph Engine
+        B --> F[Engine.Tick]
+        E --> G[Engine.Assign]
+        F --> H[Generate Events]
+        G --> H
+    end
+
+    subgraph EventStore
+        H --> I[Append Events]
+        I --> J[(Event Log)]
+    end
+
+    subgraph Subscribers
+        J --> K[TUI Subscription]
+        J --> L[API Subscription]
+        K --> M[TUI Projection]
+        L --> N[API Projection]
+        M --> O[Update Display]
+        N --> P[Return State]
+    end
+```
+
+### TUI Integration
+
+The TUI subscribes to events and uses `p.Send()` to inject them into Bubbletea's update loop:
+
+```go
+func (a *App) subscribeToEvents() {
+    ch := a.store.Subscribe(a.simID)
+    go func() {
+        for event := range ch {
+            a.program.Send(eventMsg{event})
+        }
+    }()
+}
+
+func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+    switch m := msg.(type) {
+    case eventMsg:
+        a.projection.Apply(m.event)
+        return a, nil
+    // ... other message handling
+    }
+}
+```
+
+### API Integration
+
+The API rebuilds state from events on each request:
+
+```go
+func (h *Handler) GetSimulation(w http.ResponseWriter, r *http.Request) {
+    events, _ := h.store.Replay(simID)
+    projection := NewProjection()
+    for _, e := range events {
+        projection.Apply(e)
+    }
+    state := projection.State()
+    // Return state as JSON with HATEOAS links
+}
+```
+
+### Package Structure
+
+```
+internal/
+├── events/
+│   ├── types.go      # Event type definitions
+│   ├── store.go      # EventStore interface + in-memory impl
+│   └── projection.go # State projection from events
+├── engine/
+│   └── engine.go     # Modified to emit events
+├── tui/
+│   └── app.go        # Subscribe and project
+└── api/
+    └── handlers.go   # Replay and project
+```
+
+### Migration Strategy
+
+1. Define event types (no breaking changes)
+2. Implement EventStore with in-memory storage
+3. Implement Projection
+4. Modify engine to emit events (alongside existing mutations)
+5. Wire TUI to subscribe
+6. Wire API to replay
+7. Remove direct state mutations (events become source of truth)

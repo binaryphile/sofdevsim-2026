@@ -10,9 +10,10 @@ var NoSprint option.Basic[Sprint]
 
 // Simulation holds the complete state of a simulation run
 type Simulation struct {
-	CurrentTick          int // 1 tick = 1 day
+	ID                   string // Unique identifier for event sourcing
+	CurrentTick          int    // 1 tick = 1 day
 	CurrentSprintOption  option.Basic[Sprint]
-	SprintNumber  int
+	SprintNumber         int
 
 	// Team
 	Developers []Developer

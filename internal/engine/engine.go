@@ -6,6 +6,7 @@ import (
 
 	"github.com/binaryphile/fluentfp/option"
 	"github.com/binaryphile/fluentfp/slice"
+	"github.com/binaryphile/sofdevsim-2026/internal/events"
 	"github.com/binaryphile/sofdevsim-2026/internal/model"
 )
 
@@ -13,24 +14,89 @@ import (
 type Engine struct {
 	sim      *model.Simulation
 	variance *VarianceModel
-	events   *EventGenerator
+	evtGen   *EventGenerator
 	policies *PolicyEngine
+	store    events.Store       // optional event store for event sourcing
+	trace    events.TraceContext // current trace context for event correlation
 }
 
-// NewEngine creates a simulation engine
+// NewEngine creates a simulation engine without event sourcing
 func NewEngine(sim *model.Simulation) *Engine {
 	return &Engine{
 		sim:      sim,
 		variance: NewVarianceModel(sim.Seed),
-		events:   NewEventGenerator(sim.Seed),
+		evtGen:   NewEventGenerator(sim.Seed),
 		policies: NewPolicyEngine(sim.Seed),
 	}
+}
+
+// NewEngineWithStore creates a simulation engine with event sourcing.
+// Call EmitCreated() after simulation setup is complete to emit SimulationCreated event.
+func NewEngineWithStore(sim *model.Simulation, store events.Store) *Engine {
+	return &Engine{
+		sim:      sim,
+		variance: NewVarianceModel(sim.Seed),
+		evtGen:   NewEventGenerator(sim.Seed),
+		policies: NewPolicyEngine(sim.Seed),
+		store:    store,
+	}
+}
+
+// EmitCreated emits SimulationCreated event. Call after simulation setup is complete.
+func (e *Engine) EmitCreated() {
+	e.emit(events.NewSimulationCreated(
+		e.sim.ID,
+		e.sim.CurrentTick,
+		events.SimConfig{
+			TeamSize:     len(e.sim.Developers),
+			SprintLength: e.sim.SprintLength,
+			Seed:         e.sim.Seed,
+		},
+	))
+}
+
+// SetTrace sets the current trace context for event correlation.
+// All events emitted will include this trace information.
+func (e *Engine) SetTrace(tc events.TraceContext) {
+	e.trace = tc
+}
+
+// ClearTrace clears the current trace context.
+func (e *Engine) ClearTrace() {
+	e.trace = events.TraceContext{}
+}
+
+// CurrentTrace returns the current trace context.
+func (e *Engine) CurrentTrace() events.TraceContext {
+	return e.trace
+}
+
+// emit sends an event to the store if configured, attaching trace context if set.
+func (e *Engine) emit(evt events.Event) {
+	if e.store == nil {
+		return
+	}
+
+	// Apply trace context if set
+	if !e.trace.IsEmpty() {
+		evt = e.applyTrace(evt)
+	}
+
+	e.store.Append(e.sim.ID, evt)
+}
+
+// applyTrace applies the current trace context to an event using the Event interface.
+func (e *Engine) applyTrace(evt events.Event) events.Event {
+	return events.ApplyTrace(evt, e.trace)
 }
 
 // Tick advances the simulation by one day
 func (e *Engine) Tick() []model.Event {
 	allEvents := make([]model.Event, 0)
 	e.sim.CurrentTick++
+
+	// Emit Ticked event
+	e.emit(events.NewTicked(e.sim.ID, e.sim.CurrentTick))
 
 	// 1. Developers work on assigned tickets
 	for i := range e.sim.Developers {
@@ -76,11 +142,11 @@ func (e *Engine) Tick() []model.Event {
 	}
 
 	// 2. Generate random events (bugs, scope creep)
-	randomEvents := e.events.GenerateRandomEvents(e.sim)
+	randomEvents := e.evtGen.GenerateRandomEvents(e.sim)
 	allEvents = append(allEvents, randomEvents...)
 
 	// 3. Check for incidents on recently deployed tickets
-	incidentEvents := e.events.CheckForIncidents(e.sim)
+	incidentEvents := e.evtGen.CheckForIncidents(e.sim)
 	allEvents = append(allEvents, incidentEvents...)
 
 	// 4. Update sprint buffer
@@ -100,7 +166,7 @@ func (e *Engine) Tick() []model.Event {
 
 // advancePhase moves a ticket to the next phase or completes it
 func (e *Engine) advancePhase(ticket model.Ticket, dev model.Developer) ([]model.Event, model.Ticket, model.Developer) {
-	events := make([]model.Event, 0)
+	modelEvents := make([]model.Event, 0)
 
 	oldPhase := ticket.Phase
 	ticket.Phase++
@@ -111,7 +177,10 @@ func (e *Engine) advancePhase(ticket model.Ticket, dev model.Developer) ([]model
 		ticket.CompletedTick = e.sim.CurrentTick
 		dev = dev.WithCompletedTicket(ticket.ActualDays)
 
-		events = append(events, model.NewEvent(
+		// Emit TicketCompleted event
+		e.emit(events.NewTicketCompleted(e.sim.ID, e.sim.CurrentTick, ticket.ID, dev.ID))
+
+		modelEvents = append(modelEvents, model.NewEvent(
 			model.EventTicketComplete,
 			fmt.Sprintf("%s completed (%.1f days actual vs %.1f estimated)", ticket.ID, ticket.ActualDays, ticket.EstimatedDays),
 			e.sim.CurrentTick,
@@ -120,14 +189,14 @@ func (e *Engine) advancePhase(ticket model.Ticket, dev model.Developer) ([]model
 		// Advancing to next phase
 		ticket.RemainingEffort = ticket.CalculatePhaseEffort(ticket.Phase)
 
-		events = append(events, model.NewEvent(
+		modelEvents = append(modelEvents, model.NewEvent(
 			model.EventPhaseAdvance,
 			fmt.Sprintf("%s: %s -> %s", ticket.ID, oldPhase, ticket.Phase),
 			e.sim.CurrentTick,
 		))
 	}
 
-	return events, ticket, dev
+	return modelEvents, ticket, dev
 }
 
 // updateBuffer consumes buffer when tickets are behind schedule
@@ -183,11 +252,19 @@ func (e *Engine) endSprint() []model.Event {
 	return events
 }
 
+// StartSprint begins a new sprint and emits SprintStarted event
+func (e *Engine) StartSprint() {
+	e.sim.StartSprint()
+
+	sprint, _ := e.sim.CurrentSprintOption.Get()
+	e.emit(events.NewSprintStarted(e.sim.ID, sprint.StartDay, sprint.Number))
+}
+
 // RunSprint executes a complete sprint
 func (e *Engine) RunSprint() []model.Event {
 	allEvents := make([]model.Event, 0)
 
-	e.sim.StartSprint()
+	e.StartSprint()
 
 	sprint, _ := e.sim.CurrentSprintOption.Get()
 	for e.sim.CurrentTick < sprint.EndDay {
@@ -232,6 +309,9 @@ func (e *Engine) AssignTicket(ticketID, devID string) error {
 
 	// Assign to developer
 	e.sim.Developers[devIdx] = dev.WithTicket(ticketID)
+
+	// Emit TicketAssigned event
+	e.emit(events.NewTicketAssigned(e.sim.ID, e.sim.CurrentTick, ticketID, devID))
 
 	// Add to sprint if there is one
 	if sprint, ok := e.sim.CurrentSprintOption.Get(); ok {

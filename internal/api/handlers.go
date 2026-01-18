@@ -114,7 +114,7 @@ func (r *SimRegistry) HandleStartSprint(w http.ResponseWriter, req *http.Request
 		return
 	}
 
-	inst.sim.StartSprint()
+	inst.engine.StartSprint()
 
 	state := ToState(*inst.sim)
 	response := HALResponse{
