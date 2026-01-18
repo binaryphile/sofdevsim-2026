@@ -14476,3 +14476,138 @@ Updated `docs/design.md` TUI Integration example to show view switching to Execu
 
 **Why it matters:**
 Documents expected TUI behavior for event sourcing architecture, serving as specification for future implementation fix in `internal/tui/app.go`.
+
+---
+
+## Approved Plan: 2026-01-18
+
+# Plan: Fix TUI View Switch on External SprintStarted
+
+## Context
+
+UC10 step 5: "TUI receives event notification and updates display (switches to Execution view on sprint start)"
+
+Bug discovered during tutorial walkthrough via API - TUI stayed in Planning view when sprint was started externally.
+
+## Proposed Fix
+
+Add view switch and unpause to SprintStarted case:
+```go
+case "SprintStarted":
+    a.statusMessage = "Sprint started (external)"
+    a.statusExpiry = time.Now().Add(2 * time.Second)
+    a.currentView = ViewExecution
+    a.paused = false
+```
+
+**Design decisions:**
+- `a.currentView = ViewExecution`: Idempotent - safe if already in ExecutionView
+- `a.paused = false`: User confirmed - if watching TUI, they want to see animation
+- Do NOT add `a.tickCmd()`: External controller drives ticks via API
+
+## Files to Modify
+
+| File | Line | Change |
+|------|------|--------|
+| `internal/tui/app.go` | 175-176 | Insert view switch and unpause |
+
+---
+
+## Approved Contract: 2026-01-18
+
+# Phase 12 Contract
+
+**Created:** 2026-01-18
+
+## Objective
+
+Fix TUI view switch on external SprintStarted event per UC10 step 5.
+
+## Success Criteria
+
+- [ ] `internal/tui/app.go` SprintStarted case switches to `ViewExecution`
+- [ ] `internal/tui/app.go` SprintStarted case sets `paused = false`
+- [ ] Manual verification: API start-sprint triggers TUI view switch
+
+## Scope
+
+**In scope:**
+- Add 2 lines to SprintStarted event handler
+
+**Out of scope:**
+- Other event types (TicketAssigned, etc.)
+- Unit tests (TUI is controller quadrant per Khorikov)
+# Phase 12 Contract
+
+**Created:** 2026-01-18
+
+## Step 1 Checklist
+- [x] 1a: Presented understanding
+- [x] 1b: Asked clarifying questions (unpause behavior confirmed)
+- [x] 1c: Contract created (this file)
+- [x] 1d: Approval received
+- [x] 1e: Plan + contract archived
+
+## Objective
+
+Fix TUI view switch on external SprintStarted event per UC10 step 5.
+
+## Success Criteria
+
+- [x] `internal/tui/app.go` SprintStarted case switches to `ViewExecution`
+- [x] `internal/tui/app.go` SprintStarted case sets `paused = false`
+- [x] Manual verification: API start-sprint triggers TUI view switch
+
+## Scope
+
+**In scope:**
+- Add 2 lines to SprintStarted event handler
+
+**Out of scope:**
+- Other event types (TicketAssigned, etc.)
+- Unit tests (TUI is controller quadrant per Khorikov)
+
+## Plan Reference
+
+Implementation details: `/home/ted/.claude/plans/humming-cuddling-wigderson.md`
+
+## Actual Results
+
+**Completed:** 2026-01-18
+
+### Change Made
+
+`internal/tui/app.go` lines 173-177:
+
+```go
+case "SprintStarted":
+    a.statusMessage = "Sprint started (external)"
+    a.statusExpiry = time.Now().Add(2 * time.Second)
+    a.currentView = ViewExecution
+    a.paused = false
+```
+
+### Verification
+- Build passes: `go build ./...` ✓
+- Manual verification: Pending user test
+
+## Step 4 Checklist
+- [x] 4a: Results presented to user
+- [x] 4b: Approval received (manual verification passed)
+
+## Approval
+APPROVED BY USER - 2026-01-18
+Manual verification: TUI switched to Execution view on API sprint start.
+
+---
+
+## Log: 2026-01-18 - Phase 12: TUI View Switch Fix
+
+**What was done:**
+Fixed TUI to switch to Execution view when SprintStarted event is received from API, implementing UC10 step 5 behavior.
+
+**Key files changed:**
+- `internal/tui/app.go`: Added view switch and unpause to SprintStarted case (lines 176-177)
+
+**Why it matters:**
+Enables operators to watch TUI while controlling simulation via API - the shared simulation use case now works correctly.

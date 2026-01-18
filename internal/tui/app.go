@@ -173,6 +173,8 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "SprintStarted":
 			a.statusMessage = "Sprint started (external)"
 			a.statusExpiry = time.Now().Add(2 * time.Second)
+			a.currentView = ViewExecution
+			a.paused = false
 		case "TicketAssigned":
 			a.statusMessage = "Ticket assigned (external)"
 			a.statusExpiry = time.Now().Add(2 * time.Second)
