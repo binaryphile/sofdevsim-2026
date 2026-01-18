@@ -142,8 +142,9 @@ None (self-contained simulation, no external services)
 | 14 | Test simulation behavior programmatically | Blue | Yes - verification complete | Developer - verify fixes without TUI |
 | 15 | Access shared simulation (TUI + API) | Blue | Yes - see same state from both | Developer - debug via API while TUI runs |
 | 16 | Plan sprint via API | Blue | Yes - sprint is ready to begin | Scrum Master - proper planning workflow |
+| 17 | Compare policies via API | Blue | Yes - know which policy wins | Developer - automated A/B testing |
 
-**Use Cases Written:** Goals 1-12, 14-16 (Blue level)
+**Use Cases Written:** Goals 1-12, 14-17 (Blue level)
 
 ---
 
@@ -202,6 +203,11 @@ None (self-contained simulation, no external services)
 
 - 5a. *Tie on metrics:* System shows "TIE" with suggestion to run more sprints
 - 6a. *Operator wants different seed:* Press 'c' again for new comparison with fresh seed
+
+**Technology & Data Variations:**
+
+- TUI: Press 'c' key to initiate comparison
+- API: See UC12 for automated comparison via API
 
 ---
 
@@ -527,6 +533,48 @@ This use case requires event sourcing architecture:
 
 - POST /simulations/{id}/assignments with `{"ticketId": "TKT-001", "developerId": "dev-1"}`
 - POST /simulations/{id}/sprints to start sprint
+
+---
+
+### UC12: Compare Policies via API
+
+**Primary Actor:** Automated Test Agent (Claude or script)
+
+**Goal in Context:** Run identical simulations under two policies to determine which produces better DORA metrics.
+
+**Scope:** Software Development Simulation
+
+**Level:** User Goal (Blue)
+
+**Preconditions:**
+
+- API server running
+
+**Postconditions (Guarantees):**
+
+- *Success:* Comparison complete, per-metric and overall winners identified
+- *Failure:* Error returned, no state change
+
+**Main Success Scenario:**
+
+1. Agent POSTs to `/comparisons` with seed and sprint count
+2. System creates two internal simulations (DORA-Strict, TameFlow-Cognitive)
+3. System runs N sprints on each with auto-assignment
+4. System computes DORA metrics for each
+5. System returns `ComparisonResult` with winners
+
+**Extensions:**
+
+- 1a. *Invalid sprint count:* System returns 400
+- 3a. *Simulation error:* System returns 500
+
+**Technology & Data Variations:**
+
+- Entry point `/` includes `comparisons` link for HATEOAS discovery
+- `POST /comparisons` with `{"seed": 12345, "sprints": 3}` (blocking, synchronous)
+- Response includes `ComparisonResult` per `metrics/comparison.go:8-26`
+
+**Note:** This is a top-level resource (`/comparisons`), not a sub-resource of `/simulations/{id}`, because comparison creates two new internal simulations rather than modifying an existing one.
 
 ---
 

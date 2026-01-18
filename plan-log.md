@@ -13659,3 +13659,187 @@ Restructured Actor-Goal list to separate TUI-focused (Operator: 1-12) and API-fo
 
 **Why it matters:**
 Enables proper sprint planning workflow via API - assign tickets to developers before committing to sprint start.
+
+---
+
+## Approved Plan: 2026-01-18 - Phase 8 (API Policy Comparison Use Cases)
+
+# Plan: API Policy Comparison - Phase 8 (Use Cases)
+
+## Overview
+
+Add use case documentation for API-based policy comparison, following Go Development Guide §15 (docs first).
+
+**Scope**: This plan covers Phase 8 (use cases) ONLY. Design doc and implementation are separate phases with their own contracts per Tandem Protocol single-phase scoping.
+
+---
+
+## Code Analysis
+
+### TUI Comparison Implementation
+
+**`internal/tui/app.go:368-394`** - `runComparison()`:
+- Creates two simulations with same seed, different policies
+- Runs 3 sprints each with auto-assign
+- Uses `metrics.Compare()` to determine winners
+
+**Key insight**: Comparison creates TWO NEW simulations with same seed, different policies. It does NOT modify an existing simulation.
+
+### Comparison Logic
+
+**`internal/metrics/comparison.go:41-95`** - `Compare()`:
+- Takes two `SimulationResult` structs and seed
+- Compares 4 DORA metrics (Lead Time, Deploy Freq, MTTR, CFR)
+- Returns `ComparisonResult` with per-metric winners and overall winner
+
+---
+
+## Clarified Decisions
+
+| Question | Answer |
+|----------|--------|
+| Blocking vs async? | **Blocking** - simpler, runs in milliseconds |
+| Entry point link? | **Yes** - `/` includes link to `/comparisons` |
+| UC12 placement? | **After UC11** - sequential, Agent use cases together |
+
+---
+
+## Use Case Updates
+
+1. Add Goal 17 under Automated Test Agent
+2. New UC12: Compare Policies via API (after UC11)
+3. UC2 cross-reference to UC12
+
+---
+
+## Approved Contract: 2026-01-18
+
+# Phase 8 Contract
+
+**Created:** 2026-01-18
+
+## Step 1 Checklist
+- [x] 1a: Presented understanding (gap analysis: TUI has comparison, API doesn't)
+- [x] 1b: Asked clarifying questions (blocking vs async, entry point, placement)
+- [x] 1b-answer: Received answers (blocking, yes entry point link, after UC11)
+- [x] 1c: Contract created
+- [x] 1d: Approval received
+- [x] 1e: Plan + contract archived
+
+## Objective
+
+Add use case documentation for API-based policy comparison (UC12), following Go Development Guide §15 (docs first).
+
+## Success Criteria
+
+- [ ] Goal 17 added to Agent actor-goal table
+- [ ] UC12 placed after UC11 (sequential, Agent use cases together)
+- [ ] UC12 follows Cockburn format with all sections
+- [ ] UC12 precondition is minimal (no unnecessary constraints)
+- [ ] UC12 references existing code (`metrics/comparison.go`)
+- [ ] UC12 Technology section documents entry point link
+- [ ] UC2 cross-references UC12 for API path
+- [ ] "Use Cases Written" line updated to include Goal 17
+- [ ] No duplicate goal numbers
+
+## Deliverable
+
+Updated `docs/use-cases.md` with:
+1. Goal 17 in Agent actor-goal table
+2. UC12: Compare Policies via API (after UC11)
+3. UC2 cross-reference to UC12
+
+---
+
+## Archived: 2026-01-18
+
+# Phase 8 Contract
+
+**Created:** 2026-01-18
+
+## Step 1 Checklist
+- [x] 1a: Presented understanding (gap analysis: TUI has comparison, API doesn't)
+- [x] 1b: Asked clarifying questions (blocking vs async, entry point, placement)
+- [x] 1b-answer: Received answers (blocking, yes entry point link, after UC11)
+- [x] 1c: Contract created (this file)
+- [x] 1d: Approval received
+- [x] 1e: Plan + contract archived
+
+## Objective
+
+Add use case documentation for API-based policy comparison (UC12), following Go Development Guide §15 (docs first).
+
+## Success Criteria
+
+- [x] Goal 17 added to Agent actor-goal table (line 145)
+- [x] UC12 placed after UC11 (lines 539-578)
+- [x] UC12 follows Cockburn format with all sections
+- [x] UC12 precondition is minimal ("API server running")
+- [x] UC12 references existing code (`metrics/comparison.go:8-26`)
+- [x] UC12 Technology section documents entry point link
+- [x] UC2 cross-references UC12 for API path (line 210)
+- [x] "Use Cases Written" line updated to include Goal 17 (line 147)
+- [x] No duplicate goal numbers (verified: 17 is unique)
+
+## Actual Results
+
+**Deliverable:** `docs/use-cases.md`
+**Completed:** 2026-01-18
+
+### Changes Made
+1. **Line 145:** Added Goal 17 to Agent actor-goal table
+2. **Line 147:** Updated "Use Cases Written" to "Goals 1-12, 14-17"
+3. **Lines 207-210:** Added Technology & Data Variations section to UC2 with API cross-reference
+4. **Lines 539-578:** Added UC12: Compare Policies via API
+
+### Self-Assessment
+Grade: A (95/100)
+
+What went well:
+- Followed Tandem Protocol properly (Step 0-1e before implementation)
+- Asked clarifying questions before finalizing plan
+- All success criteria met
+
+Deductions:
+- -5 points: Initial plan iterations took multiple rounds before proper structure
+
+## Step 4 Checklist
+- [x] 4a: Results presented to user
+- [x] 4b: Approval received
+
+## Approval
+APPROVED BY USER - 2026-01-18
+
+Final results: UC12 (Compare Policies via API) added to use-cases.md with Goal 17, cross-reference in UC2, and updated "Use Cases Written" line.
+
+## Deliverable
+
+Updated `docs/use-cases.md` with:
+1. Goal 17 in Agent actor-goal table
+2. UC12: Compare Policies via API (after UC11)
+3. UC2 cross-reference to UC12
+
+## Clarified Decisions
+
+| Question | Answer |
+|----------|--------|
+| Blocking vs async? | Blocking - simpler, runs in milliseconds |
+| Entry point link? | Yes - `/` includes link to `/comparisons` |
+| UC12 placement? | After UC11 - sequential, Agent use cases together |
+
+## Token Budget
+
+Estimated: 5-10K tokens (documentation update only)
+
+---
+
+## Log: 2026-01-18 - Phase 8: API Policy Comparison Use Cases
+
+**What was done:**
+Added UC12 (Compare Policies via API) to use-cases.md following Go Development Guide §15 (docs first). This enables LLM-based policy comparison experiments via API.
+
+**Key files changed:**
+- docs/use-cases.md: Added Goal 17, UC12, UC2 cross-reference, updated "Use Cases Written" line
+
+**Why it matters:**
+Completes documentation phase for API-based policy comparison. Next phases will add design doc and implementation per docs-first approach.
