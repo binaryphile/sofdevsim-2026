@@ -55,7 +55,7 @@ If your values differ, check that you launched with `--seed 42`.
 
 ## Section 2: Sprint Planning (5 min)
 
-### Navigate and Assign Tickets
+### Step 1: Assign Tickets (Before Starting Sprint)
 
 In the Planning view:
 
@@ -86,7 +86,7 @@ Return to **DORA-Strict** for this tutorial.
 
 ## Section 3: Running a Sprint (10 min)
 
-### Start the Sprint
+### Step 2: Start the Sprint
 
 Press **s** to start the sprint. The view switches to **Execution**.
 

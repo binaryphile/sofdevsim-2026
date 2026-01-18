@@ -133,11 +133,41 @@ go run cmd/sofdevsim/main.go
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--seed` | 0 | Random seed for reproducibility (0 = use current time) |
+| `--api-port` | 8080 | HTTP API port |
 
 **Example:** Run with fixed seed for reproducible results:
 ```bash
 go run cmd/sofdevsim/main.go --seed 42
 ```
+
+## HTTP API
+
+The TUI and HTTP API share the same simulation state. Control the TUI's simulation programmatically via REST:
+
+```bash
+# List simulations (find the TUI's simulation ID)
+curl http://localhost:8080/simulations
+
+# Assign a ticket
+curl -X POST http://localhost:8080/simulations/{id}/assignments \
+  -H "Content-Type: application/json" \
+  -d '{"ticketId": "TKT-001"}'
+
+# Start sprint
+curl -X POST http://localhost:8080/simulations/{id}/sprints
+
+# Advance one tick
+curl -X POST http://localhost:8080/simulations/{id}/tick
+
+# Run policy comparison
+curl -X POST http://localhost:8080/comparisons \
+  -H "Content-Type: application/json" \
+  -d '{"seed": 42, "sprints": 3}'
+```
+
+The API follows HATEOAS - responses include `_links` showing available actions based on current state.
+
+See [docs/design.md](docs/design.md) for full API documentation.
 
 ## Tutorial
 
