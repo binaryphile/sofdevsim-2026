@@ -32,7 +32,7 @@ type App struct {
 	// Simulation state
 	sim      *model.Simulation
 	engine   *engine.Engine
-	tracker  *metrics.Tracker
+	tracker  metrics.Tracker
 	store    events.Store       // event store for event sourcing
 	registry *api.SimRegistry   // optional shared registry
 	eventSub <-chan events.Event // subscription channel for live updates
@@ -167,7 +167,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case eventMsg:
 		// Received event from subscription - update display
 		// This enables live updates when API modifies the simulation
-		a.tracker.Update(a.sim)
+		a.tracker = a.tracker.Updated(a.sim)
 		// Show status for significant events
 		switch events.Event(msg).EventType() {
 		case "SprintStarted":
@@ -187,7 +187,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if !a.paused && a.currentView == ViewExecution {
 			tickEvents := a.engine.Tick()
 			a.modelEvents = append(a.modelEvents, tickEvents...)
-			a.tracker.Update(a.sim)
+			a.tracker = a.tracker.Updated(a.sim)
 
 			// End sprint when duration reached
 			if sprint, ok := a.sim.CurrentSprintOption.Get(); ok && a.sim.CurrentTick >= sprint.EndDay {
@@ -381,8 +381,8 @@ func (a *App) runComparison() {
 
 	// Run 3 sprints each
 	for i := 0; i < 3; i++ {
-		a.runSprintWithAutoAssign(simA, engA, trackerA)
-		a.runSprintWithAutoAssign(simB, engB, trackerB)
+		trackerA = a.runSprintWithAutoAssign(simA, engA, trackerA)
+		trackerB = a.runSprintWithAutoAssign(simB, engB, trackerB)
 	}
 
 	// Get results and compare
@@ -414,7 +414,7 @@ func (a *App) createSimulation(policy model.SizingPolicy, seed int64) *model.Sim
 }
 
 // runSprintWithAutoAssign runs a sprint with automatic ticket assignment
-func (a *App) runSprintWithAutoAssign(sim *model.Simulation, eng *engine.Engine, tracker *metrics.Tracker) {
+func (a *App) runSprintWithAutoAssign(sim *model.Simulation, eng *engine.Engine, tracker metrics.Tracker) metrics.Tracker {
 	sim.StartSprint()
 
 	// Auto-assign tickets to idle developers at start
@@ -437,7 +437,7 @@ func (a *App) runSprintWithAutoAssign(sim *model.Simulation, eng *engine.Engine,
 	sprint, _ := sim.CurrentSprintOption.Get()
 	for sim.CurrentTick < sprint.EndDay {
 		eng.Tick()
-		tracker.Update(sim)
+		tracker = tracker.Updated(sim)
 
 		// Re-assign idle developers mid-sprint
 		for i := range sim.Developers {
@@ -454,6 +454,7 @@ func (a *App) runSprintWithAutoAssign(sim *model.Simulation, eng *engine.Engine,
 			}
 		}
 	}
+	return tracker
 }
 
 func (a *App) tickCmd() tea.Cmd {

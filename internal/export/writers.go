@@ -190,24 +190,11 @@ func (e *Exporter) writeMetrics(outputDir string) error {
 
 	totalIncidents := len(e.sim.ResolvedIncidents) + len(e.sim.OpenIncidents)
 
-	// Use tracker data if available, otherwise calculate from sim
-	var leadTimeAvg, deployFreq, mttrAvg, changeFailRate float64
-	if e.tracker != nil && e.tracker.DORA != nil {
-		leadTimeAvg = e.tracker.DORA.LeadTimeAvgDays()
-		deployFreq = e.tracker.DORA.DeployFrequency
-		mttrAvg = e.tracker.DORA.MTTRAvgDays()
-		changeFailRate = e.tracker.DORA.ChangeFailRatePct()
-	} else {
-		// Fallback: calculate from simulation state
-		var leadTimeSum float64
-		for _, t := range e.sim.CompletedTickets {
-			leadTimeSum += float64(t.CompletedTick - t.StartedTick)
-		}
-		if len(e.sim.CompletedTickets) > 0 {
-			leadTimeAvg = leadTimeSum / float64(len(e.sim.CompletedTickets))
-			changeFailRate = float64(totalIncidents) / float64(len(e.sim.CompletedTickets)) * 100
-		}
-	}
+	// Use tracker data directly - value semantics ensures DORA is always valid
+	leadTimeAvg := e.tracker.DORA.LeadTimeAvgDays()
+	deployFreq := e.tracker.DORA.DeployFrequency
+	mttrAvg := e.tracker.DORA.MTTRAvgDays()
+	changeFailRate := e.tracker.DORA.ChangeFailRatePct()
 
 	row := []string{
 		e.sim.SizingPolicy.String(),

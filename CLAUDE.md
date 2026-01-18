@@ -125,7 +125,7 @@ For optional values, prefer `option.Basic[T]` over `*T`:
 | `if ptr != nil` | Easy to forget, silent bugs | `.Get()` forces handling |
 | `*ptr` access | Panics if nil | `.OrZero()` or `.Or(default)` |
 
-**Use pointers for:** Mutation of aggregate roots, interface requirements.
+**Use pointers for:** `sync.Mutex` fields, interface requirements, external handles, or profiled hot paths >10MB.
 **Use options for:** "This value may not exist" semantics.
 
 ### must Package
@@ -437,10 +437,12 @@ The `With*` pattern makes mutation explicit at call sites. The trade-off is slig
 
 **When pointers still make sense:**
 
-- **Aggregate roots** - Container types that manage collections (e.g., `Simulation` holding `[]Ticket`) benefit from pointer semantics to avoid copying large slices.
+- **`sync.Mutex` fields** - Must not be copied.
 - **Interface satisfaction** - When an interface requires pointer receivers.
-- **Performance-critical hot paths** - Profiled bottlenecks where copying is measurably expensive.
-- **Dramatically simpler designs** - When value semantics would require awkward workarounds.
+- **External handles** - Database connections, network handles.
+- **Profiled hot paths >10MB** - Only after benchmarking proves copying is expensive.
+
+**Slices don't require pointers:** Slices are already reference types - copying a struct with a slice copies only the 24-byte header (pointer + len + cap), NOT the underlying array. Benchmarks show slice-of-values is 24x faster than slice-of-pointers due to heap allocation overhead.
 
 **Honest trade-offs:**
 

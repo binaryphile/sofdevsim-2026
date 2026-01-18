@@ -31,7 +31,7 @@ type SizingPolicy = model.SizingPolicy
 // SimulationResult captures final state of a simulation run
 type SimulationResult struct {
 	Policy          SizingPolicy
-	FinalMetrics    *DORAMetrics
+	FinalMetrics    DORAMetrics
 	TicketsComplete int
 	IncidentCount   int
 	AvgFeverStatus  float64
@@ -95,12 +95,12 @@ func Compare(resultA, resultB SimulationResult, seed int64) ComparisonResult {
 }
 
 // IsTie returns true if no clear winner
-func (c *ComparisonResult) IsTie() bool {
+func (c ComparisonResult) IsTie() bool {
 	return c.WinsA == c.WinsB
 }
 
 // WinMargin returns the difference in wins
-func (c *ComparisonResult) WinMargin() int {
+func (c ComparisonResult) WinMargin() int {
 	if c.WinsA > c.WinsB {
 		return c.WinsA - c.WinsB
 	}

@@ -7,28 +7,29 @@ import (
 
 // Tracker combines all metrics tracking
 type Tracker struct {
-	DORA  *DORAMetrics
-	Fever *FeverChart
+	DORA  DORAMetrics
+	Fever FeverChart
 }
 
 // NewTracker creates an initialized metrics tracker
-func NewTracker() *Tracker {
-	return &Tracker{
+func NewTracker() Tracker {
+	return Tracker{
 		DORA:  NewDORAMetrics(),
 		Fever: NewFeverChart(),
 	}
 }
 
-// Update recalculates all metrics from simulation state
-func (t *Tracker) Update(sim *model.Simulation) {
-	t.DORA.Update(sim)
+// Updated recalculates all metrics from simulation state and returns the updated value
+func (t Tracker) Updated(sim *model.Simulation) Tracker {
+	t.DORA = t.DORA.Updated(sim)
 	if sprint, ok := sim.CurrentSprintOption.Get(); ok {
-		t.Fever.Update(sprint)
+		t.Fever = t.Fever.Updated(sprint)
 	}
+	return t
 }
 
 // GetResult extracts a simulation result for comparison
-func (t *Tracker) GetResult(policy model.SizingPolicy, sim *model.Simulation) SimulationResult {
+func (t Tracker) GetResult(policy model.SizingPolicy, sim *model.Simulation) SimulationResult {
 	// Calculate average fever status from history
 	avgFever := 0.0
 	if len(t.Fever.History) > 0 {

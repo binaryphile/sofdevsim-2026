@@ -47,24 +47,25 @@ type DORASnapshot struct {
 }
 
 // NewDORAMetrics creates an initialized metrics tracker
-func NewDORAMetrics() *DORAMetrics {
-	return &DORAMetrics{
+func NewDORAMetrics() DORAMetrics {
+	return DORAMetrics{
 		LeadTimes: make([]time.Duration, 0),
 		MTTRs:     make([]time.Duration, 0),
 		History:   make([]DORASnapshot, 0),
 	}
 }
 
-// Update recalculates all DORA metrics from simulation state
-func (m *DORAMetrics) Update(sim *model.Simulation) {
-	m.updateLeadTime(sim)
-	m.updateDeployFrequency(sim)
-	m.updateMTTR(sim)
-	m.updateChangeFailRate(sim)
-	m.appendSnapshot(sim.CurrentTick)
+// Updated recalculates all DORA metrics from simulation state and returns the updated value
+func (m DORAMetrics) Updated(sim *model.Simulation) DORAMetrics {
+	m = m.updatedLeadTime(sim)
+	m = m.updatedDeployFrequency(sim)
+	m = m.updatedMTTR(sim)
+	m = m.updatedChangeFailRate(sim)
+	m = m.withSnapshot(sim.CurrentTick)
+	return m
 }
 
-func (m *DORAMetrics) updateLeadTime(sim *model.Simulation) {
+func (m DORAMetrics) updatedLeadTime(sim *model.Simulation) DORAMetrics {
 	m.LeadTimes = m.LeadTimes[:0]
 
 	for _, ticket := range sim.CompletedTickets {
@@ -81,7 +82,7 @@ func (m *DORAMetrics) updateLeadTime(sim *model.Simulation) {
 		m.LeadTimeAvg = 0
 		m.LeadTimeP50 = 0
 		m.LeadTimeP95 = 0
-		return
+		return m
 	}
 
 	// Sort for percentiles
@@ -96,9 +97,10 @@ func (m *DORAMetrics) updateLeadTime(sim *model.Simulation) {
 	// Calculate percentiles
 	m.LeadTimeP50 = percentile(sorted, 0.50)
 	m.LeadTimeP95 = percentile(sorted, 0.95)
+	return m
 }
 
-func (m *DORAMetrics) updateDeployFrequency(sim *model.Simulation) {
+func (m DORAMetrics) updatedDeployFrequency(sim *model.Simulation) DORAMetrics {
 	// Count deploys in last 7 days (using simulation ticks)
 	cutoff := sim.CurrentTick - 7
 	// completedAfterCutoff returns true if ticket was completed after the cutoff tick.
@@ -112,9 +114,10 @@ func (m *DORAMetrics) updateDeployFrequency(sim *model.Simulation) {
 		days := ternary.If[int](sim.CurrentTick < 7).Then(sim.CurrentTick).Else(7)
 		m.DeployFrequency = float64(m.DeploysLast7Days) / float64(days)
 	}
+	return m
 }
 
-func (m *DORAMetrics) updateMTTR(sim *model.Simulation) {
+func (m DORAMetrics) updatedMTTR(sim *model.Simulation) DORAMetrics {
 	m.MTTRs = m.MTTRs[:0]
 
 	for _, inc := range sim.ResolvedIncidents {
@@ -126,14 +129,15 @@ func (m *DORAMetrics) updateMTTR(sim *model.Simulation) {
 
 	if len(m.MTTRs) == 0 {
 		m.MTTRAvg = 0
-		return
+		return m
 	}
 
 	total := slice.Fold(m.MTTRs, time.Duration(0), sumDuration)
 	m.MTTRAvg = total / time.Duration(len(m.MTTRs))
+	return m
 }
 
-func (m *DORAMetrics) updateChangeFailRate(sim *model.Simulation) {
+func (m DORAMetrics) updatedChangeFailRate(sim *model.Simulation) DORAMetrics {
 	m.TotalDeploys = len(sim.CompletedTickets)
 	m.TotalIncidents = len(sim.OpenIncidents) + len(sim.ResolvedIncidents)
 
@@ -142,9 +146,10 @@ func (m *DORAMetrics) updateChangeFailRate(sim *model.Simulation) {
 	} else {
 		m.ChangeFailRate = 0
 	}
+	return m
 }
 
-func (m *DORAMetrics) appendSnapshot(day int) {
+func (m DORAMetrics) withSnapshot(day int) DORAMetrics {
 	m.History = append(m.History, DORASnapshot{
 		Day:             day,
 		LeadTimeAvg:     m.LeadTimeAvg.Hours() / 24,
@@ -152,20 +157,21 @@ func (m *DORAMetrics) appendSnapshot(day int) {
 		MTTR:            m.MTTRAvg.Hours() / 24,
 		ChangeFailRate:  m.ChangeFailRate * 100,
 	})
+	return m
 }
 
 // LeadTimeAvgDays returns lead time in days
-func (m *DORAMetrics) LeadTimeAvgDays() float64 {
+func (m DORAMetrics) LeadTimeAvgDays() float64 {
 	return m.LeadTimeAvg.Hours() / 24
 }
 
 // MTTRAvgDays returns MTTR in days
-func (m *DORAMetrics) MTTRAvgDays() float64 {
+func (m DORAMetrics) MTTRAvgDays() float64 {
 	return m.MTTRAvg.Hours() / 24
 }
 
 // ChangeFailRatePct returns CFR as percentage
-func (m *DORAMetrics) ChangeFailRatePct() float64 {
+func (m DORAMetrics) ChangeFailRatePct() float64 {
 	return m.ChangeFailRate * 100
 }
 

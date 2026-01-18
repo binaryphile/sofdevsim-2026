@@ -40,7 +40,7 @@ func TestCaptureAllCheckpoints(t *testing.T) {
 	app.sim.StartSprint()
 	for app.sim.CurrentTick < 5 {
 		app.engine.Tick()
-		app.tracker.Update(app.sim)
+		app.tracker = app.tracker.Updated(app.sim)
 	}
 	printState(app, "Day 5")
 	printFever(app)
@@ -53,7 +53,7 @@ func TestCaptureAllCheckpoints(t *testing.T) {
 
 	for app.sim.CurrentTick < 10 {
 		app.engine.Tick()
-		app.tracker.Update(app.sim)
+		app.tracker = app.tracker.Updated(app.sim)
 	}
 	printState(app, "Day 10")
 	printCompleted(app)
@@ -130,14 +130,10 @@ func printCompleted(app *App) {
 
 func printMetrics(app *App) {
 	result := app.tracker.GetResult(app.sim.SizingPolicy, app.sim)
-	if result.FinalMetrics != nil {
-		m := result.FinalMetrics
-		fmt.Println("\n  DORA Metrics:")
-		fmt.Printf("    Lead Time: %.2f days\n", m.LeadTimeAvg.Hours()/24)
-		fmt.Printf("    Deploy Freq: %.2f/day\n", m.DeployFrequency)
-		fmt.Printf("    MTTR: %.2f days\n", m.MTTRAvg.Hours()/24)
-		fmt.Printf("    Change Fail Rate: %.1f%%\n", m.ChangeFailRate*100)
-	} else {
-		fmt.Println("\n  DORA Metrics: (no data yet)")
-	}
+	m := result.FinalMetrics
+	fmt.Println("\n  DORA Metrics:")
+	fmt.Printf("    Lead Time: %.2f days\n", m.LeadTimeAvgDays())
+	fmt.Printf("    Deploy Freq: %.2f/day\n", m.DeployFrequency)
+	fmt.Printf("    MTTR: %.2f days\n", m.MTTRAvgDays())
+	fmt.Printf("    Change Fail Rate: %.1f%%\n", m.ChangeFailRatePct())
 }

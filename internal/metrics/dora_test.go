@@ -29,7 +29,7 @@ func TestDORAMetrics_Update(t *testing.T) {
 	}
 
 	dora := metrics.NewDORAMetrics()
-	dora.Update(sim)
+	dora = dora.Updated(sim)
 
 	// Lead time should be average of 2, 2, 4 = ~2.67 days
 	if dora.LeadTimeAvgDays() < 2.5 || dora.LeadTimeAvgDays() > 2.8 {
@@ -73,7 +73,7 @@ func TestDORAMetrics_LeadTime_UsesTicksNotWallClock(t *testing.T) {
 	}
 
 	dora := metrics.NewDORAMetrics()
-	dora.Update(sim)
+	dora = dora.Updated(sim)
 
 	// Lead time should be 10 days (based on ticks), not 0 (based on wall clock)
 	if dora.LeadTimeAvgDays() < 9.5 || dora.LeadTimeAvgDays() > 10.5 {
@@ -95,7 +95,7 @@ func TestDORAMetrics_LeadTime_IncludesTicketsStartingAtZero(t *testing.T) {
 	}
 
 	dora := metrics.NewDORAMetrics()
-	dora.Update(sim)
+	dora = dora.Updated(sim)
 
 	// Lead time should be 9 days, not 0 (ticket should not be excluded)
 	if dora.LeadTimeAvgDays() < 8.5 || dora.LeadTimeAvgDays() > 9.5 {
@@ -111,7 +111,7 @@ func TestDORAMetrics_History(t *testing.T) {
 	// Update multiple times
 	for tick := 1; tick <= 5; tick++ {
 		sim.CurrentTick = tick
-		dora.Update(sim)
+		dora = dora.Updated(sim)
 	}
 
 	if len(dora.History) != 5 {

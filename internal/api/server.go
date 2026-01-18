@@ -20,5 +20,8 @@ func NewRouter(registry *SimRegistry) *http.ServeMux {
 	mux.HandleFunc("POST /simulations/{id}/tick", registry.HandleTick)
 	mux.HandleFunc("POST /simulations/{id}/assignments", registry.HandleAssignTicket)
 
+	// Comparison endpoint
+	mux.HandleFunc("POST /comparisons", registry.HandleCompare)
+
 	return mux
 }

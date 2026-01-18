@@ -180,6 +180,102 @@ func postJSON(t *testing.T, url string, body any) halResponse {
 	return result
 }
 
+// TestAPI_Compare tests the POST /comparisons endpoint.
+// Per plan Step 6: happy path + edge cases.
+func TestAPI_Compare(t *testing.T) {
+	registry := api.NewSimRegistry()
+	srv := httptest.NewServer(api.NewRouter(registry))
+	defer srv.Close()
+
+	// POST /comparisons with seed for reproducibility
+	resp, err := http.Post(
+		srv.URL+"/comparisons",
+		"application/json",
+		bytes.NewReader([]byte(`{"seed": 42, "sprints": 2}`)),
+	)
+	if err != nil {
+		t.Fatalf("POST /comparisons failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("got status %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	var result api.CompareResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+
+	// Verify structure
+	if result.Seed != 42 {
+		t.Errorf("seed = %d, want 42", result.Seed)
+	}
+	if result.Sprints != 2 {
+		t.Errorf("sprints = %d, want 2", result.Sprints)
+	}
+	if result.PolicyA.Name == "" {
+		t.Error("policyA.name is empty")
+	}
+	if result.PolicyB.Name == "" {
+		t.Error("policyB.name is empty")
+	}
+	if result.WinsA+result.WinsB > 4 {
+		t.Errorf("total wins %d > 4 metrics", result.WinsA+result.WinsB)
+	}
+	if result.Links["self"] != "/comparisons" {
+		t.Errorf("links.self = %q, want /comparisons", result.Links["self"])
+	}
+}
+
+func TestAPI_Compare_InvalidSprints(t *testing.T) {
+	registry := api.NewSimRegistry()
+	srv := httptest.NewServer(api.NewRouter(registry))
+	defer srv.Close()
+
+	// Negative sprints returns 400 per design doc
+	resp, err := http.Post(
+		srv.URL+"/comparisons",
+		"application/json",
+		bytes.NewReader([]byte(`{"seed": 42, "sprints": -1}`)),
+	)
+	if err != nil {
+		t.Fatalf("POST /comparisons failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("got status %d, want %d", resp.StatusCode, http.StatusBadRequest)
+	}
+}
+
+func TestAPI_Compare_DefaultSprints(t *testing.T) {
+	registry := api.NewSimRegistry()
+	srv := httptest.NewServer(api.NewRouter(registry))
+	defer srv.Close()
+
+	// Zero sprints uses default (3)
+	resp, err := http.Post(
+		srv.URL+"/comparisons",
+		"application/json",
+		bytes.NewReader([]byte(`{"seed": 42, "sprints": 0}`)),
+	)
+	if err != nil {
+		t.Fatalf("POST /comparisons failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("got status %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	var result api.CompareResponse
+	json.NewDecoder(resp.Body).Decode(&result)
+	if result.Sprints != 3 {
+		t.Errorf("sprints = %d, want default 3", result.Sprints)
+	}
+}
+
 // TestAPI_ListSimulations tests the GET /simulations discovery endpoint.
 // Per UC10: "API client lists active simulations to discover available IDs"
 func TestAPI_ListSimulations(t *testing.T) {

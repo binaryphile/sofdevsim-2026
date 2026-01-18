@@ -69,3 +69,46 @@ func ToState(sim model.Simulation) SimulationState {
 		CompletedTicketCount: len(sim.CompletedTickets),
 	}
 }
+
+// CompareRequest is the input for POST /comparisons.
+type CompareRequest struct {
+	Seed    int64 `json:"seed"`
+	Sprints int   `json:"sprints"`
+}
+
+// CompareResponse is the HAL+JSON output for POST /comparisons.
+type CompareResponse struct {
+	Seed    int64             `json:"seed"`
+	Sprints int               `json:"sprints"`
+	PolicyA PolicyResult      `json:"policyA"`
+	PolicyB PolicyResult      `json:"policyB"`
+	Winners MetricWinners     `json:"winners"`
+	WinsA   int               `json:"winsA"`
+	WinsB   int               `json:"winsB"`
+	Links   map[string]string `json:"_links"`
+}
+
+// PolicyResult represents one policy's simulation results.
+type PolicyResult struct {
+	Name            string       `json:"name"`
+	TicketsComplete int          `json:"ticketsComplete"`
+	IncidentCount   int          `json:"incidentCount"`
+	Metrics         DORAResponse `json:"metrics"`
+}
+
+// DORAResponse is the JSON-friendly DORA metrics.
+type DORAResponse struct {
+	LeadTimeAvgDays   float64 `json:"leadTimeAvgDays"`
+	DeployFrequency   float64 `json:"deployFrequency"`
+	MTTRAvgDays       float64 `json:"mttrAvgDays"`
+	ChangeFailRatePct float64 `json:"changeFailRatePct"`
+}
+
+// MetricWinners shows which policy won each metric.
+type MetricWinners struct {
+	LeadTime        string `json:"leadTime"`
+	DeployFrequency string `json:"deployFrequency"`
+	MTTR            string `json:"mttr"`
+	ChangeFailRate  string `json:"changeFailRate"`
+	Overall         string `json:"overall"`
+}

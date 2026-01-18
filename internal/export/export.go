@@ -13,7 +13,7 @@ import (
 // Exporter handles CSV export of simulation data
 type Exporter struct {
 	sim        *model.Simulation
-	tracker    *metrics.Tracker
+	tracker    metrics.Tracker
 	comparison *metrics.ComparisonResult
 }
 
@@ -42,7 +42,7 @@ func (r ExportResult) Summary() string {
 }
 
 // New creates an exporter for the given simulation
-func New(sim *model.Simulation, tracker *metrics.Tracker, comparison *metrics.ComparisonResult) *Exporter {
+func New(sim *model.Simulation, tracker metrics.Tracker, comparison *metrics.ComparisonResult) *Exporter {
 	return &Exporter{
 		sim:        sim,
 		tracker:    tracker,

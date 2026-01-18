@@ -36,7 +36,7 @@ func (r *SimRegistry) Store() events.Store {
 type SimInstance struct {
 	sim     *model.Simulation
 	engine  *engine.Engine
-	tracker *metrics.Tracker
+	tracker metrics.Tracker
 }
 
 // CreateSimulation creates a new simulation with given seed and policy.
@@ -74,7 +74,7 @@ func (r *SimRegistry) CreateSimulation(seed int64, policy model.SizingPolicy) st
 // RegisterSimulation registers an existing simulation with the shared event store.
 // Returns the engine configured to emit to the shared store.
 // Use this to share simulations between TUI and API.
-func (r *SimRegistry) RegisterSimulation(sim *model.Simulation, tracker *metrics.Tracker) *engine.Engine {
+func (r *SimRegistry) RegisterSimulation(sim *model.Simulation, tracker metrics.Tracker) *engine.Engine {
 	eng := engine.NewEngineWithStore(sim, r.store)
 	eng.EmitCreated()
 

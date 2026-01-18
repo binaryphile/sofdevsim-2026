@@ -44,15 +44,15 @@ func init() {
 //
 //	path := persistence.GenerateSavePath("saves", "my-experiment")
 //	err := persistence.Save(path, "my-experiment", sim, tracker)
-func Save(path, name string, sim *model.Simulation, tracker *metrics.Tracker) error {
+func Save(path, name string, sim *model.Simulation, tracker metrics.Tracker) error {
 	saveFile := SaveFile{
 		Version:   CurrentVersion,
 		Timestamp: time.Now(),
 		Name:      name,
 		State: SimulationState{
 			Simulation: ToPersistable(sim),
-			DORA:       *tracker.DORA,
-			Fever:      *tracker.Fever,
+			DORA:       tracker.DORA,
+			Fever:      tracker.Fever,
 		},
 	}
 
@@ -90,21 +90,21 @@ func Save(path, name string, sim *model.Simulation, tracker *metrics.Tracker) er
 //	    log.Fatal(err)
 //	}
 //	// sim and tracker are fully restored
-func Load(path string) (*model.Simulation, *metrics.Tracker, error) {
+func Load(path string) (*model.Simulation, metrics.Tracker, error) {
 	saveFile, err := LoadRaw(path)
 	if err != nil {
-		return nil, nil, err
+		return nil, metrics.Tracker{}, err
 	}
 
 	// TODO: Handle version migrations here when needed
 	if saveFile.Version > CurrentVersion {
-		return nil, nil, fmt.Errorf("save file version %d is newer than supported version %d", saveFile.Version, CurrentVersion)
+		return nil, metrics.Tracker{}, fmt.Errorf("save file version %d is newer than supported version %d", saveFile.Version, CurrentVersion)
 	}
 
 	// Reconstruct tracker from saved metrics
-	tracker := &metrics.Tracker{
-		DORA:  &saveFile.State.DORA,
-		Fever: &saveFile.State.Fever,
+	tracker := metrics.Tracker{
+		DORA:  saveFile.State.DORA,
+		Fever: saveFile.State.Fever,
 	}
 
 	sim := FromPersistable(saveFile.State.Simulation)

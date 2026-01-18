@@ -114,7 +114,7 @@ func TestExporter_Export_HappyPath(t *testing.T) {
 	sim.CompletedTickets = append(sim.CompletedTickets, ticket)
 
 	tmpDir := t.TempDir()
-	exporter := export.New(sim, nil, nil)
+	exporter := export.New(sim, metrics.Tracker{}, nil)
 	result, err := exporter.ExportTo(tmpDir)
 	if err != nil {
 		t.Fatalf("Export failed: %v", err)
@@ -189,7 +189,7 @@ func TestExporter_Export_WithComparison(t *testing.T) {
 	}
 
 	tmpDir := t.TempDir()
-	exporter := export.New(sim, nil, comparison)
+	exporter := export.New(sim, metrics.Tracker{}, comparison)
 	result, err := exporter.ExportTo(tmpDir)
 	if err != nil {
 		t.Fatalf("Export failed: %v", err)

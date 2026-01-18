@@ -25,14 +25,14 @@ type FeverSnapshot struct {
 func (s FeverSnapshot) GetPercentUsed() float64 { return s.PercentUsed }
 
 // NewFeverChart creates an initialized fever chart
-func NewFeverChart() *FeverChart {
-	return &FeverChart{
+func NewFeverChart() FeverChart {
+	return FeverChart{
 		History: make([]FeverSnapshot, 0),
 	}
 }
 
-// Update recalculates fever chart from sprint state
-func (f *FeverChart) Update(sprint model.Sprint) {
+// Updated recalculates fever chart from sprint state and returns the updated value
+func (f FeverChart) Updated(sprint model.Sprint) FeverChart {
 	f.BufferTotal = sprint.BufferDays
 	f.BufferConsumed = sprint.BufferConsumed
 	f.BufferRemaining = f.BufferTotal - f.BufferConsumed
@@ -51,10 +51,11 @@ func (f *FeverChart) Update(sprint model.Sprint) {
 		PercentUsed: pctUsed,
 		Status:      f.Status,
 	})
+	return f
 }
 
 // PercentUsed returns buffer consumption as percentage
-func (f *FeverChart) PercentUsed() float64 {
+func (f FeverChart) PercentUsed() float64 {
 	if f.BufferTotal == 0 {
 		return 0
 	}
@@ -62,26 +63,26 @@ func (f *FeverChart) PercentUsed() float64 {
 }
 
 // PercentRemaining returns buffer remaining as percentage
-func (f *FeverChart) PercentRemaining() float64 {
+func (f FeverChart) PercentRemaining() float64 {
 	return 100 - f.PercentUsed()
 }
 
 // IsGreen returns true if buffer is healthy
-func (f *FeverChart) IsGreen() bool {
+func (f FeverChart) IsGreen() bool {
 	return f.Status == model.FeverGreen
 }
 
 // IsYellow returns true if buffer is concerning
-func (f *FeverChart) IsYellow() bool {
+func (f FeverChart) IsYellow() bool {
 	return f.Status == model.FeverYellow
 }
 
 // IsRed returns true if buffer is critical
-func (f *FeverChart) IsRed() bool {
+func (f FeverChart) IsRed() bool {
 	return f.Status == model.FeverRed
 }
 
 // HistoryValues returns buffer percentages for sparkline
-func (f *FeverChart) HistoryValues() []float64 {
+func (f FeverChart) HistoryValues() []float64 {
 	return slice.From(f.History).ToFloat64(FeverSnapshot.GetPercentUsed)
 }

@@ -14041,3 +14041,254 @@ Added design documentation for `POST /comparisons` endpoint to docs/design.md. T
 
 **Why it matters:**
 Completes the design documentation phase for UC12 (Compare Policies via API), enabling implementation to proceed with clear API contract.
+
+---
+
+## Approved Plan: 2026-01-18
+
+# Plan: Phase 10 - Implement POST /comparisons Endpoint
+
+## Overview
+
+Implement the `POST /comparisons` endpoint to run two simulations (DORA-strict vs TameFlow-cognitive) with the same seed and compare their DORA metrics.
+
+## Files to Modify
+
+| File | Change |
+|------|--------|
+| **API Endpoint (Steps 1-6)** | |
+| `internal/api/server.go` | Add route for `POST /comparisons` |
+| `internal/api/handlers.go` | Update entry point + `HandleCompare` + helpers |
+| `internal/api/resources.go` | Add comparison request/response structs |
+| `internal/api/api_test.go` | Add integration tests |
+| **Value Semantics Refactor (Step 7)** | |
+| `internal/metrics/dora.go` | `*DORAMetrics` → `DORAMetrics`, `Update` → `Updated` |
+| `internal/metrics/fever.go` | `*FeverChart` → `FeverChart`, `Update` → `Updated` |
+| `internal/metrics/tracker.go` | Value fields, `Update` → `Updated` returning `Tracker` |
+| `internal/metrics/comparison.go` | `FinalMetrics *DORAMetrics` → `FinalMetrics DORAMetrics` |
+| `internal/metrics/dora_test.go` | Update test patterns |
+| `internal/metrics/fever_test.go` | Update test patterns |
+| `internal/tui/app.go` | `tracker = tracker.Updated(sim)` pattern |
+| `internal/tui/checkpoint_capture_test.go` | Update test patterns |
+| `internal/api/handlers.go` | `inst.tracker = inst.tracker.Updated(...)` |
+| `internal/persistence/persistence.go` | Remove dereference |
+| `internal/persistence/persistence_test.go` | Update field access |
+| `internal/export/writers.go` | Remove nil checks |
+| **Guide Updates (Steps 8-9)** | |
+| `~/projects/urma-obsidian/guides/go-development-guide.md` | Fix pointer guidance + add misconception section |
+| `CLAUDE.md` | Sync pointer guidance from guide |
+
+---
+
+## Approved Contract: 2026-01-18
+
+# Phase 10 Contract
+
+**Created:** 2026-01-18
+
+## Objective
+
+Implement `POST /comparisons` endpoint with prerequisite value semantics refactor.
+
+## Success Criteria
+
+- [ ] All `*DORAMetrics` and `*FeverChart` pointers converted to values
+- [ ] `Update()` methods renamed to `Updated()` returning values
+- [ ] All callers use `tracker = tracker.Updated(sim)` pattern
+- [ ] `POST /comparisons` endpoint returns comparison of two policies
+- [ ] Go Development Guide corrected re: slice/pointer misconception
+- [ ] CLAUDE.md synced with guide updates
+- [ ] All tests pass
+- [ ] No nil checks needed for metrics types
+
+## Approach
+
+**Execution Order** (refactor first, then API):
+
+1. **Step 7: Value Semantics Refactor**
+2. **Steps 1-6: API Endpoint**
+3. **Steps 8-9: Guide Updates**
+
+## Commit Checkpoints
+
+| After | Commit Message |
+|-------|----------------|
+| Step 7 (refactor) | `refactor: value semantics for metrics package` |
+| Steps 1-6 (API) | `feat: POST /comparisons endpoint` |
+| Steps 8-9 (docs) | `docs: fix pointer guidance in go-development-guide` |
+
+---
+
+## Archived: 2026-01-18
+
+# Phase 10 Contract
+
+**Created:** 2026-01-18
+
+## Step 1 Checklist
+- [x] 1a: Presented understanding
+- [x] 1b: Asked clarifying questions (answered during plan development)
+- [x] 1c: Contract created (this file)
+- [x] 1d: Approval received
+- [x] 1e: Plan + contract archived
+
+## Objective
+
+Implement `POST /comparisons` endpoint with prerequisite value semantics refactor.
+
+## Success Criteria
+
+- [x] All `*DORAMetrics` and `*FeverChart` pointers converted to values
+- [x] `Update()` methods renamed to `Updated()` returning values
+- [x] All callers use `tracker = tracker.Updated(sim)` pattern
+- [x] `POST /comparisons` endpoint returns comparison of two policies
+- [x] Go Development Guide corrected re: slice/pointer misconception
+- [x] CLAUDE.md synced with guide updates
+- [x] All tests pass
+- [x] No nil checks needed for metrics types
+
+## Approach
+
+**Execution Order** (refactor first, then API):
+
+1. **Step 7: Value Semantics Refactor**
+   - `internal/metrics/dora.go`: `*DORAMetrics` -> `DORAMetrics`, `Update` -> `Updated`
+   - `internal/metrics/fever.go`: `*FeverChart` -> `FeverChart`, `Update` -> `Updated`
+   - `internal/metrics/tracker.go`: Value fields, `Update` -> `Updated` returning `Tracker`
+   - `internal/metrics/comparison.go`: `FinalMetrics *DORAMetrics` -> `FinalMetrics DORAMetrics`
+   - Update tests: `dora_test.go`, `fever_test.go`
+   - Update callers: `tui/app.go`, `tui/checkpoint_capture_test.go`
+   - Update persistence: `persistence.go`, `persistence_test.go`
+   - Update export: `writers.go` (remove nil checks)
+
+2. **Steps 1-6: API Endpoint**
+   - `resources.go`: Add `CompareRequest`, `CompareResponse`, `PolicyResult`, `DORAResponse`, `MetricWinners`
+   - `handlers.go`: Update entry point `_links`, add `HandleCompare`, helpers
+   - `server.go`: Add route `POST /comparisons`
+   - `api_test.go`: Integration tests (happy path + error cases)
+
+3. **Steps 8-9: Guide Updates**
+   - `~/projects/urma-obsidian/guides/go-development-guide.md:750`: Fix pointer criteria
+   - `~/projects/urma-obsidian/guides/go-development-guide.md:~760`: Add misconception section
+   - `CLAUDE.md:440`: Sync pointer guidance
+
+## Token Budget
+
+Estimated: 15-20K tokens (refactor touches many files but changes are mechanical)
+
+## Dependencies
+
+Verified: `api` package can import `engine`, `metrics`, `model` without circular dependency.
+
+## Verification Commands
+
+```bash
+# Before (baseline)
+go test ./...
+go test -cover ./...
+
+# After each sub-step
+go test ./...
+
+# Final
+go test -cover ./...
+```
+
+## Commit Checkpoints
+
+| After | Commit Message |
+|-------|----------------|
+| Step 7 (refactor) | `refactor: value semantics for metrics package` |
+| Steps 1-6 (API) | `feat: POST /comparisons endpoint` |
+| Steps 8-9 (docs) | `docs: fix pointer guidance in go-development-guide` |
+
+---
+
+## Actual Results
+
+**Completed:** 2026-01-18
+
+### Step 7: Value Semantics Refactor
+
+Files modified:
+- `internal/metrics/dora.go` - `*DORAMetrics` → `DORAMetrics`, `Update` → `Updated`
+- `internal/metrics/fever.go` - `*FeverChart` → `FeverChart`, `Update` → `Updated`
+- `internal/metrics/tracker.go` - Value fields, `NewTracker() Tracker`, `Updated() Tracker`
+- `internal/metrics/comparison.go` - `FinalMetrics DORAMetrics` (value, not pointer)
+- `internal/metrics/dora_test.go` - Updated to use `= dora.Updated(sim)` pattern
+- `internal/metrics/fever_test.go` - Updated to use `= fever.Updated(sprint)` pattern
+- `internal/persistence/persistence.go` - Removed dereferences, value signatures
+- `internal/api/registry.go` - `tracker metrics.Tracker` (value)
+- `internal/api/handlers.go` - `inst.tracker = inst.tracker.Updated(...)` pattern
+- `internal/export/export.go` - `tracker metrics.Tracker` (value)
+- `internal/export/writers.go` - Removed nil checks
+- `internal/export/export_test.go` - `metrics.Tracker{}` instead of `nil`
+- `internal/tui/app.go` - `tracker metrics.Tracker`, `= tracker.Updated(sim)` pattern
+- `internal/tui/checkpoint_capture_test.go` - Fixed `Update` → `Updated` + API fixes
+
+### Steps 1-6: POST /comparisons Endpoint
+
+Files modified:
+- `internal/api/resources.go` - Added `CompareRequest`, `CompareResponse`, `PolicyResult`, `DORAResponse`, `MetricWinners`
+- `internal/api/handlers.go` - Added imports, entry point `comparisons` link, `HandleCompare`, helpers (`runComparison`, `autoAssignForComparison`, `buildCompareResponse`, `buildPolicyResult`, `buildWinners`)
+- `internal/api/server.go` - Added route `POST /comparisons`
+- `internal/api/api_test.go` - Added `TestAPI_Compare`, `TestAPI_Compare_InvalidSprints`, `TestAPI_Compare_DefaultSprints`
+
+### Steps 8-9: Guide Updates
+
+Files modified:
+- `~/projects/urma-obsidian/guides/go-development-guide.md:785-810` - Fixed pointer criteria, added "Slices and Aggregate Roots" misconception section
+- `CLAUDE.md:128` - Updated pointer guidance
+- `CLAUDE.md:438-445` - Updated "When pointers still make sense" section, added slices note
+
+### Test Results
+
+All tests pass:
+```
+ok      internal/api          0.026s
+ok      internal/engine       (cached)
+ok      internal/events       (cached)
+ok      internal/export       0.003s
+ok      internal/metrics      0.002s
+ok      internal/model        (cached)
+ok      internal/persistence  (cached)
+ok      internal/tui          0.005s
+```
+
+### Self-Assessment
+
+Grade: A (95/100)
+
+**What went well:**
+- Clean refactor following `Updated()` pattern consistently
+- All callers updated correctly on first pass
+- API endpoint follows HAL+JSON pattern and uses existing infrastructure
+- Tests cover happy path + edge cases per Khorikov
+
+**Deductions:**
+- -5 points: Initially missed one `nil` to `metrics.Tracker{}` conversion in export_test.go
+
+## Step 4 Checklist
+- [x] 4a: Results presented to user
+- [x] 4b: Approval received
+
+## Approval
+✅ APPROVED BY USER - 2026-01-18
+Phase 10 complete: Value semantics refactor + POST /comparisons endpoint + guide updates.
+
+---
+
+## Log: 2026-01-18 - Phase 10: POST /comparisons + Value Semantics
+
+**What was done:**
+Implemented POST /comparisons endpoint that runs DORA-strict vs TameFlow-cognitive simulations and compares DORA metrics. Prerequisite: refactored metrics package from pointer to value semantics (`*DORAMetrics` → `DORAMetrics`, `Update()` → `Updated()` returning values).
+
+**Key files changed:**
+- `internal/metrics/*.go`: Value semantics refactor (14 files touched)
+- `internal/api/handlers.go`: HandleCompare + helpers
+- `internal/api/resources.go`: CompareRequest/Response types
+- `internal/api/server.go`: POST /comparisons route
+- `go-development-guide.md`, `CLAUDE.md`: Fixed pointer guidance
+
+**Why it matters:**
+Enables API clients to compare policy effectiveness programmatically. Value semantics eliminates nil-check bugs and enables FluentFP method expressions.
