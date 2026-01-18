@@ -482,6 +482,7 @@ The API follows REST with hypermedia (HATEOAS). Each response includes `_links` 
 | Method | Path | Purpose | Links Returned |
 |--------|------|---------|----------------|
 | GET | `/` | Entry point | `simulations` |
+| GET | `/simulations` | List active simulations | `self`, per-simulation links |
 | POST | `/simulations` | Create simulation | `self`, `start-sprint` |
 | GET | `/simulations/{id}` | Get simulation state | `self`, `tick` or `start-sprint` |
 | POST | `/simulations/{id}/sprints` | Start sprint | `self`, `tick` |
@@ -512,6 +513,7 @@ The API follows REST with hypermedia (HATEOAS). Each response includes `_links` 
 
 **Link transitions:**
 - Sprint ends → `tick` disappears, `start-sprint` appears
+- Backlog has tickets → `assign` appears (regardless of sprint state, for sprint planning)
 - Backlog empty → `assign` disappears (nothing to assign)
 
 ### Assignment Request

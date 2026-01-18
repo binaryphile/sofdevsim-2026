@@ -38,6 +38,42 @@ func (r *SimRegistry) HandleEntryPoint(w http.ResponseWriter, req *http.Request)
 	writeJSON(w, http.StatusOK, response)
 }
 
+// SimulationListItem is a simulation entry in the list response.
+type SimulationListItem struct {
+	ID    string            `json:"id"`
+	Links map[string]string `json:"_links"`
+}
+
+// SimulationListResponse is the response for GET /simulations.
+type SimulationListResponse struct {
+	Simulations []SimulationListItem `json:"simulations"`
+	Links       map[string]string    `json:"_links"`
+}
+
+// HandleListSimulations returns all active simulations with their IDs and links.
+// Per UC10: "API client lists active simulations to discover available IDs"
+func (r *SimRegistry) HandleListSimulations(w http.ResponseWriter, req *http.Request) {
+	summaries := r.ListSimulations()
+
+	items := make([]SimulationListItem, len(summaries))
+	for i, s := range summaries {
+		items[i] = SimulationListItem{
+			ID: s.ID,
+			Links: map[string]string{
+				"self": "/simulations/" + s.ID,
+			},
+		}
+	}
+
+	response := SimulationListResponse{
+		Simulations: items,
+		Links: map[string]string{
+			"self": "/simulations",
+		},
+	}
+	writeJSON(w, http.StatusOK, response)
+}
+
 // CreateSimulationRequest is the request body for creating a simulation.
 type CreateSimulationRequest struct {
 	Seed   int64  `json:"seed"`

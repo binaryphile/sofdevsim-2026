@@ -93,3 +93,21 @@ func (r *SimRegistry) getInstance(id string) (SimInstance, bool) {
 	inst, ok := r.instances[id]
 	return inst, ok
 }
+
+// ListSimulations returns all active simulation IDs and their states.
+func (r *SimRegistry) ListSimulations() []SimulationSummary {
+	result := make([]SimulationSummary, 0, len(r.instances))
+	for id, inst := range r.instances {
+		result = append(result, SimulationSummary{
+			ID:           id,
+			SprintActive: inst.sim.CurrentSprintOption.IsOk(),
+		})
+	}
+	return result
+}
+
+// SimulationSummary is a lightweight view of a simulation for listing.
+type SimulationSummary struct {
+	ID           string
+	SprintActive bool
+}

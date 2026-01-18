@@ -179,3 +179,92 @@ func postJSON(t *testing.T, url string, body any) halResponse {
 
 	return result
 }
+
+// TestAPI_ListSimulations tests the GET /simulations discovery endpoint.
+// Per UC10: "API client lists active simulations to discover available IDs"
+func TestAPI_ListSimulations(t *testing.T) {
+	tests := []struct {
+		name      string
+		setup     func(t *testing.T, srv *httptest.Server)
+		wantCount int
+		wantIDs   []string
+	}{
+		{
+			name:      "empty registry returns empty list",
+			setup:     func(t *testing.T, srv *httptest.Server) {},
+			wantCount: 0,
+			wantIDs:   []string{},
+		},
+		{
+			name: "one simulation returns one item",
+			setup: func(t *testing.T, srv *httptest.Server) {
+				postJSON(t, srv.URL+"/simulations", map[string]any{"seed": 42})
+			},
+			wantCount: 1,
+			wantIDs:   []string{"sim-42"},
+		},
+		{
+			name: "multiple simulations returns all",
+			setup: func(t *testing.T, srv *httptest.Server) {
+				postJSON(t, srv.URL+"/simulations", map[string]any{"seed": 42})
+				postJSON(t, srv.URL+"/simulations", map[string]any{"seed": 100})
+			},
+			wantCount: 2,
+			wantIDs:   []string{"sim-42", "sim-100"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			registry := api.NewSimRegistry()
+			srv := httptest.NewServer(api.NewRouter(registry))
+			defer srv.Close()
+
+			tt.setup(t, srv)
+
+			resp, err := http.Get(srv.URL + "/simulations")
+			if err != nil {
+				t.Fatalf("GET /simulations failed: %v", err)
+			}
+			defer resp.Body.Close()
+
+			if resp.StatusCode != http.StatusOK {
+				t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
+			}
+
+			var result struct {
+				Simulations []struct {
+					ID    string            `json:"id"`
+					Links map[string]string `json:"_links"`
+				} `json:"simulations"`
+				Links map[string]string `json:"_links"`
+			}
+			if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+				t.Fatalf("failed to decode response: %v", err)
+			}
+
+			if len(result.Simulations) != tt.wantCount {
+				t.Errorf("count = %d, want %d", len(result.Simulations), tt.wantCount)
+			}
+
+			gotIDs := make([]string, len(result.Simulations))
+			for i, sim := range result.Simulations {
+				gotIDs[i] = sim.ID
+			}
+
+			// Check all expected IDs are present (order may vary)
+			for _, wantID := range tt.wantIDs {
+				found := false
+				for _, gotID := range gotIDs {
+					if gotID == wantID {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Errorf("missing expected ID %q in %v", wantID, gotIDs)
+				}
+			}
+		})
+	}
+}
