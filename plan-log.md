@@ -14611,3 +14611,109 @@ Fixed TUI to switch to Execution view when SprintStarted event is received from 
 
 **Why it matters:**
 Enables operators to watch TUI while controlling simulation via API - the shared simulation use case now works correctly.
+
+---
+
+## Approved Plan: 2026-01-18
+
+# Plan: Use Case for Tutorial Teaching via UI
+
+## Key Insight
+
+Teaching should happen through **contextual hints during normal operation**, not a separate "tutorial mode". This preserves API compatibility (UC10) while adding pedagogy.
+
+## Design Decisions
+
+1. Dedicated "Lessons" panel (message windows)
+2. Toggle with 'h' key
+3. Content types: How (instructions) + What (concepts)
+
+## Deliverable
+
+Add UC13: Learn Simulation Concepts to docs/use-cases.md
+
+---
+
+## Approved Contract: 2026-01-18
+
+# Phase 13 Contract
+
+**Objective:** Add UC13: Learn Simulation Concepts (Tutorial) to use-cases.md
+
+**Success Criteria:**
+- UC13 added following existing format
+- All Cockburn Fully-Dressed elements present
+- Consistent with existing use case style
+# Phase 13 Contract
+
+**Created:** 2026-01-18
+
+## Step 1 Checklist
+- [x] 1a: Presented understanding
+- [x] 1b: Asked clarifying questions (panel type, visibility, content types)
+- [x] 1c: Contract created (this file)
+- [x] 1d: Approval received
+- [x] 1e: Plan + contract archived
+
+## Objective
+
+Add UC13: Learn Simulation Concepts (Tutorial) to use-cases.md.
+
+## Success Criteria
+
+- [x] UC13 added to `docs/use-cases.md` following existing format
+- [x] All Cockburn Fully-Dressed elements present
+- [x] Consistent with existing use case style
+
+## Scope
+
+**In scope:**
+- Add UC13 to docs/use-cases.md
+
+**Out of scope:**
+- Implementation (lessons panel, 'h' toggle, API endpoint)
+- Tutorial content authoring
+
+## Plan Reference
+
+Implementation details: `/home/ted/.claude/plans/humming-cuddling-wigderson.md`
+
+## Actual Results
+
+**Completed:** 2026-01-18
+
+### Change Made
+
+`docs/use-cases.md` lines 581-641 - Added UC13: Learn Simulation Concepts (Tutorial)
+
+**Cockburn elements included:**
+- Primary Actor, Goal, Scope, Level
+- Stakeholders and Interests (3)
+- Trigger
+- Preconditions (2)
+- Postconditions (Success/Failure)
+- Minimal Guarantees (3)
+- Main Success Scenario (8 steps)
+- Extensions (7)
+- Technology & Data Variations
+
+## Step 4 Checklist
+- [x] 4a: Results presented to user
+- [x] 4b: Approval received
+
+## Approval
+APPROVED BY USER - 2026-01-18
+Actor-Goal List also updated with Learner actor (goal 18).
+
+---
+
+## Log: 2026-01-18 - Phase 13: UC13 Tutorial Use Case
+
+**What was done:**
+Added UC13: Learn Simulation Concepts (Tutorial) to docs/use-cases.md with fully-dressed Cockburn format including Stakeholders, Trigger, and Minimal Guarantees.
+
+**Key files changed:**
+- `docs/use-cases.md`: Added UC13 (lines 581-641), updated Actor-Goal List with Learner actor (goal 18)
+
+**Why it matters:**
+Documents the pedagogical use case - teaching variance/DORA/policies through contextual lessons panel, preserving API compatibility for shared observation.

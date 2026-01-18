@@ -144,7 +144,13 @@ None (self-contained simulation, no external services)
 | 16 | Plan sprint via API | Blue | Yes - sprint is ready to begin | Scrum Master - proper planning workflow |
 | 17 | Compare policies via API | Blue | Yes - know which policy wins | Developer - automated A/B testing |
 
-**Use Cases Written:** Goals 1-12, 14-17 (Blue level)
+**Primary Actor:** Learner (new user)
+
+| # | Goal | Level | "Lunch Test" | Stakeholder Interest |
+|---|------|-------|--------------|---------------------|
+| 18 | Learn simulation concepts through guided interaction | Blue | Yes - understand variance/DORA/policies | Team Lead - informed decisions; Researcher - validate teaching |
+
+**Use Cases Written:** Goals 1-12, 14-18 (Blue level)
 
 ---
 
@@ -575,6 +581,68 @@ This use case requires event sourcing architecture:
 - Response includes `ComparisonResult` per `metrics/comparison.go:8-26`
 
 **Note:** This is a top-level resource (`/comparisons`), not a sub-resource of `/simulations/{id}`, because comparison creates two new internal simulations rather than modifying an existing one.
+
+---
+
+### UC13: Learn Simulation Concepts (Tutorial)
+
+**Primary Actor:** Learner (new user)
+
+**Goal in Context:** Understand variance model, DORA metrics, and policy tradeoffs through guided hands-on interaction.
+
+**Scope:** Software Development Simulation
+
+**Level:** User Goal (Blue)
+
+**Stakeholders and Interests:**
+
+- *Learner:* Wants to understand simulation concepts without reading documentation
+- *Team Lead:* Wants team members to understand variance/DORA before making process decisions
+- *Researcher:* Wants to validate that simulation teaches intended concepts
+
+**Trigger:** Learner presses 'h' to enable lessons panel
+
+**Preconditions:**
+
+- Simulation launched (TUI or API-created)
+- Learner can see TUI
+
+**Postconditions (Guarantees):**
+
+- *Success:* System has displayed contextual lessons for: understanding/variance relationship, all four DORA metrics, and policy comparison results
+- *Failure:* No simulation state corruption; lessons panel can be re-enabled; partial progress preserved
+
+**Minimal Guarantees (always hold):**
+
+- Simulation state is never corrupted by lessons panel
+- Lessons panel can always be toggled off
+- API operation is never blocked by lessons panel state
+
+**Main Success Scenario:**
+
+1. Learner enables lessons panel; system shows orientation message
+2. Learner views backlog; system explains understanding levels and variance ranges
+3. Learner assigns ticket; system shows expected variance for that ticket
+4. Learner starts sprint; system explains fever chart and buffer purpose
+5. Learner observes ticket progress; system highlights phase transitions and delays
+6. Sprint completes; system shows actual vs estimated with variance analysis
+7. Learner views DORA metrics; system explains each metric's meaning and direction
+8. Learner runs policy comparison; system explains why winner performed better
+
+**Extensions:**
+
+- 1a. *Lessons already enabled:* System shows current context-appropriate lesson
+- 3a. *API assigns ticket:* Lesson still appears; learner observes external operation
+- 5a. *Incident occurs:* System explains incident impact on variance and MTTR
+- 5b. *No incidents in sprint:* System notes "clean sprint" and explains Change Fail Rate
+- 6a. *Variance within bounds:* System confirms prediction accuracy for understanding level
+- 6b. *Variance exceeds bounds:* System explains contributing factors (incidents, phase delays)
+- 8a. *Tie on metrics:* System explains statistical noise and suggests more sprints
+
+**Technology & Data Variations:**
+
+- TUI: Dedicated "Lessons" panel toggled with 'h' key; shows contextual how/what content
+- API: Teaching content available via GET endpoint (for external UI building their own lessons panel)
 
 ---
 
