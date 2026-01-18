@@ -473,3 +473,82 @@ Add API endpoint for ticket assignment, following docs-first approach:
 ✅ APPROVED BY USER - 2026-01-17
 
 Final results: Assignment endpoint implemented with docs-first approach, Khorikov-compliant test structure, API tutorial demonstrates full workflow including ticket assignment.
+
+---
+## Archived: 2026-01-17 - Phase 7
+
+# Phase 7 Contract: Use Case Documentation Improvements
+
+**Created:** 2026-01-17
+
+## Step 1 Checklist
+- [x] 1a: Presented understanding
+- [x] 1b: Asked clarifying questions
+- [x] 1b-answer: Received answers (restructure goals, decide on stories/UC11)
+- [x] 1c: Contract created (this file)
+- [x] 1d: Approval received
+
+## Objective
+Fix use case documentation issues for pre-sprint ticket assignment via API, including restructuring API agent goals for coherence.
+
+## Success Criteria
+- [x] Goal numbering fixed (no duplicates)
+- [x] API agent goals restructured coherently under Automated Test Agent
+- [x] Goal 6 vs Goal 16 relationship clarified (Goal 6 = atomic action, Goal 16 = workflow)
+- [x] Stories consolidated (Story 8 deleted, Story 7 extended with sprint planning)
+- [x] UC11 written as standalone use case
+- [x] UC9 alternative scenario removed
+- [x] "Use Cases Written" line updated to "Goals 1-12, 14-16"
+
+## Actual Results
+
+**Deliverable:** `/home/ted/projects/sofdevsim-2026/docs/use-cases.md`
+**Completed:** 2026-01-17
+
+### Changes Made
+
+1. **Updated "Use Cases Written" line** - Now reads "Goals 1-12, 14-16 (Blue level)"
+
+2. **Removed UC9 Alternative Scenario** - Deleted extension 3a and 9-line Alternative Scenario
+
+3. **Inserted UC11: Plan Sprint via API** - Full Cockburn-style use case with:
+   - 8-step main scenario
+   - 4 extensions (updated per user feedback: all developers must have tickets at sprint start)
+   - Precondition: backlog size always exceeds developer count
+   - Postcondition: all developers have tickets assigned
+   - Technology & Data Variations
+
+4. **Deleted Story 8** - Sprint Planning via API story removed
+
+5. **Updated Story 7** - Extended to include sprint planning workflow
+
+6. **Restructured Agent Actor-Goal Table** - Now has 4 goals:
+   - Goal 13: Discover active simulations (upgraded Indigo→Blue)
+   - Goal 14: Test simulation behavior programmatically
+   - Goal 15: Access shared simulation (TUI + API)
+   - Goal 16: Plan sprint via API
+
+7. **Fixed Operator Actor-Goal Table** - Removed:
+   - Duplicate Goal 10 (Access shared simulation → moved to Agent as Goal 15)
+   - Goal 14 (Plan a sprint → moved to Agent as Goal 16)
+
+### Self-Assessment
+Grade: A- (93/100)
+
+What went well:
+- Clean separation of TUI-focused (Operator) vs API-focused (Agent) goals
+- UC11 follows Cockburn format consistently with other use cases
+- Story 7 now captures the complete collaborative workflow
+
+Deductions:
+- -4 points: Initially included extension 6a (sprint without assigned tickets) which user correctly identified as pointless
+- -3 points: Plan file iterations before execution took longer than necessary
+
+## Step 4 Checklist
+- [x] 4a: Results presented to user
+- [x] 4b: Approval received
+
+## Approval
+✅ APPROVED BY USER - 2026-01-17
+
+Final results: Use case documentation restructured with clean Operator/Agent goal separation, UC11 added for sprint planning via API, Story 7 extended with planning workflow.

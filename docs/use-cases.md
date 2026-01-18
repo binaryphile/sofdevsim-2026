@@ -109,6 +109,10 @@ None (self-contained simulation, no external services)
 
 > Claude, verifying a fix to sprint-end behavior, sends a POST to `/simulations` to create a new simulation with seed 42. Claude then POSTs to `/simulations/{id}/sprints` to start a sprint, followed by repeated POSTs to `/simulations/{id}/tick` until the sprint ends. After each tick, Claude GETs `/simulations/{id}` to inspect state. When the sprint ends, Claude verifies that the tick link disappears from the response—the HATEOAS contract proves the sprint ended correctly. Claude likes this API because each response includes links to available actions, so there's no need to hardcode URL patterns—just follow the hypermedia.
 
+### Story 7: The Collaborative Session
+
+> Ted starts the TUI to explore a new sizing policy. Meanwhile, Claude (in a terminal session) wants to help operate the simulation while Ted watches. Claude GETs `/simulations` to discover what simulations exist—the response lists Ted's active simulation with its ID. Claude then GETs that simulation's state to see current tick, backlog, and available actions. Before starting the sprint, Claude assigns tickets to developers—POSTing to `/simulations/{id}/assignments` three times for the high-priority items. Each response includes the `assign` link since backlog still has tickets. Ted watches assignments appear in his TUI. Only after planning is complete does Claude POST to start the sprint. Ted sees the sprint begin and work commence. Ted likes this because Claude can drive the simulation while Ted observes patterns and asks questions. Claude likes sprint planning via API because it mirrors real planning—assign work *before* committing to the sprint.
+
 ---
 
 ## Actor-Goal List
@@ -129,15 +133,17 @@ None (self-contained simulation, no external services)
 | 10 | Pause/resume simulation | Indigo | No - control | - |
 | 11 | Export simulation data to CSV | Blue | Yes - have file for analysis | Researcher - validate hypotheses; Educator - teach with data |
 | 12 | Save/load simulation state | Blue | Yes - can resume later | Researcher - long experiments; All - pause/resume workflow |
-| 10 | Access shared simulation (TUI + API) | Blue | Yes - see same state from both | Developer - debug via API while TUI runs |
 
 **Primary Actor:** Automated Test Agent (Claude or script)
 
 | # | Goal | Level | "Lunch Test" | Stakeholder Interest |
 |---|------|-------|--------------|---------------------|
-| 9 | Test simulation behavior programmatically | Blue | Yes - verification complete | Developer - verify fixes without TUI |
+| 13 | Discover active simulations | Blue | Yes - know what exists | Developer - connect to TUI simulation |
+| 14 | Test simulation behavior programmatically | Blue | Yes - verification complete | Developer - verify fixes without TUI |
+| 15 | Access shared simulation (TUI + API) | Blue | Yes - see same state from both | Developer - debug via API while TUI runs |
+| 16 | Plan sprint via API | Blue | Yes - sprint is ready to begin | Scrum Master - proper planning workflow |
 
-**Use Cases Written:** Goals 1-10 (Blue level)
+**Use Cases Written:** Goals 1-12, 14-16 (Blue level)
 
 ---
 
@@ -294,6 +300,7 @@ None (self-contained simulation, no external services)
 
 - Simulation exists with at least one ticket in backlog
 - At least one developer exists in the simulation
+- Sprint may or may not be active (assignment allowed in both states for sprint planning)
 
 **Postconditions (Guarantees):**
 
@@ -321,6 +328,7 @@ None (self-contained simulation, no external services)
 
 - TUI: Navigate backlog with j/k, press 'a' to auto-assign selected ticket
 - API: POST /simulations/{id}/assignments with ticketId and developerId
+- API: `assign` link available whenever backlog has tickets (not just during active sprint)
 
 ---
 
@@ -429,21 +437,42 @@ None (self-contained simulation, no external services)
 
 **Level:** User Goal (Blue)
 
+**Stakeholders and Interests:**
+
+- *Operator:* Wants to watch simulation while collaborator operates it
+- *Automated Agent:* Wants to discover and connect to existing simulation without asking for ID
+
+**Preconditions:**
+
+- API server running (started with TUI or standalone)
+
+**Postconditions (Guarantees):**
+
+- *Success:* Both TUI and API see consistent state; changes from either are visible to both
+- *Failure:* No state corruption; API returns error, TUI continues operating
+
 **Main Success Scenario:**
 
 1. Operator starts simulation in TUI
-2. API client connects and gets simulation state via GET
-3. API client advances tick via POST
-4. TUI receives event notification and updates display
-5. Operator views updated state in TUI
-6. Operator assigns ticket via TUI
-7. API client sees assignment reflected in next GET
+2. API client lists active simulations to discover available IDs
+3. API client selects simulation and gets current state
+4. API client advances tick via POST
+5. TUI receives event notification and updates display
+6. Operator views updated state in TUI
+7. Operator assigns ticket via TUI
+8. API client sees assignment reflected in next GET
 
 **Extensions:**
 
-- 2a. *No simulation exists:* API returns 404 or creates new simulation
-- 4a. *TUI disconnected:* Events queued; TUI catches up on reconnect
-- 6a. *Conflicting action:* Event ordering resolves conflict (last write wins within tick)
+- 2a. *No simulations exist:* API returns empty list; client creates new simulation via POST
+- 3a. *Simulation not found:* API returns 404; client refreshes list
+- 5a. *TUI disconnected:* Events queued; TUI catches up on reconnect
+- 7a. *Conflicting action:* Event ordering resolves conflict (last write wins within tick)
+
+**Technology & Data Variations:**
+
+- API: GET /simulations returns list of active simulation IDs
+- API: GET /simulations/{id} returns full state with HATEOAS links
 
 **Technical Notes:**
 
@@ -452,6 +481,52 @@ This use case requires event sourcing architecture:
 - TUI and API both subscribe to events
 - Each maintains projection of current state
 - Events are the source of truth
+
+---
+
+### UC11: Plan Sprint via API
+
+**Primary Actor:** Automated Test Agent (Claude or script)
+
+**Goal in Context:** Assign tickets to developers before starting a sprint, enabling proper sprint planning workflow via API.
+
+**Scope:** Software Development Simulation
+
+**Level:** User Goal (Blue)
+
+**Preconditions:**
+
+- Simulation exists with tickets in backlog (backlog size always exceeds developer count)
+- At least one developer exists
+- Sprint may or may not be active (assignment allowed in both states per UC6)
+
+**Postconditions (Guarantees):**
+
+- *Success:* All developers have tickets assigned, sprint started, work begins immediately
+- *Failure:* No state change, error reported to agent
+
+**Main Success Scenario:**
+
+1. Agent gets simulation state via GET
+2. System returns state with `assign` and `start-sprint` links (backlog has tickets)
+3. Agent assigns ticket to developer via POST to `assign` link
+4. System returns updated state; `assign` link remains while backlog has unassigned tickets
+5. Agent repeats steps 3-4 for each planned ticket
+6. Agent starts sprint via POST to `start-sprint` link
+7. System returns state with `tick` link; sprint is now active
+8. Assigned tickets begin processing
+
+**Extensions:**
+
+- 3a. *Developer busy:* System returns 400; agent selects different developer
+- 3b. *No idle developers:* All developers assigned; agent proceeds to step 6
+- 4a. *Backlog empty after assignments:* `assign` link disappears; agent proceeds to step 6
+- 6a. *Idle developers remain:* Agent continues assigning (step 3) until all developers have work
+
+**Technology & Data Variations:**
+
+- POST /simulations/{id}/assignments with `{"ticketId": "TKT-001", "developerId": "dev-1"}`
+- POST /simulations/{id}/sprints to start sprint
 
 ---
 
