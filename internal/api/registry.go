@@ -30,6 +30,12 @@ func (r SimRegistry) Store() events.Store {
 	return r.store
 }
 
+// IsZero returns true if the registry is uninitialized (zero value).
+// Implements option.ZeroChecker for use with option.IfNotZero.
+func (r SimRegistry) IsZero() bool {
+	return r.instances == nil
+}
+
 // SimInstance owns a simulation.
 // Note: Engine is stateful (holds *Simulation, seeded RNG).
 // Engine mutates simulation in place - this is existing design.

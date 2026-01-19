@@ -15137,3 +15137,813 @@ Converted pointer receivers to value receivers across engine and API packages. M
 
 **Why it matters:**
 Value semantics eliminate nil panics, make mutation explicit at call sites, and enable FluentFP method expressions. This is foundational for Phase 2 (Event Sourcing) where Projection will also use value semantics.
+
+---
+
+## Approved Plan: 2026-01-19 - Phase 2
+
+# Plan: Event Sourcing Completion + Value Semantics Refactoring
+
+## Objective
+
+Two related refactoring tasks:
+1. **Full Event Sourcing** - Make events THE source of truth (currently hybrid: emit + mutate)
+2. **Value Semantics** - Convert 3 pointer receiver types to value receivers
+
+---
+
+## Go Development Guide Compliance Grade: A (95/100)
+
+| Principle | Plan Compliance | Notes |
+|-----------|-----------------|-------|
+| §2 Functional first | ✓ A | Projection.Apply() is pure, returns new `next` value |
+| §3 Value semantics | ✓ A | Converting 3 types, Projection uses value receiver, no dual state |
+| §4 Imperative when better | ✓ A | Switch in Projection is clearer than functional dispatch |
+| §5 Two-phase testing | ✓ A | TDD workflow explicit; Khorikov lens before commit; no coverage target |
+| §6 Mocks | ✓ A | No internal mocks planned |
+| §7 Integration testing | ✓ A- | cmp.Diff, table-driven; existing httptest patterns |
+| §8 Benchmarks | ✓ A | Baseline comparison, relative targets, track in CLAUDE.md |
+| §10 Option types | ✓ A- | Uses `option.Basic[Sprint]` consistently |
+| §15 Documentation | ✓ A- | Plan exists; design.md update in Step 7 |
+| Pointer justifications | ✓ A | Correct reasons: mutex, interface, mutate receiver |
+
+**Remaining minor gaps (-5 points):**
+- FluentFP: Not used in Projection (acceptable - switch is clearer for event dispatch)
+- Option types: Could consider option.Basic for model.Simulation's optional fields
+
+---
+
+## Current State vs Target
+
+| Aspect | Current | Target |
+|--------|---------|--------|
+| Engine behavior | Emit events AND mutate *Simulation | Emit events ONLY |
+| API state access | Direct `inst.sim` read | `engine.Sim()` (Engine owns Projection) |
+| Source of truth | `*model.Simulation` | Event log + Projection |
+| VarianceModel | `*VarianceModel` pointer receiver | `VarianceModel` value receiver |
+| PolicyEngine | `*PolicyEngine` pointer receiver | `PolicyEngine` value receiver |
+| TicketGenerator | `*TicketGenerator` pointer receiver | `TicketGenerator` value receiver |
+
+---
+
+## Task 1: Value Semantics Conversion (Phase 1)
+
+**Do this first - low risk, independent of event sourcing.**
+
+### 1.1 VarianceModel
+
+**File:** `internal/engine/variance.go`
+
+```go
+// Before (line 16, 23)
+func NewVarianceModel(seed int64) *VarianceModel
+func (v *VarianceModel) Calculate(...) float64
+
+// After
+func NewVarianceModel(seed int64) VarianceModel
+func (v VarianceModel) Calculate(...) float64
+```
+
+**Justification:** Pure calculation, no mutation, no sync.Mutex.
+
+### 1.2 PolicyEngine
+
+**File:** `internal/engine/policies.go`
+
+```go
+// Before (lines 17, 22, 37)
+func NewPolicyEngine(seed int64) *PolicyEngine
+func (p *PolicyEngine) ShouldDecompose(...) bool
+func (p *PolicyEngine) Decompose(...) []model.Ticket
+
+// After
+func NewPolicyEngine(seed int64) PolicyEngine
+func (p PolicyEngine) ShouldDecompose(...) bool
+func (p PolicyEngine) Decompose(...) []model.Ticket
+```
+
+**Justification:** Pure decision logic, no mutation.
+
+### 1.3 TicketGenerator
+
+**File:** `internal/engine/generator.go`
+
+```go
+// Before (line 55)
+func (g *TicketGenerator) Generate(rng *rand.Rand, count int) []model.Ticket
+
+// After
+func (g TicketGenerator) Generate(rng *rand.Rand, count int) []model.Ticket
+```
+
+**Justification:** Pure generation, no mutation.
+
+### 1.4 Update Engine Field Types
+
+**File:** `internal/engine/engine.go`
+
+```go
+// Before (lines 14-21)
+type Engine struct {
+    sim      *model.Simulation
+    variance *VarianceModel
+    evtGen   *EventGenerator
+    policies *PolicyEngine
+    // ...
+}
+
+// After
+type Engine struct {
+    sim      *model.Simulation  // REMOVED in Task 2 - replaced by proj
+    variance VarianceModel      // Value type
+    evtGen   *EventGenerator    // Keep pointer - has *rand.Rand (stateful)
+    policies PolicyEngine       // Value type
+    // ...
+}
+```
+
+---
+
+## Task 2: Full Event Sourcing (Phase 2)
+
+### 2.1 Create Projection Type
+
+**New file:** `internal/events/projection.go` (~200 lines)
+
+```go
+package events
+
+import "github.com/binaryphile/sofdevsim-2026/internal/model"
+
+// Projection rebuilds Simulation state from events.
+// Value receiver: immutable, returns new Projection with updated state.
+type Projection struct {
+    sim     model.Simulation  // Value, not pointer
+    version int               // Event count
+}
+
+// NewProjection creates an empty projection.
+func NewProjection() Projection {
+    return Projection{version: 0}
+}
+
+// Apply processes a single event, returning new Projection.
+// Pure function: no side effects. Creates new Projection, doesn't mutate receiver.
+func (p Projection) Apply(evt Event) Projection {
+    // Create new projection with incremented version
+    // Note: p.sim is a value, so this copies the Simulation
+    next := Projection{
+        sim:     p.sim,
+        version: p.version + 1,
+    }
+
+    switch e := evt.(type) {
+    case SimulationCreated:
+        next.sim = model.Simulation{
+            ID:           e.Header.SimID,
+            SizingPolicy: e.Config.Policy,
+            Seed:         e.Config.Seed,
+            Developers:   make([]model.Developer, 0),
+            Backlog:      make([]model.Ticket, 0),
+            // ... initialize slices
+        }
+    case Ticked:
+        next.sim.CurrentTick = e.Tick
+    case SprintStarted:
+        next.sim.CurrentSprintOption = option.Of(model.Sprint{
+            Number:   e.Number,
+            StartDay: e.StartTick,
+            // ...
+        })
+    case DeveloperAdded:
+        next.sim.Developers = append(next.sim.Developers, model.Developer{
+            ID:       e.DeveloperID,
+            Name:     e.Name,
+            Velocity: e.Velocity,
+        })
+    case TicketCreated:
+        next.sim.Backlog = append(next.sim.Backlog, model.Ticket{
+            ID:             e.TicketID,
+            EstimatedDays:  e.EstimatedDays,
+            Understanding:  e.Understanding,
+        })
+    case TicketAssigned:
+        // Find and move ticket from Backlog to ActiveTickets
+        for i, t := range next.sim.Backlog {
+            if t.ID == e.TicketID {
+                next.sim.ActiveTickets = append(next.sim.ActiveTickets, t)
+                next.sim.Backlog = append(next.sim.Backlog[:i], next.sim.Backlog[i+1:]...)
+                break
+            }
+        }
+        // Update developer state
+        for i, d := range next.sim.Developers {
+            if d.ID == e.DeveloperID {
+                next.sim.Developers[i].CurrentTicket = e.TicketID
+                break
+            }
+        }
+    case TicketCompleted:
+        // Move from ActiveTickets to CompletedTickets
+        for i, t := range next.sim.ActiveTickets {
+            if t.ID == e.TicketID {
+                next.sim.CompletedTickets = append(next.sim.CompletedTickets, t)
+                next.sim.ActiveTickets = append(next.sim.ActiveTickets[:i], next.sim.ActiveTickets[i+1:]...)
+                break
+            }
+        }
+        // Clear developer assignment
+        for i, d := range next.sim.Developers {
+            if d.ID == e.DeveloperID {
+                next.sim.Developers[i].CurrentTicket = ""
+                break
+            }
+        }
+    case WorkProgressed:
+        for i, t := range next.sim.ActiveTickets {
+            if t.ID == e.TicketID {
+                next.sim.ActiveTickets[i].RemainingEffort -= e.EffortApplied
+                next.sim.ActiveTickets[i].ActualDays += e.EffortApplied
+                break
+            }
+        }
+    case TicketPhaseChanged:
+        for i, t := range next.sim.ActiveTickets {
+            if t.ID == e.TicketID {
+                next.sim.ActiveTickets[i].Phase = e.NewPhase
+                break
+            }
+        }
+    case SprintEnded:
+        next.sim.CurrentSprintOption = option.NotOk[model.Sprint]()
+    case IncidentStarted:
+        next.sim.ActiveIncidents = append(next.sim.ActiveIncidents, model.Incident{
+            TicketID:  e.TicketID,
+            StartTick: e.Tick,
+        })
+    case IncidentResolved:
+        for i, inc := range next.sim.ActiveIncidents {
+            if inc.TicketID == e.TicketID {
+                inc.EndTick = e.Tick
+                next.sim.ResolvedIncidents = append(next.sim.ResolvedIncidents, inc)
+                next.sim.ActiveIncidents = append(next.sim.ActiveIncidents[:i], next.sim.ActiveIncidents[i+1:]...)
+                break
+            }
+        }
+    }
+    return next
+}
+
+// State returns a copy of current simulation state.
+func (p Projection) State() model.Simulation { return p.sim }
+
+// Version returns event count for concurrency checks.
+func (p Projection) Version() int { return p.version }
+```
+
+### 2.2 Expand Event Types
+
+**File:** `internal/events/types.go`
+
+Add missing events for full state reconstruction:
+
+| Event | Purpose |
+|-------|---------|
+| `DeveloperAdded` | Developer joins simulation |
+| `TicketCreated` | Ticket added to backlog |
+| `WorkProgressed` | Effort applied to ticket |
+| `TicketPhaseChanged` | Ticket advances phases |
+
+Update `SimConfig`:
+```go
+type SimConfig struct {
+    TeamSize     int
+    SprintLength int
+    Seed         int64
+    Policy       model.SizingPolicy  // ADD
+}
+```
+
+### 2.3 Modify Engine to Emit-Only
+
+**File:** `internal/engine/engine.go`
+
+**Strategy:** Direct refactor - remove mutation, emit only.
+
+```go
+type Engine struct {
+    simID         string
+    proj          events.Projection  // Source of truth
+    variance      VarianceModel
+    evtGen        *EventGenerator
+    policies      PolicyEngine
+    store         events.Store
+    trace         events.TraceContext
+}
+
+// NewEngine creates an engine with empty projection.
+// Call EmitCreated(), AddDeveloper(), AddTicket() to set up initial state.
+func NewEngine(simID string, seed int64, policy model.SizingPolicy, store events.Store) *Engine {
+    return &Engine{
+        simID:    simID,
+        proj:     events.NewProjection(),
+        variance: NewVarianceModel(seed),
+        evtGen:   NewEventGenerator(seed),
+        policies: NewPolicyEngine(seed),
+        store:    store,
+    }
+}
+
+func (e *Engine) Tick() []model.Event {
+    // 1. Read current tick from projection
+    currentTick := e.proj.State().CurrentTick
+
+    // 2. Create and emit tick event (create once, use twice)
+    tickEvt := events.NewTicked(e.simID, currentTick+1)
+    e.emit(tickEvt)
+    e.proj = e.proj.Apply(tickEvt)
+
+    // 3. Process work - re-read state AFTER applying tick event
+    sim := e.proj.State()  // Fresh state with updated tick
+    for _, dev := range sim.Developers {
+        if dev.IsIdle() {
+            continue
+        }
+
+        // Find ticket this developer is working on
+        ticketID := dev.CurrentTicket
+        ticket := e.findActiveTicket(ticketID)  // Helper to find in sim.ActiveTickets
+
+        // Calculate work done this tick
+        effort := dev.Velocity * 1.0  // 1 day per tick
+        newRemaining := ticket.RemainingEffort - effort
+
+        // Emit work progress event
+        workEvt := events.NewWorkProgressed(e.simID, sim.CurrentTick, ticketID, effort)
+        e.emit(workEvt)
+        e.proj = e.proj.Apply(workEvt)
+
+        // Check if ticket complete
+        if newRemaining <= 0 {
+            completeEvt := events.NewTicketCompleted(e.simID, sim.CurrentTick, ticketID, dev.ID)
+            e.emit(completeEvt)
+            e.proj = e.proj.Apply(completeEvt)
+        }
+    }
+
+    return nil  // Model events removed
+}
+
+// Sim returns current simulation state (derived from projection)
+func (e *Engine) Sim() model.Simulation {
+    return e.proj.State()
+}
+
+// EmitCreated emits SimulationCreated event to initialize projection.
+func (e *Engine) EmitCreated() {
+    evt := events.NewSimulationCreated(e.simID, 0, events.SimConfig{...})
+    e.emit(evt)
+    e.proj = e.proj.Apply(evt)
+}
+
+// AddDeveloper emits DeveloperAdded event.
+func (e *Engine) AddDeveloper(id, name string, velocity float64) {
+    evt := events.NewDeveloperAdded(e.simID, e.proj.State().CurrentTick, id, name, velocity)
+    e.emit(evt)
+    e.proj = e.proj.Apply(evt)
+}
+
+// AddTicket emits TicketCreated event.
+func (e *Engine) AddTicket(t model.Ticket) {
+    evt := events.NewTicketCreated(e.simID, e.proj.State().CurrentTick, t.ID, t.EstimatedDays, t.Understanding)
+    e.emit(evt)
+    e.proj = e.proj.Apply(evt)
+}
+
+// findActiveTicket returns the ticket a developer is working on.
+func (e *Engine) findActiveTicket(ticketID string) model.Ticket {
+    for _, t := range e.proj.State().ActiveTickets {
+        if t.ID == ticketID {
+            return t
+        }
+    }
+    return model.Ticket{}  // Not found - should not happen if developer has assignment
+}
+```
+
+**Key change:** Remove `sim *model.Simulation` field entirely. All state access goes through `e.proj.State()`.
+
+### 2.4 Modify API to Use Engine.Sim()
+
+**File:** `internal/api/handlers.go`
+
+```go
+// Before (line 133) - direct access to shared *Simulation
+state := ToState(*inst.sim)
+
+// After - derive state from Engine's projection
+state := ToState(inst.engine.Sim())
+```
+
+**Key insight:** Engine owns the projection (see 2.3). API handlers access state through `engine.Sim()`, not by replaying events. This avoids duplicate replay logic and keeps projection ownership in one place.
+
+### 2.5 Update SimRegistry.CreateSimulation
+
+**File:** `internal/api/registry.go`
+
+```go
+// Before: Creates *model.Simulation directly, Engine mutates it
+func (r *SimRegistry) CreateSimulation(seed int64, policy model.SizingPolicy) string {
+    id := fmt.Sprintf("sim-%d", seed)
+    sim := model.NewSimulation(policy, seed)
+    // ... adds developers, tickets directly to sim ...
+    eng := engine.NewEngineWithStore(sim, r.store)
+    r.instances[id] = SimInstance{sim: sim, engine: eng, ...}
+}
+
+// After: Engine owns projection, emits events for all state changes
+func (r *SimRegistry) CreateSimulation(seed int64, policy model.SizingPolicy) string {
+    id := fmt.Sprintf("sim-%d", seed)
+
+    // Create engine with empty projection
+    eng := engine.NewEngine(id, seed, policy, r.store)
+
+    // Engine emits events for setup (SimulationCreated, DeveloperAdded, TicketCreated)
+    eng.EmitCreated()
+    eng.AddDeveloper("dev-1", "Alice", 1.0)  // Emits DeveloperAdded
+    eng.AddDeveloper("dev-2", "Bob", 0.8)
+    eng.AddDeveloper("dev-3", "Carol", 1.2)
+
+    gen := engine.Scenarios["healthy"]
+    rng := rand.New(rand.NewSource(seed))
+    for _, t := range gen.Generate(rng, 12) {
+        eng.AddTicket(t)  // Emits TicketCreated
+    }
+
+    r.instances[id] = SimInstance{engine: eng, ...}  // No sim field needed
+    return id
+}
+```
+
+**Key change:** SimInstance no longer holds `*model.Simulation`. State derived from `eng.Sim()`.
+
+**Updated SimInstance struct:**
+```go
+// Before
+type SimInstance struct {
+    sim     *model.Simulation  // REMOVE
+    engine  *engine.Engine
+    tracker metrics.Tracker
+}
+
+// After
+type SimInstance struct {
+    engine  *engine.Engine     // Engine owns projection
+    tracker metrics.Tracker
+}
+
+// Access state via engine
+func (r *SimRegistry) getSimulation(id string) (model.Simulation, bool) {
+    inst, ok := r.instances[id]
+    if !ok {
+        return model.Simulation{}, false
+    }
+    return inst.engine.Sim(), true
+}
+```
+
+### 2.6 Update TUI Subscription
+
+**File:** `internal/tui/app.go`
+
+**Current state:** TUI holds `*model.Simulation` and Engine mutates it directly.
+
+**Target state:** TUI derives state from events via Projection.
+
+```go
+type App struct {
+    proj     events.Projection  // Source of truth
+    store    events.Store       // For replaying on init
+    // sim removed - derive from projection when needed
+    // ...
+}
+
+// NewApp creates TUI with projection initialized from existing events.
+func NewApp(simID string, store events.Store) *App {
+    // Replay all existing events to rebuild state
+    proj := events.NewProjection()
+    for _, evt := range store.Replay(simID) {
+        proj = proj.Apply(evt)
+    }
+
+    return &App{
+        proj:  proj,
+        store: store,
+        // ...
+    }
+}
+
+// Update handles incoming events
+func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+    switch msg := msg.(type) {
+    case eventMsg:
+        // Apply event to local projection
+        a.proj = a.proj.Apply(events.Event(msg))
+    }
+    // ...
+}
+
+// View methods call a.proj.State() when needed
+func (a *App) planningView() string {
+    sim := a.proj.State()  // Derived, not stored
+    // ... use sim ...
+}
+```
+
+**Why not keep `*sim` "for compatibility"?** That creates two sources of truth. Either:
+1. Engine mutates `*sim` AND emits events (current hybrid - bad)
+2. Events are source of truth, state derived via Projection (target - good)
+
+Keeping both `proj` and `*sim` would just move the hybrid problem to the TUI.
+
+---
+
+## File Change Summary
+
+| File | Change Type | Est. Lines |
+|------|-------------|------------|
+| `internal/events/projection.go` | **NEW** | ~200 |
+| `internal/events/types.go` | Modify | +100 |
+| `internal/engine/variance.go` | Modify | ~5 |
+| `internal/engine/policies.go` | Modify | ~5 |
+| `internal/engine/generator.go` | Modify | ~3 |
+| `internal/engine/engine.go` | Modify | ~80 |
+| `internal/api/handlers.go` | Modify | ~30 |
+| `internal/api/registry.go` | Modify | ~20 |
+| `internal/tui/app.go` | Modify | ~30 |
+
+---
+
+## Test Strategy (Khorikov Quadrants)
+
+**TDD Workflow (MANDATORY):**
+1. **Red:** Write failing test FIRST - no exceptions
+2. **Green:** Minimal code to pass
+3. **Refactor:** Clean up while green
+4. **Khorikov lens:** Before commit, classify and prune per quadrants below
+
+| Component | Quadrant | Strategy |
+|-----------|----------|----------|
+| `Projection.Apply()` | **Domain** | Heavy unit testing - table-driven per event type |
+| `VarianceModel.Calculate()` | Domain | Existing tests unchanged |
+| `PolicyEngine` methods | Domain | Existing tests unchanged |
+| API handlers | Controller | ONE integration test (existing TestTutorialWalkthrough) |
+| Engine emit-only | Controller | One integration test verifying events emitted |
+
+**New test file:** `internal/events/projection_test.go`
+
+```go
+func TestProjection_Apply(t *testing.T) {
+    tests := []struct {
+        name   string
+        events []Event
+        want   model.Simulation
+    }{
+        {
+            name: "SimulationCreated initializes state",
+            events: []Event{
+                NewSimulationCreated("sim-1", 0, SimConfig{...}),
+            },
+            want: model.Simulation{ID: "sim-1", ...},
+        },
+        // ... more cases
+    }
+
+    for _, tt := range tests {
+        t.Run(tt.name, func(t *testing.T) {
+            proj := NewProjection()
+            for _, e := range tt.events {
+                proj = proj.Apply(e)
+            }
+            if diff := cmp.Diff(proj.State(), tt.want); diff != "" {
+                t.Errorf("mismatch (-got +want):\n%s", diff)
+            }
+        })
+    }
+}
+```
+
+---
+
+## Benchmark Plan
+
+**Baseline comparison:** Current `BenchmarkTick` in CLAUDE.md shows ~19μs/op for a tick.
+Projection replay should be comparable or faster (no RNG, no event generation).
+
+**Add to `internal/events/projection_test.go`:**
+
+```go
+func BenchmarkProjection_ReplayFull(b *testing.B) {
+    // Setup: 1000 events (typical 3-sprint simulation)
+    events := generateTestEvents(1000)  // SimCreated, Ticks, Assignments, Completions
+
+    b.ResetTimer()
+    for i := 0; i < b.N; i++ {
+        proj := NewProjection()
+        for _, e := range events {
+            proj = proj.Apply(e)
+        }
+    }
+}
+
+func BenchmarkProjection_Apply_SingleEvent(b *testing.B) {
+    proj := NewProjection()
+    evt := NewTicked("sim-1", 1)
+
+    b.ResetTimer()
+    for i := 0; i < b.N; i++ {
+        proj = proj.Apply(evt)
+    }
+}
+```
+
+**Success criteria (relative to existing benchmarks):**
+- `BenchmarkProjection_Apply_SingleEvent`: < 1μs/op (simple switch + struct copy)
+- `BenchmarkProjection_ReplayFull` (1000 events): < 1ms total (1000 × 1μs)
+
+**Track in CLAUDE.md after implementation** with baseline comparison.
+
+---
+
+## Implementation Order
+
+| Step | Scope | Plan Section | Notes |
+|------|-------|--------------|-------|
+| 1 | Value Semantics | Task 1 (1.1-1.4) | VarianceModel, PolicyEngine, TicketGenerator - independent, do first |
+| 2 | Projection type | 2.1 | Create projection.go with unit tests (TDD: test first!) |
+| 3 | Event Types | 2.2 | Add missing events to types.go |
+| 4 | Engine refactor | 2.3 | Remove `*Simulation`, use Projection |
+| 5 | API refactor | 2.4-2.5 | Use `engine.Sim()` instead of direct `*sim` access; update SimRegistry |
+| 6 | TUI refactor | 2.6 | Derive state from Projection, initialize via replay |
+| 7 | Update docs/design.md | — | Document event sourcing architecture (per Guide §15) |
+
+**Rollback:** Git revert if needed. No feature flags.
+
+---
+
+## Pointer Receivers That MUST Remain
+
+| Type | Reason | Per Go Dev Guide |
+|------|--------|------------------|
+| `MemoryStore` | Contains `sync.RWMutex` | "Mutex must not be copied" |
+| `App` (TUI) | Implements `tea.Model` interface | "Interface requires pointer receiver" |
+| `Engine` | Mutates `e.proj` field (after refactor) | "Needs to modify receiver" |
+| `EventGenerator` | Contains `*rand.Rand` (stateful) | RNG state shared across calls |
+
+**Removed from table:** `SimRegistry` - map mutations work with value receivers (reference type). Pointer used by convention only.
+
+**Note:** "Aggregate root" and "map is reference type" are NOT valid reasons. See Go Dev Guide "Reference Types Don't Require Pointer Receivers" section.
+
+---
+
+## Success Criteria
+
+**Task 1: Value Semantics**
+- [ ] VarianceModel converted to value receiver
+- [ ] PolicyEngine converted to value receiver
+- [ ] TicketGenerator converted to value receiver
+- [ ] SimRegistry comment (line 13-14) corrected: "mutate receiver" not "aggregate root"
+
+**Task 2: Event Sourcing**
+- [ ] Projection.Apply() handles all event types (pure, no mutation)
+- [ ] Engine uses Projection (no `*Simulation` field)
+- [ ] API uses `engine.Sim()` (not direct `*sim` read)
+- [ ] TUI derives state from Projection
+
+**Quality Gates**
+- [ ] All existing tests pass
+- [ ] `BenchmarkProjection_Apply_SingleEvent` < 1μs/op
+- [ ] `BenchmarkProjection_ReplayFull` (1000 events) < 1ms
+- [ ] No coverage regression (run `go test -cover ./...` as diagnostic, not target)
+
+---
+
+## Approved Contract: 2026-01-19 - Phase 2
+
+# Phase 2 Contract: Full Event Sourcing
+
+**Created:** 2026-01-19
+
+## Step 1 Checklist
+- [x] 1a: Presented understanding
+- [x] 1b: Asked clarifying questions
+- [x] 1b-answer: Received answers (one phase, strict TDD)
+- [x] 1c: Contract created (this file)
+- [x] 1d: Approval received
+- [ ] 1e: Plan + contract archived
+
+## Objective
+
+Make events THE source of truth. Currently hybrid (emit + mutate) - target is emit-only with state derived from Projection.
+
+## Success Criteria
+
+- [ ] Projection.Apply() handles all 12 event types (pure, no mutation)
+- [ ] Engine uses Projection (no `*Simulation` field)
+- [ ] API uses `engine.Sim()` (not direct `*sim` read)
+- [ ] TUI derives state from Projection
+- [ ] All existing tests pass
+- [ ] `BenchmarkProjection_Apply_SingleEvent` < 1μs/op
+- [ ] `BenchmarkProjection_ReplayFull` (1000 events) < 1ms
+- [ ] No coverage regression
+
+## Event Type Inventory
+
+**Existing events (8):**
+| Event | Purpose | Projection Action |
+|-------|---------|-------------------|
+| `SimulationCreated` | Initialize simulation | Set ID, policy, seed, init slices |
+| `Ticked` | Advance tick | Increment CurrentTick |
+| `SprintStarted` | Begin sprint | Set CurrentSprintOption |
+| `SprintEnded` | End sprint | Clear CurrentSprintOption |
+| `TicketAssigned` | Assign ticket | Move backlog→active, set developer.CurrentTicket |
+| `TicketCompleted` | Complete ticket | Move active→completed, clear developer.CurrentTicket |
+| `IncidentStarted` | Start incident | Add to ActiveIncidents |
+| `IncidentResolved` | Resolve incident | Move to ResolvedIncidents |
+
+**New events to add (4):**
+| Event | Purpose | Projection Action |
+|-------|---------|-------------------|
+| `DeveloperAdded` | Add team member | Append to Developers slice |
+| `TicketCreated` | Create ticket | Append to Backlog slice |
+| `WorkProgressed` | Apply effort | Update RemainingEffort, ActualDays |
+| `TicketPhaseChanged` | Advance phase | Update ticket.Phase |
+
+**Total: 12 events**
+
+## TUI Event Notification
+
+TUI already has subscription mechanism:
+- `store.Subscribe(simID)` returns `<-chan Event`
+- `store.Replay(simID)` returns `[]Event` for initial state
+- TUI applies events to local Projection when received via channel
+
+No new notification mechanism needed - just change TUI to use Projection instead of `*Simulation`.
+
+## Approach
+
+**Strict TDD:** Write failing test before ANY implementation code.
+
+| Step | Scope | TDD Cycle |
+|------|-------|-----------|
+| 1 | Projection type | Test Apply() per event type FIRST |
+| 2 | Event types | Add DeveloperAdded, TicketCreated, WorkProgressed, TicketPhaseChanged |
+| 3 | Engine refactor | Remove `*Simulation`, use Projection |
+| 4 | API refactor | Use `engine.Sim()`, remove `inst.sim` |
+| 5 | TUI refactor | Derive state from Projection |
+| 6 | Documentation | Update docs/design.md |
+
+## Token Budget
+
+Estimated: 100-120K tokens (revised up from 80-100K)
+- Projection type + tests: 35K (TDD cycles × 12 event types)
+- Event types: 10K
+- Engine refactor: 20K (significant changes)
+- API refactor: 10K
+- TUI refactor: 15K (touches tea.Model)
+- Tests + iteration: 20K
+- Documentation: 5K
+
+## Intermediate Commit Strategy
+
+Commit after each step passes tests (allows git revert per step):
+
+| Step | Commit Message | Checkpoint |
+|------|----------------|------------|
+| 1 | `Add Projection type with Apply()` | Tests pass for all 12 events |
+| 2 | `Add new event types` | Compiles, existing tests pass |
+| 3 | `Engine: use Projection instead of *Simulation` | All engine tests pass |
+| 4 | `API: use engine.Sim()` | All API tests pass |
+| 5 | `TUI: derive state from Projection` | TUI tests pass |
+| 6 | `docs: document event sourcing architecture` | N/A |
+
+**Rollback:** If step N breaks, `git revert HEAD` returns to step N-1.
+
+## Out of Scope
+
+- Persistence changes (save/load)
+- New API endpoints
+- Performance optimization beyond benchmark gates
+
+## Files to Change
+
+| File | Change |
+|------|--------|
+| `internal/events/projection.go` | NEW - Projection type with Apply() |
+| `internal/events/projection_test.go` | NEW - TDD tests |
+| `internal/events/types.go` | Add 4 new event types |
+| `internal/engine/engine.go` | Replace `*Simulation` with Projection |
+| `internal/api/registry.go` | Remove `sim` from SimInstance |
+| `internal/api/handlers.go` | Use `engine.Sim()` |
+| `internal/tui/app.go` | Use Projection |
+| `docs/design.md` | Document event sourcing |

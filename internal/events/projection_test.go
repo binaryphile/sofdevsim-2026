@@ -1,126 +1,291 @@
-package events
+package events_test
 
 import (
 	"testing"
-	"time"
+
+	"github.com/binaryphile/sofdevsim-2026/internal/events"
+	"github.com/binaryphile/sofdevsim-2026/internal/model"
+	"github.com/google/go-cmp/cmp"
 )
 
-// mockState tracks how many events were applied.
-type mockState struct {
-	appliedCount int
-	lastEvent    Event
-}
+// TestProjection_Apply tests the Projection.Apply() method for each event type.
+// Per Khorikov: Domain logic gets heavy unit testing with table-driven tests.
+// Projection is pure (no side effects), making it ideal for unit testing.
 
-// mockProjection is a test projection that counts applications.
-type mockProjection struct {
-	state mockState
-}
+func TestProjection_Apply_SimulationCreated(t *testing.T) {
+	proj := events.NewProjection()
 
-func (p *mockProjection) Apply(e Event) {
-	p.state.appliedCount++
-	p.state.lastEvent = e
-}
+	evt := events.NewSimulationCreated("sim-1", 0, events.SimConfig{
+		TeamSize:     3,
+		SprintLength: 10,
+		Seed:         42,
+		Policy:       model.PolicyDORAStrict,
+	})
 
-func (p *mockProjection) State() mockState {
-	return p.state
-}
+	got := proj.Apply(evt)
 
-func TestProjection_ApplyFromStore(t *testing.T) {
-	store := NewMemoryStore()
-
-	// Add events to store
-	store.Append("sim-1",
-		testEvent{simID: "sim-1", name: "Event1"},
-		testEvent{simID: "sim-1", name: "Event2"},
-		testEvent{simID: "sim-1", name: "Event3"},
-	)
-
-	// Create projection and replay
-	proj := &mockProjection{}
-	events := store.Replay("sim-1")
-	for _, e := range events {
-		proj.Apply(e)
+	// Verify state was initialized
+	state := got.State()
+	if state.ID != "sim-1" {
+		t.Errorf("ID = %q, want %q", state.ID, "sim-1")
 	}
-
-	if proj.state.appliedCount != 3 {
-		t.Errorf("Applied %d events, want 3", proj.state.appliedCount)
+	if state.Seed != 42 {
+		t.Errorf("Seed = %d, want %d", state.Seed, 42)
 	}
-
-	if proj.state.lastEvent.EventType() != "Event3" {
-		t.Errorf("Last event = %s, want Event3", proj.state.lastEvent.EventType())
+	if state.SizingPolicy != model.PolicyDORAStrict {
+		t.Errorf("SizingPolicy = %v, want %v", state.SizingPolicy, model.PolicyDORAStrict)
+	}
+	if got.Version() != 1 {
+		t.Errorf("Version = %d, want 1", got.Version())
 	}
 }
 
-func TestProjection_SubscribeAndApply(t *testing.T) {
-	store := NewMemoryStore()
-	proj := &mockProjection{}
+func TestProjection_Apply_Ticked(t *testing.T) {
+	// Setup: create simulation first
+	proj := events.NewProjection()
+	proj = proj.Apply(events.NewSimulationCreated("sim-1", 0, events.SimConfig{Seed: 42}))
 
-	// Subscribe before appending
-	ch := store.Subscribe("sim-1")
+	// Apply tick event
+	evt := events.NewTicked("sim-1", 1)
+	got := proj.Apply(evt)
 
-	// Start goroutine to apply events from subscription
-	done := make(chan struct{})
-	go func() {
-		for e := range ch {
-			proj.Apply(e)
+	state := got.State()
+	if state.CurrentTick != 1 {
+		t.Errorf("CurrentTick = %d, want 1", state.CurrentTick)
+	}
+	if got.Version() != 2 {
+		t.Errorf("Version = %d, want 2", got.Version())
+	}
+}
+
+func TestProjection_Apply_DeveloperAdded(t *testing.T) {
+	proj := events.NewProjection()
+	proj = proj.Apply(events.NewSimulationCreated("sim-1", 0, events.SimConfig{Seed: 42}))
+
+	evt := events.NewDeveloperAdded("sim-1", 0, "dev-1", "Alice", 1.0)
+	got := proj.Apply(evt)
+
+	state := got.State()
+	if len(state.Developers) != 1 {
+		t.Fatalf("len(Developers) = %d, want 1", len(state.Developers))
+	}
+	dev := state.Developers[0]
+	if dev.ID != "dev-1" {
+		t.Errorf("Developer.ID = %q, want %q", dev.ID, "dev-1")
+	}
+	if dev.Name != "Alice" {
+		t.Errorf("Developer.Name = %q, want %q", dev.Name, "Alice")
+	}
+	if dev.Velocity != 1.0 {
+		t.Errorf("Developer.Velocity = %f, want 1.0", dev.Velocity)
+	}
+}
+
+func TestProjection_Apply_TicketCreated(t *testing.T) {
+	proj := events.NewProjection()
+	proj = proj.Apply(events.NewSimulationCreated("sim-1", 0, events.SimConfig{Seed: 42}))
+
+	evt := events.NewTicketCreated("sim-1", 0, "TKT-001", "Fix bug", 3.0, model.MediumUnderstanding)
+	got := proj.Apply(evt)
+
+	state := got.State()
+	if len(state.Backlog) != 1 {
+		t.Fatalf("len(Backlog) = %d, want 1", len(state.Backlog))
+	}
+	ticket := state.Backlog[0]
+	if ticket.ID != "TKT-001" {
+		t.Errorf("Ticket.ID = %q, want %q", ticket.ID, "TKT-001")
+	}
+	if ticket.Title != "Fix bug" {
+		t.Errorf("Ticket.Title = %q, want %q", ticket.Title, "Fix bug")
+	}
+	if ticket.EstimatedDays != 3.0 {
+		t.Errorf("Ticket.EstimatedDays = %f, want 3.0", ticket.EstimatedDays)
+	}
+}
+
+func TestProjection_Apply_SprintStarted(t *testing.T) {
+	proj := events.NewProjection()
+	proj = proj.Apply(events.NewSimulationCreated("sim-1", 0, events.SimConfig{
+		SprintLength: 10,
+		Seed:         42,
+	}))
+
+	evt := events.NewSprintStarted("sim-1", 0, 1)
+	got := proj.Apply(evt)
+
+	state := got.State()
+	sprint, ok := state.CurrentSprintOption.Get()
+	if !ok {
+		t.Fatal("CurrentSprintOption should be set")
+	}
+	if sprint.Number != 1 {
+		t.Errorf("Sprint.Number = %d, want 1", sprint.Number)
+	}
+	if sprint.StartDay != 0 {
+		t.Errorf("Sprint.StartDay = %d, want 0", sprint.StartDay)
+	}
+}
+
+func TestProjection_Apply_TicketAssigned(t *testing.T) {
+	proj := events.NewProjection()
+	proj = proj.Apply(events.NewSimulationCreated("sim-1", 0, events.SimConfig{Seed: 42}))
+	proj = proj.Apply(events.NewDeveloperAdded("sim-1", 0, "dev-1", "Alice", 1.0))
+	proj = proj.Apply(events.NewTicketCreated("sim-1", 0, "TKT-001", "Fix bug", 3.0, model.MediumUnderstanding))
+
+	evt := events.NewTicketAssigned("sim-1", 0, "TKT-001", "dev-1")
+	got := proj.Apply(evt)
+
+	state := got.State()
+
+	// Ticket should move from Backlog to ActiveTickets
+	if len(state.Backlog) != 0 {
+		t.Errorf("len(Backlog) = %d, want 0", len(state.Backlog))
+	}
+	if len(state.ActiveTickets) != 1 {
+		t.Fatalf("len(ActiveTickets) = %d, want 1", len(state.ActiveTickets))
+	}
+
+	// Developer should have ticket assigned
+	if state.Developers[0].CurrentTicket != "TKT-001" {
+		t.Errorf("Developer.CurrentTicket = %q, want %q", state.Developers[0].CurrentTicket, "TKT-001")
+	}
+}
+
+func TestProjection_Apply_WorkProgressed(t *testing.T) {
+	proj := events.NewProjection()
+	proj = proj.Apply(events.NewSimulationCreated("sim-1", 0, events.SimConfig{Seed: 42}))
+	proj = proj.Apply(events.NewDeveloperAdded("sim-1", 0, "dev-1", "Alice", 1.0))
+	proj = proj.Apply(events.NewTicketCreated("sim-1", 0, "TKT-001", "Fix bug", 3.0, model.MediumUnderstanding))
+	proj = proj.Apply(events.NewTicketAssigned("sim-1", 0, "TKT-001", "dev-1"))
+
+	// Get initial remaining effort
+	initialEffort := proj.State().ActiveTickets[0].RemainingEffort
+
+	evt := events.NewWorkProgressed("sim-1", 1, "TKT-001", 1.0)
+	got := proj.Apply(evt)
+
+	state := got.State()
+	ticket := state.ActiveTickets[0]
+
+	if ticket.RemainingEffort != initialEffort-1.0 {
+		t.Errorf("RemainingEffort = %f, want %f", ticket.RemainingEffort, initialEffort-1.0)
+	}
+	if ticket.ActualDays != 1.0 {
+		t.Errorf("ActualDays = %f, want 1.0", ticket.ActualDays)
+	}
+}
+
+func TestProjection_Apply_TicketCompleted(t *testing.T) {
+	proj := events.NewProjection()
+	proj = proj.Apply(events.NewSimulationCreated("sim-1", 0, events.SimConfig{Seed: 42}))
+	proj = proj.Apply(events.NewDeveloperAdded("sim-1", 0, "dev-1", "Alice", 1.0))
+	proj = proj.Apply(events.NewTicketCreated("sim-1", 0, "TKT-001", "Fix bug", 3.0, model.MediumUnderstanding))
+	proj = proj.Apply(events.NewTicketAssigned("sim-1", 0, "TKT-001", "dev-1"))
+
+	evt := events.NewTicketCompleted("sim-1", 3, "TKT-001", "dev-1")
+	got := proj.Apply(evt)
+
+	state := got.State()
+
+	// Ticket should move from ActiveTickets to CompletedTickets
+	if len(state.ActiveTickets) != 0 {
+		t.Errorf("len(ActiveTickets) = %d, want 0", len(state.ActiveTickets))
+	}
+	if len(state.CompletedTickets) != 1 {
+		t.Fatalf("len(CompletedTickets) = %d, want 1", len(state.CompletedTickets))
+	}
+
+	// Developer should be idle
+	if state.Developers[0].CurrentTicket != "" {
+		t.Errorf("Developer.CurrentTicket = %q, want empty", state.Developers[0].CurrentTicket)
+	}
+}
+
+func TestProjection_Apply_SprintEnded(t *testing.T) {
+	proj := events.NewProjection()
+	proj = proj.Apply(events.NewSimulationCreated("sim-1", 0, events.SimConfig{Seed: 42}))
+	proj = proj.Apply(events.NewSprintStarted("sim-1", 0, 1))
+
+	evt := events.NewSprintEnded("sim-1", 10, 1)
+	got := proj.Apply(evt)
+
+	state := got.State()
+	_, ok := state.CurrentSprintOption.Get()
+	if ok {
+		t.Error("CurrentSprintOption should be cleared after SprintEnded")
+	}
+}
+
+func TestProjection_ValueSemantics(t *testing.T) {
+	// Verify Apply returns new Projection, doesn't mutate original
+	proj1 := events.NewProjection()
+	proj2 := proj1.Apply(events.NewSimulationCreated("sim-1", 0, events.SimConfig{Seed: 42}))
+
+	// Original should be unchanged
+	if proj1.Version() != 0 {
+		t.Errorf("Original proj1.Version() = %d, want 0 (should be unchanged)", proj1.Version())
+	}
+	if proj1.State().ID != "" {
+		t.Errorf("Original proj1.State().ID = %q, want empty (should be unchanged)", proj1.State().ID)
+	}
+
+	// New projection should have changes
+	if proj2.Version() != 1 {
+		t.Errorf("New proj2.Version() = %d, want 1", proj2.Version())
+	}
+	if proj2.State().ID != "sim-1" {
+		t.Errorf("New proj2.State().ID = %q, want %q", proj2.State().ID, "sim-1")
+	}
+}
+
+// BenchmarkProjection_Apply_SingleEvent benchmarks applying a single event.
+// Target: < 1μs/op
+func BenchmarkProjection_Apply_SingleEvent(b *testing.B) {
+	proj := events.NewProjection()
+	proj = proj.Apply(events.NewSimulationCreated("sim-1", 0, events.SimConfig{Seed: 42}))
+	evt := events.NewTicked("sim-1", 1)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		proj.Apply(evt)
+	}
+}
+
+// BenchmarkProjection_ReplayFull benchmarks replaying 1000 events.
+// Target: < 1ms total
+func BenchmarkProjection_ReplayFull(b *testing.B) {
+	// Generate 1000 events: create, add devs, add tickets, ticks
+	evts := generateTestEvents(1000)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		proj := events.NewProjection()
+		for _, e := range evts {
+			proj = proj.Apply(e)
 		}
-		close(done)
-	}()
-
-	// Append events
-	store.Append("sim-1", testEvent{simID: "sim-1", name: "Live1"})
-	store.Append("sim-1", testEvent{simID: "sim-1", name: "Live2"})
-
-	// Give time for events to be processed
-	time.Sleep(10 * time.Millisecond)
-
-	// Unsubscribe to close channel and stop goroutine
-	store.Unsubscribe("sim-1", ch)
-	<-done
-
-	if proj.state.appliedCount != 2 {
-		t.Errorf("Applied %d events, want 2", proj.state.appliedCount)
 	}
 }
 
-func TestProjection_ReplayThenSubscribe(t *testing.T) {
-	store := NewMemoryStore()
+// generateTestEvents creates n events for benchmarking.
+func generateTestEvents(n int) []events.Event {
+	result := make([]events.Event, 0, n)
 
-	// Add historical events
-	store.Append("sim-1",
-		testEvent{simID: "sim-1", name: "Historical1"},
-		testEvent{simID: "sim-1", name: "Historical2"},
-	)
+	// Start with SimulationCreated
+	result = append(result, events.NewSimulationCreated("sim-1", 0, events.SimConfig{Seed: 42}))
 
-	proj := &mockProjection{}
+	// Add 3 developers
+	result = append(result, events.NewDeveloperAdded("sim-1", 0, "dev-1", "Alice", 1.0))
+	result = append(result, events.NewDeveloperAdded("sim-1", 0, "dev-2", "Bob", 0.8))
+	result = append(result, events.NewDeveloperAdded("sim-1", 0, "dev-3", "Carol", 1.2))
 
-	// Replay historical events
-	for _, e := range store.Replay("sim-1") {
-		proj.Apply(e)
+	// Fill rest with Ticked events (most common event type)
+	for i := len(result); i < n; i++ {
+		result = append(result, events.NewTicked("sim-1", i))
 	}
 
-	if proj.state.appliedCount != 2 {
-		t.Errorf("After replay: applied %d events, want 2", proj.state.appliedCount)
-	}
-
-	// Subscribe for new events
-	ch := store.Subscribe("sim-1")
-	done := make(chan struct{})
-	go func() {
-		for e := range ch {
-			proj.Apply(e)
-		}
-		close(done)
-	}()
-
-	// Add new event
-	store.Append("sim-1", testEvent{simID: "sim-1", name: "Live1"})
-
-	time.Sleep(10 * time.Millisecond)
-	store.Unsubscribe("sim-1", ch)
-	<-done
-
-	if proj.state.appliedCount != 3 {
-		t.Errorf("After subscribe: applied %d events, want 3", proj.state.appliedCount)
-	}
+	return result
 }
+
+// cmp is used for complex struct comparisons
+var _ = cmp.Diff

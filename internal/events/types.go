@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"sync/atomic"
 	"time"
+
+	"github.com/binaryphile/sofdevsim-2026/internal/model"
 )
 
 // eventCounter provides unique sequential IDs for events.
@@ -128,6 +130,7 @@ type SimConfig struct {
 	TeamSize     int
 	SprintLength int
 	Seed         int64
+	Policy       model.SizingPolicy // Sizing policy for ticket decomposition
 }
 
 // SimulationCreated is emitted when a simulation is created.
@@ -450,6 +453,178 @@ func (e IncidentResolved) withTrace(traceID, spanID, parentSpanID string) Event 
 
 // WithCausedBy returns a copy with causation link to parent event.
 func (e IncidentResolved) WithCausedBy(eventID string) IncidentResolved {
+	e.Header.CausedByID = eventID
+	return e
+}
+
+// DeveloperAdded is emitted when a developer joins the simulation.
+type DeveloperAdded struct {
+	Header
+	DeveloperID string
+	Name        string
+	Velocity    float64
+}
+
+// NewDeveloperAdded creates a DeveloperAdded event with proper header.
+func NewDeveloperAdded(simID string, tick int, devID, name string, velocity float64) DeveloperAdded {
+	return DeveloperAdded{
+		Header: Header{
+			ID:         nextEventID("DeveloperAdded"),
+			SimID:      simID,
+			Type:       "DeveloperAdded",
+			OccurredAt: tick,
+			DetectedAt: time.Now(),
+		},
+		DeveloperID: devID,
+		Name:        name,
+		Velocity:    velocity,
+	}
+}
+
+// WithTrace returns a copy with tracing fields set for fluent chaining.
+func (e DeveloperAdded) WithTrace(traceID, spanID, parentSpanID string) DeveloperAdded {
+	e.Header.Trace = traceID
+	e.Header.Span = spanID
+	e.Header.ParentSpan = parentSpanID
+	return e
+}
+
+// withTrace implements Event interface for polymorphic tracing.
+func (e DeveloperAdded) withTrace(traceID, spanID, parentSpanID string) Event {
+	return e.WithTrace(traceID, spanID, parentSpanID)
+}
+
+// WithCausedBy returns a copy with causation link to parent event.
+func (e DeveloperAdded) WithCausedBy(eventID string) DeveloperAdded {
+	e.Header.CausedByID = eventID
+	return e
+}
+
+// TicketCreated is emitted when a ticket is added to the backlog.
+type TicketCreated struct {
+	Header
+	TicketID      string
+	Title         string
+	EstimatedDays float64
+	Understanding model.UnderstandingLevel
+}
+
+// NewTicketCreated creates a TicketCreated event with proper header.
+func NewTicketCreated(simID string, tick int, ticketID, title string, estimatedDays float64, understanding model.UnderstandingLevel) TicketCreated {
+	return TicketCreated{
+		Header: Header{
+			ID:         nextEventID("TicketCreated"),
+			SimID:      simID,
+			Type:       "TicketCreated",
+			OccurredAt: tick,
+			DetectedAt: time.Now(),
+		},
+		TicketID:      ticketID,
+		Title:         title,
+		EstimatedDays: estimatedDays,
+		Understanding: understanding,
+	}
+}
+
+// WithTrace returns a copy with tracing fields set for fluent chaining.
+func (e TicketCreated) WithTrace(traceID, spanID, parentSpanID string) TicketCreated {
+	e.Header.Trace = traceID
+	e.Header.Span = spanID
+	e.Header.ParentSpan = parentSpanID
+	return e
+}
+
+// withTrace implements Event interface for polymorphic tracing.
+func (e TicketCreated) withTrace(traceID, spanID, parentSpanID string) Event {
+	return e.WithTrace(traceID, spanID, parentSpanID)
+}
+
+// WithCausedBy returns a copy with causation link to parent event.
+func (e TicketCreated) WithCausedBy(eventID string) TicketCreated {
+	e.Header.CausedByID = eventID
+	return e
+}
+
+// WorkProgressed is emitted when effort is applied to a ticket.
+type WorkProgressed struct {
+	Header
+	TicketID      string
+	EffortApplied float64
+}
+
+// NewWorkProgressed creates a WorkProgressed event with proper header.
+func NewWorkProgressed(simID string, tick int, ticketID string, effort float64) WorkProgressed {
+	return WorkProgressed{
+		Header: Header{
+			ID:         nextEventID("WorkProgressed"),
+			SimID:      simID,
+			Type:       "WorkProgressed",
+			OccurredAt: tick,
+			DetectedAt: time.Now(),
+		},
+		TicketID:      ticketID,
+		EffortApplied: effort,
+	}
+}
+
+// WithTrace returns a copy with tracing fields set for fluent chaining.
+func (e WorkProgressed) WithTrace(traceID, spanID, parentSpanID string) WorkProgressed {
+	e.Header.Trace = traceID
+	e.Header.Span = spanID
+	e.Header.ParentSpan = parentSpanID
+	return e
+}
+
+// withTrace implements Event interface for polymorphic tracing.
+func (e WorkProgressed) withTrace(traceID, spanID, parentSpanID string) Event {
+	return e.WithTrace(traceID, spanID, parentSpanID)
+}
+
+// WithCausedBy returns a copy with causation link to parent event.
+func (e WorkProgressed) WithCausedBy(eventID string) WorkProgressed {
+	e.Header.CausedByID = eventID
+	return e
+}
+
+// TicketPhaseChanged is emitted when a ticket advances to the next phase.
+type TicketPhaseChanged struct {
+	Header
+	TicketID string
+	OldPhase model.WorkflowPhase
+	NewPhase model.WorkflowPhase
+}
+
+// NewTicketPhaseChanged creates a TicketPhaseChanged event with proper header.
+func NewTicketPhaseChanged(simID string, tick int, ticketID string, oldPhase, newPhase model.WorkflowPhase) TicketPhaseChanged {
+	return TicketPhaseChanged{
+		Header: Header{
+			ID:         nextEventID("TicketPhaseChanged"),
+			SimID:      simID,
+			Type:       "TicketPhaseChanged",
+			OccurredAt: tick,
+			DetectedAt: time.Now(),
+		},
+		TicketID: ticketID,
+		OldPhase: oldPhase,
+		NewPhase: newPhase,
+	}
+}
+
+// WithTrace returns a copy with tracing fields set for fluent chaining.
+func (e TicketPhaseChanged) WithTrace(traceID, spanID, parentSpanID string) TicketPhaseChanged {
+	e.Header.Trace = traceID
+	e.Header.Span = spanID
+	e.Header.ParentSpan = parentSpanID
+	return e
+}
+
+// withTrace implements Event interface for polymorphic tracing.
+func (e TicketPhaseChanged) withTrace(traceID, spanID, parentSpanID string) Event {
+	return e.WithTrace(traceID, spanID, parentSpanID)
+}
+
+// WithCausedBy returns a copy with causation link to parent event.
+func (e TicketPhaseChanged) WithCausedBy(eventID string) TicketPhaseChanged {
 	e.Header.CausedByID = eventID
 	return e
 }

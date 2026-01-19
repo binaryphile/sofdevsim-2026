@@ -85,7 +85,8 @@ import "github.com/binaryphile/fluentfp/option"
 // Creating options
 option.Of(t T) Basic[T]                // Always ok
 option.New(t T, ok bool) Basic[T]      // Conditional ok
-option.IfProvided(t T) Basic[T]        // Ok if non-zero value
+option.IfProvided(t T) Basic[T]        // Ok if non-zero value (comparable types)
+option.IfNotZero(t T) Basic[T]         // Ok if !t.IsZero() (ZeroChecker types)
 option.FromOpt(ptr *T) Basic[T]        // From pointer (nil = not-ok)
 
 // Using options
@@ -98,6 +99,9 @@ option.FromOpt(ptr *T) Basic[T]        // From pointer (nil = not-ok)
 
 // Pre-defined types
 option.String, option.Int, option.Bool, option.Error
+
+// ZeroChecker interface (for non-comparable types)
+type ZeroChecker interface { IsZero() bool }
 ```
 
 ### option Patterns
@@ -113,6 +117,40 @@ type Result struct {
     IsConnected option.Bool  // OrFalse() gives default
 }
 connected := result.IsConnected.OrFalse()
+```
+
+### Pseudo-Option Conventions
+
+Pseudo-options use Go's zero values to represent "absent" without formal Option types.
+
+| Style | Convention | Detection | Conversion to Option |
+|-------|------------|-----------|---------------------|
+| Pointer (`*T`) | Suffix variable with `Opt` | `ptr != nil` | `option.FromOpt(ptr)` |
+| Zero-value (comparable) | No suffix needed | `t != zero` | `option.IfProvided(t)` |
+| Zero-value (struct) | Add `IsZero() bool` method | `!t.IsZero()` | `option.IfNotZero(t)` |
+
+**Pointer pseudo-options (`*T`):**
+```go
+configOpt *Config  // Suffix with "Opt" to clarify nil=absent semantics
+if configOpt != nil { ... }
+```
+
+**Zero-value pseudo-options (non-comparable structs):**
+```go
+// Add IsZero method to enable zero-value-as-absent pattern
+type Registry struct {
+    instances map[string]Instance
+}
+
+func (r Registry) IsZero() bool { return r.instances == nil }
+
+// Usage: pass zero value for "none"
+func NewApp(registry Registry) *App {
+    if !registry.IsZero() {
+        // use registry
+    }
+}
+app := NewApp(Registry{})  // standalone mode (no registry)
 ```
 
 ### Prefer Options Over Nil Pointers

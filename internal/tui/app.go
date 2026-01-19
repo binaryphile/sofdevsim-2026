@@ -34,7 +34,7 @@ type App struct {
 	engine   *engine.Engine
 	tracker  metrics.Tracker
 	store    events.Store       // event store for event sourcing
-	registry *api.SimRegistry   // optional shared registry
+	registry api.SimRegistry    // optional shared registry (zero value = no registry)
 	eventSub <-chan events.Event // subscription channel for live updates
 
 	// UI state
@@ -74,13 +74,13 @@ type eventMsg events.Event
 // If seed is 0, uses current time for randomness.
 // Deprecated: Use NewAppWithRegistry for shared simulation access.
 func NewAppWithSeed(seed int64) *App {
-	return NewAppWithRegistry(seed, nil)
+	return NewAppWithRegistry(seed, api.SimRegistry{}) // zero value = standalone mode
 }
 
 // NewAppWithRegistry creates a new App that shares simulations via the registry.
-// If registry is nil, creates a standalone app with its own event store.
+// If registry is zero value, creates a standalone app with its own event store.
 // If seed is 0, uses current time for randomness.
-func NewAppWithRegistry(seed int64, registry *api.SimRegistry) *App {
+func NewAppWithRegistry(seed int64, registry api.SimRegistry) *App {
 	if seed == 0 {
 		seed = time.Now().UnixNano()
 	}
@@ -107,7 +107,7 @@ func NewAppWithRegistry(seed int64, registry *api.SimRegistry) *App {
 	var store events.Store
 	var eng *engine.Engine
 
-	if registry != nil {
+	if !registry.IsZero() {
 		// Use shared registry - simulation accessible by both TUI and API
 		store = registry.Store()
 		eng = registry.RegisterSimulation(sim, tracker)
@@ -349,7 +349,7 @@ func (a *App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			sim.ID = fmt.Sprintf("sim-%d", sim.Seed)
 		}
 		// Re-register with shared registry if available, else use standalone store
-		if a.registry != nil {
+		if !a.registry.IsZero() {
 			a.store = a.registry.Store()
 			a.engine = a.registry.RegisterSimulation(sim, tracker)
 		} else {
