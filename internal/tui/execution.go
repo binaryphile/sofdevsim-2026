@@ -32,17 +32,18 @@ func (a *App) executionView() string {
 }
 
 func (a *App) sprintProgress() string {
-	sprint, ok := a.sim.CurrentSprintOption.Get()
+	sim := a.engine.Sim()
+	sprint, ok := sim.CurrentSprintOption.Get()
 	if !ok {
 		return MutedStyle.Render("No active sprint")
 	}
 
-	progress := sprint.ProgressPct(a.sim.CurrentTick)
+	progress := sprint.ProgressPct(sim.CurrentTick)
 	bar := RenderProgressBar(progress, 50)
 
 	title := TitleStyle.Render(fmt.Sprintf("Sprint %d", sprint.Number))
 	info := fmt.Sprintf("Day %d/%d  %s  %.0f%%",
-		sprint.DaysElapsed(a.sim.CurrentTick),
+		sprint.DaysElapsed(sim.CurrentTick),
 		sprint.DurationDays,
 		bar,
 		progress*100,
@@ -52,21 +53,22 @@ func (a *App) sprintProgress() string {
 }
 
 func (a *App) activeWorkPanel() string {
+	sim := a.engine.Sim()
 	title := TitleStyle.Render("Active Work")
 
 	var rows []string
-	for _, dev := range a.sim.Developers {
+	for _, dev := range sim.Developers {
 		if dev.IsIdle() {
 			row := fmt.Sprintf("%-8s %s", dev.Name, MutedStyle.Render("[idle]"))
 			rows = append(rows, row)
 			continue
 		}
 
-		ticketIdx := a.sim.FindActiveTicketIndex(dev.CurrentTicket)
+		ticketIdx := sim.FindActiveTicketIndex(dev.CurrentTicket)
 		if ticketIdx == -1 {
 			continue
 		}
-		ticket := a.sim.ActiveTickets[ticketIdx]
+		ticket := sim.ActiveTickets[ticketIdx]
 
 		// Calculate progress within current phase
 		phaseEffort := ticket.CalculatePhaseEffort(ticket.Phase)
@@ -99,9 +101,10 @@ func (a *App) activeWorkPanel() string {
 }
 
 func (a *App) feverPanel() string {
+	sim := a.engine.Sim()
 	title := TitleStyle.Render("Fever Chart")
 
-	sprint, ok := a.sim.CurrentSprintOption.Get()
+	sprint, ok := sim.CurrentSprintOption.Get()
 	if !ok {
 		return lipgloss.JoinVertical(lipgloss.Left, title, MutedStyle.Render("No active sprint"))
 	}

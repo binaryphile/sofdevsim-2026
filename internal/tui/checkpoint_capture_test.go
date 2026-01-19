@@ -24,10 +24,12 @@ func TestCaptureAllCheckpoints(t *testing.T) {
 	fmt.Println(strings.Repeat("=", 60))
 
 	// Assign first 3 tickets to developers
-	for i, dev := range app.sim.Developers {
-		if i < len(app.sim.Backlog) {
-			ticket := app.sim.Backlog[0] // Always take first (it gets removed)
+	sim := app.engine.Sim()
+	for i, dev := range sim.Developers {
+		if i < len(sim.Backlog) {
+			ticket := sim.Backlog[0] // Always take first (it gets removed)
 			app.engine.AssignTicket(ticket.ID, dev.ID)
+			sim = app.engine.Sim() // Refresh after mutation
 		}
 	}
 	printState(app, "After Assignment")
@@ -37,10 +39,12 @@ func TestCaptureAllCheckpoints(t *testing.T) {
 	fmt.Println("CHECKPOINT 3: Mid-Sprint (Day 5)")
 	fmt.Println(strings.Repeat("=", 60))
 
-	app.sim.StartSprint()
-	for app.sim.CurrentTick < 5 {
+	app.engine.StartSprint()
+	sim = app.engine.Sim()
+	for sim.CurrentTick < 5 {
 		app.engine.Tick()
-		app.tracker = app.tracker.Updated(app.sim)
+		sim = app.engine.Sim()
+		app.tracker = app.tracker.Updated(&sim)
 	}
 	printState(app, "Day 5")
 	printFever(app)
@@ -51,9 +55,11 @@ func TestCaptureAllCheckpoints(t *testing.T) {
 	fmt.Println("CHECKPOINT 5: Sprint Complete (Day 10)")
 	fmt.Println(strings.Repeat("=", 60))
 
-	for app.sim.CurrentTick < 10 {
+	sim = app.engine.Sim()
+	for sim.CurrentTick < 10 {
 		app.engine.Tick()
-		app.tracker = app.tracker.Updated(app.sim)
+		sim = app.engine.Sim()
+		app.tracker = app.tracker.Updated(&sim)
 	}
 	printState(app, "Day 10")
 	printCompleted(app)
@@ -61,14 +67,15 @@ func TestCaptureAllCheckpoints(t *testing.T) {
 }
 
 func printState(app *App, label string) {
+	sim := app.engine.Sim()
 	fmt.Printf("\n[%s]\n", label)
-	fmt.Printf("  Day: %d\n", app.sim.CurrentTick)
-	fmt.Printf("  Backlog: %d tickets\n", len(app.sim.Backlog))
-	fmt.Printf("  Completed: %d tickets\n", len(app.sim.CompletedTickets))
-	fmt.Printf("  Policy: %s\n", app.sim.SizingPolicy)
+	fmt.Printf("  Day: %d\n", sim.CurrentTick)
+	fmt.Printf("  Backlog: %d tickets\n", len(sim.Backlog))
+	fmt.Printf("  Completed: %d tickets\n", len(sim.CompletedTickets))
+	fmt.Printf("  Policy: %s\n", sim.SizingPolicy)
 
 	fmt.Println("  Team:")
-	for _, dev := range app.sim.Developers {
+	for _, dev := range sim.Developers {
 		status := "idle"
 		ticket := ""
 		if !dev.IsIdle() {
@@ -80,7 +87,8 @@ func printState(app *App, label string) {
 }
 
 func printFever(app *App) {
-	sprint, ok := app.sim.CurrentSprintOption.Get()
+	sim := app.engine.Sim()
+	sprint, ok := sim.CurrentSprintOption.Get()
 	if !ok {
 		return
 	}
@@ -95,11 +103,12 @@ func printFever(app *App) {
 }
 
 func printActiveWork(app *App) {
+	sim := app.engine.Sim()
 	fmt.Println("\n  Active Work:")
-	for _, dev := range app.sim.Developers {
+	for _, dev := range sim.Developers {
 		if !dev.IsIdle() {
 			// Find the ticket
-			for _, t := range app.sim.ActiveTickets {
+			for _, t := range sim.ActiveTickets {
 				if t.ID == dev.CurrentTicket {
 					progress := 0.0
 					if t.EstimatedDays > 0 {
@@ -117,8 +126,9 @@ func printActiveWork(app *App) {
 }
 
 func printCompleted(app *App) {
+	sim := app.engine.Sim()
 	fmt.Println("\n  Completed Tickets:")
-	for _, t := range app.sim.CompletedTickets {
+	for _, t := range sim.CompletedTickets {
 		ratio := 0.0
 		if t.EstimatedDays > 0 {
 			ratio = t.ActualDays / t.EstimatedDays
@@ -129,7 +139,8 @@ func printCompleted(app *App) {
 }
 
 func printMetrics(app *App) {
-	result := app.tracker.GetResult(app.sim.SizingPolicy, app.sim)
+	sim := app.engine.Sim()
+	result := app.tracker.GetResult(sim.SizingPolicy, &sim)
 	m := result.FinalMetrics
 	fmt.Println("\n  DORA Metrics:")
 	fmt.Printf("    Lead Time: %.2f days\n", m.LeadTimeAvgDays())

@@ -175,12 +175,13 @@ func (e SimulationCreated) WithCausedBy(eventID string) SimulationCreated {
 // SprintStarted is emitted when a sprint begins.
 type SprintStarted struct {
 	Header
-	Number    int
-	StartTick int
+	Number     int
+	StartTick  int
+	BufferDays float64 // TameFlow buffer allocation for fever chart
 }
 
 // NewSprintStarted creates a SprintStarted event with proper header.
-func NewSprintStarted(simID string, tick int, number int) SprintStarted {
+func NewSprintStarted(simID string, tick int, number int, bufferDays float64) SprintStarted {
 	return SprintStarted{
 		Header: Header{
 			ID:         nextEventID("SprintStarted"),
@@ -189,8 +190,9 @@ func NewSprintStarted(simID string, tick int, number int) SprintStarted {
 			OccurredAt: tick,
 			DetectedAt: time.Now(),
 		},
-		Number:    number,
-		StartTick: tick,
+		Number:     number,
+		StartTick:  tick,
+		BufferDays: bufferDays,
 	}
 }
 
@@ -549,11 +551,12 @@ func (e TicketCreated) WithCausedBy(eventID string) TicketCreated {
 type WorkProgressed struct {
 	Header
 	TicketID      string
+	Phase         model.WorkflowPhase // Phase in which work was done (for PhaseEffortSpent tracking)
 	EffortApplied float64
 }
 
 // NewWorkProgressed creates a WorkProgressed event with proper header.
-func NewWorkProgressed(simID string, tick int, ticketID string, effort float64) WorkProgressed {
+func NewWorkProgressed(simID string, tick int, ticketID string, phase model.WorkflowPhase, effort float64) WorkProgressed {
 	return WorkProgressed{
 		Header: Header{
 			ID:         nextEventID("WorkProgressed"),
@@ -563,6 +566,7 @@ func NewWorkProgressed(simID string, tick int, ticketID string, effort float64) 
 			DetectedAt: time.Now(),
 		},
 		TicketID:      ticketID,
+		Phase:         phase,
 		EffortApplied: effort,
 	}
 }
@@ -625,6 +629,86 @@ func (e TicketPhaseChanged) withTrace(traceID, spanID, parentSpanID string) Even
 
 // WithCausedBy returns a copy with causation link to parent event.
 func (e TicketPhaseChanged) WithCausedBy(eventID string) TicketPhaseChanged {
+	e.Header.CausedByID = eventID
+	return e
+}
+
+// BufferConsumed is emitted when sprint buffer is consumed due to schedule variance.
+type BufferConsumed struct {
+	Header
+	DaysConsumed float64 // Amount of buffer consumed this tick
+}
+
+// NewBufferConsumed creates a BufferConsumed event with proper header.
+func NewBufferConsumed(simID string, tick int, daysConsumed float64) BufferConsumed {
+	return BufferConsumed{
+		Header: Header{
+			ID:         nextEventID("BufferConsumed"),
+			SimID:      simID,
+			Type:       "BufferConsumed",
+			OccurredAt: tick,
+			DetectedAt: time.Now(),
+		},
+		DaysConsumed: daysConsumed,
+	}
+}
+
+// WithTrace returns a copy with tracing fields set for fluent chaining.
+func (e BufferConsumed) WithTrace(traceID, spanID, parentSpanID string) BufferConsumed {
+	e.Header.Trace = traceID
+	e.Header.Span = spanID
+	e.Header.ParentSpan = parentSpanID
+	return e
+}
+
+// withTrace implements Event interface for polymorphic tracing.
+func (e BufferConsumed) withTrace(traceID, spanID, parentSpanID string) Event {
+	return e.WithTrace(traceID, spanID, parentSpanID)
+}
+
+// WithCausedBy returns a copy with causation link to parent event.
+func (e BufferConsumed) WithCausedBy(eventID string) BufferConsumed {
+	e.Header.CausedByID = eventID
+	return e
+}
+
+// PolicyChanged is emitted when the simulation's sizing policy is changed.
+type PolicyChanged struct {
+	Header
+	OldPolicy model.SizingPolicy
+	NewPolicy model.SizingPolicy
+}
+
+// NewPolicyChanged creates a PolicyChanged event with proper header.
+func NewPolicyChanged(simID string, tick int, oldPolicy, newPolicy model.SizingPolicy) PolicyChanged {
+	return PolicyChanged{
+		Header: Header{
+			ID:         nextEventID("PolicyChanged"),
+			SimID:      simID,
+			Type:       "PolicyChanged",
+			OccurredAt: tick,
+			DetectedAt: time.Now(),
+		},
+		OldPolicy: oldPolicy,
+		NewPolicy: newPolicy,
+	}
+}
+
+// WithTrace returns a copy with tracing fields set for fluent chaining.
+func (e PolicyChanged) WithTrace(traceID, spanID, parentSpanID string) PolicyChanged {
+	e.Header.Trace = traceID
+	e.Header.Span = spanID
+	e.Header.ParentSpan = parentSpanID
+	return e
+}
+
+// withTrace implements Event interface for polymorphic tracing.
+func (e PolicyChanged) withTrace(traceID, spanID, parentSpanID string) Event {
+	return e.WithTrace(traceID, spanID, parentSpanID)
+}
+
+// WithCausedBy returns a copy with causation link to parent event.
+func (e PolicyChanged) WithCausedBy(eventID string) PolicyChanged {
 	e.Header.CausedByID = eventID
 	return e
 }

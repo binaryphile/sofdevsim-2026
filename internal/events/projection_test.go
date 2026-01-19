@@ -111,7 +111,8 @@ func TestProjection_Apply_SprintStarted(t *testing.T) {
 		Seed:         42,
 	}))
 
-	evt := events.NewSprintStarted("sim-1", 0, 1)
+	// SprintStarted now includes BufferDays for fever chart
+	evt := events.NewSprintStarted("sim-1", 0, 1, 2.0) // 2 buffer days
 	got := proj.Apply(evt)
 
 	state := got.State()
@@ -124,6 +125,9 @@ func TestProjection_Apply_SprintStarted(t *testing.T) {
 	}
 	if sprint.StartDay != 0 {
 		t.Errorf("Sprint.StartDay = %d, want 0", sprint.StartDay)
+	}
+	if sprint.BufferDays != 2.0 {
+		t.Errorf("Sprint.BufferDays = %f, want 2.0", sprint.BufferDays)
 	}
 }
 
@@ -162,7 +166,8 @@ func TestProjection_Apply_WorkProgressed(t *testing.T) {
 	// Get initial remaining effort
 	initialEffort := proj.State().ActiveTickets[0].RemainingEffort
 
-	evt := events.NewWorkProgressed("sim-1", 1, "TKT-001", 1.0)
+	// WorkProgressed now includes Phase for PhaseEffortSpent tracking
+	evt := events.NewWorkProgressed("sim-1", 1, "TKT-001", model.PhaseResearch, 1.0)
 	got := proj.Apply(evt)
 
 	state := got.State()
@@ -173,6 +178,46 @@ func TestProjection_Apply_WorkProgressed(t *testing.T) {
 	}
 	if ticket.ActualDays != 1.0 {
 		t.Errorf("ActualDays = %f, want 1.0", ticket.ActualDays)
+	}
+	// Verify PhaseEffortSpent is tracked
+	if ticket.PhaseEffortSpent[model.PhaseResearch] != 1.0 {
+		t.Errorf("PhaseEffortSpent[Research] = %f, want 1.0", ticket.PhaseEffortSpent[model.PhaseResearch])
+	}
+}
+
+func TestProjection_Apply_WorkProgressed_MultiplePhases(t *testing.T) {
+	// Verify PhaseEffortSpent accumulates correctly across multiple phases
+	proj := events.NewProjection()
+	proj = proj.Apply(events.NewSimulationCreated("sim-1", 0, events.SimConfig{Seed: 42}))
+	proj = proj.Apply(events.NewDeveloperAdded("sim-1", 0, "dev-1", "Alice", 1.0))
+	proj = proj.Apply(events.NewTicketCreated("sim-1", 0, "TKT-001", "Fix bug", 3.0, model.MediumUnderstanding))
+	proj = proj.Apply(events.NewTicketAssigned("sim-1", 0, "TKT-001", "dev-1"))
+
+	// Work in Research phase
+	proj = proj.Apply(events.NewWorkProgressed("sim-1", 1, "TKT-001", model.PhaseResearch, 0.5))
+	proj = proj.Apply(events.NewWorkProgressed("sim-1", 2, "TKT-001", model.PhaseResearch, 0.3))
+
+	// Transition to Implement phase
+	proj = proj.Apply(events.NewTicketPhaseChanged("sim-1", 3, "TKT-001", model.PhaseResearch, model.PhaseImplement))
+
+	// Work in Implement phase
+	proj = proj.Apply(events.NewWorkProgressed("sim-1", 4, "TKT-001", model.PhaseImplement, 1.0))
+	proj = proj.Apply(events.NewWorkProgressed("sim-1", 5, "TKT-001", model.PhaseImplement, 0.7))
+
+	state := proj.State()
+	ticket := state.ActiveTickets[0]
+
+	// Verify Research effort accumulated
+	if ticket.PhaseEffortSpent[model.PhaseResearch] != 0.8 {
+		t.Errorf("PhaseEffortSpent[Research] = %f, want 0.8", ticket.PhaseEffortSpent[model.PhaseResearch])
+	}
+	// Verify Implement effort accumulated
+	if ticket.PhaseEffortSpent[model.PhaseImplement] != 1.7 {
+		t.Errorf("PhaseEffortSpent[Implement] = %f, want 1.7", ticket.PhaseEffortSpent[model.PhaseImplement])
+	}
+	// Verify total ActualDays
+	if ticket.ActualDays != 2.5 {
+		t.Errorf("ActualDays = %f, want 2.5", ticket.ActualDays)
 	}
 }
 
@@ -202,10 +247,77 @@ func TestProjection_Apply_TicketCompleted(t *testing.T) {
 	}
 }
 
+func TestProjection_Apply_BufferConsumed(t *testing.T) {
+	proj := events.NewProjection()
+	proj = proj.Apply(events.NewSimulationCreated("sim-1", 0, events.SimConfig{
+		SprintLength: 10,
+		Seed:         42,
+	}))
+	proj = proj.Apply(events.NewSprintStarted("sim-1", 0, 1, 2.0)) // 2 buffer days
+
+	// Consume some buffer
+	evt := events.NewBufferConsumed("sim-1", 1, 0.5) // 0.5 days consumed
+	got := proj.Apply(evt)
+
+	state := got.State()
+	sprint, ok := state.CurrentSprintOption.Get()
+	if !ok {
+		t.Fatal("CurrentSprintOption should be set")
+	}
+	if sprint.BufferConsumed != 0.5 {
+		t.Errorf("Sprint.BufferConsumed = %f, want 0.5", sprint.BufferConsumed)
+	}
+
+	// Consume more
+	got = got.Apply(events.NewBufferConsumed("sim-1", 2, 0.3))
+	sprint, _ = got.State().CurrentSprintOption.Get()
+	if sprint.BufferConsumed != 0.8 {
+		t.Errorf("Sprint.BufferConsumed = %f, want 0.8", sprint.BufferConsumed)
+	}
+}
+
+func TestProjection_Apply_BufferConsumed_FeverTransitions(t *testing.T) {
+	// Verify fever status transitions as buffer is consumed
+	// Thresholds: Green (<33%), Yellow (33-65%), Red (>=66%)
+	proj := events.NewProjection()
+	proj = proj.Apply(events.NewSimulationCreated("sim-1", 0, events.SimConfig{
+		SprintLength: 10,
+		Seed:         42,
+	}))
+	proj = proj.Apply(events.NewSprintStarted("sim-1", 0, 1, 3.0)) // 3 buffer days
+
+	// Initially Green (0% consumed)
+	sprint, _ := proj.State().CurrentSprintOption.Get()
+	if sprint.FeverStatus != model.FeverGreen {
+		t.Errorf("Initial FeverStatus = %v, want FeverGreen", sprint.FeverStatus)
+	}
+
+	// Consume 1.0 of 3.0 = 33% -> Yellow (threshold is <0.33 for Green)
+	proj = proj.Apply(events.NewBufferConsumed("sim-1", 1, 1.0))
+	sprint, _ = proj.State().CurrentSprintOption.Get()
+	if sprint.FeverStatus != model.FeverYellow {
+		t.Errorf("After 33%% consumed: FeverStatus = %v, want FeverYellow", sprint.FeverStatus)
+	}
+
+	// Consume another 0.9 = 63% total -> still Yellow (threshold is <0.66)
+	proj = proj.Apply(events.NewBufferConsumed("sim-1", 2, 0.9))
+	sprint, _ = proj.State().CurrentSprintOption.Get()
+	if sprint.FeverStatus != model.FeverYellow {
+		t.Errorf("After 63%% consumed: FeverStatus = %v, want FeverYellow", sprint.FeverStatus)
+	}
+
+	// Consume another 0.2 = 70% total -> Red (>=66%)
+	proj = proj.Apply(events.NewBufferConsumed("sim-1", 3, 0.2))
+	sprint, _ = proj.State().CurrentSprintOption.Get()
+	if sprint.FeverStatus != model.FeverRed {
+		t.Errorf("After 70%% consumed: FeverStatus = %v, want FeverRed", sprint.FeverStatus)
+	}
+}
+
 func TestProjection_Apply_SprintEnded(t *testing.T) {
 	proj := events.NewProjection()
 	proj = proj.Apply(events.NewSimulationCreated("sim-1", 0, events.SimConfig{Seed: 42}))
-	proj = proj.Apply(events.NewSprintStarted("sim-1", 0, 1))
+	proj = proj.Apply(events.NewSprintStarted("sim-1", 0, 1, 2.0))
 
 	evt := events.NewSprintEnded("sim-1", 10, 1)
 	got := proj.Apply(evt)

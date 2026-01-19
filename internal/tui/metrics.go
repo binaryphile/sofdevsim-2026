@@ -102,6 +102,7 @@ func (a *App) sparkline(values []float64) string {
 }
 
 func (a *App) historyPanel() string {
+	sim := a.engine.Sim()
 	title := TitleStyle.Render("Completed Tickets")
 
 	header := HeaderStyle.Render(fmt.Sprintf("%-10s %-25s %8s %8s %12s",
@@ -110,20 +111,20 @@ func (a *App) historyPanel() string {
 	var rows []string
 	// Show last 10 completed
 	start := 0
-	if len(a.sim.CompletedTickets) > 10 {
-		start = len(a.sim.CompletedTickets) - 10
+	if len(sim.CompletedTickets) > 10 {
+		start = len(sim.CompletedTickets) - 10
 	}
 
-	for i := len(a.sim.CompletedTickets) - 1; i >= start; i-- {
-		ticket := a.sim.CompletedTickets[i]
-		title := ticket.Title
-		if len(title) > 23 {
-			title = title[:23] + ".."
+	for i := len(sim.CompletedTickets) - 1; i >= start; i-- {
+		ticket := sim.CompletedTickets[i]
+		ticketTitle := ticket.Title
+		if len(ticketTitle) > 23 {
+			ticketTitle = ticketTitle[:23] + ".."
 		}
 
 		row := fmt.Sprintf("%-10s %-25s %7.1fd %7.1fd %-12s",
 			ticket.ID,
-			title,
+			ticketTitle,
 			ticket.EstimatedDays,
 			ticket.ActualDays,
 			ticket.UnderstandingLevel,
@@ -137,9 +138,9 @@ func (a *App) historyPanel() string {
 	}
 
 	stats := fmt.Sprintf("Total: %d completed | %d incidents | Policy: %s",
-		len(a.sim.CompletedTickets),
-		a.sim.TotalIncidents(),
-		a.sim.SizingPolicy,
+		len(sim.CompletedTickets),
+		sim.TotalIncidents(),
+		sim.SizingPolicy,
 	)
 
 	return lipgloss.JoinVertical(lipgloss.Left, title, header, content, "", MutedStyle.Render(stats))

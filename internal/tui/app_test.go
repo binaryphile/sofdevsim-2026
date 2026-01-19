@@ -12,14 +12,17 @@ func TestNewAppWithSeed_Reproducibility(t *testing.T) {
 	app1 := NewAppWithSeed(42)
 	app2 := NewAppWithSeed(42)
 
-	if app1.sim.Backlog[0].ID != app2.sim.Backlog[0].ID {
+	sim1 := app1.engine.Sim()
+	sim2 := app2.engine.Sim()
+
+	if sim1.Backlog[0].ID != sim2.Backlog[0].ID {
 		t.Errorf("Seed 42 should produce identical backlogs, got %s and %s",
-			app1.sim.Backlog[0].ID, app2.sim.Backlog[0].ID)
+			sim1.Backlog[0].ID, sim2.Backlog[0].ID)
 	}
 
-	if app1.sim.Seed != app2.sim.Seed {
+	if sim1.Seed != sim2.Seed {
 		t.Errorf("Seed should be stored identically, got %d and %d",
-			app1.sim.Seed, app2.sim.Seed)
+			sim1.Seed, sim2.Seed)
 	}
 }
 
@@ -29,9 +32,12 @@ func TestNewAppWithSeed_ZeroUsesRandomSeed(t *testing.T) {
 	time.Sleep(time.Nanosecond) // Ensure different time
 	app2 := NewAppWithSeed(0)
 
+	sim1 := app1.engine.Sim()
+	sim2 := app2.engine.Sim()
+
 	// Different seeds should (almost always) produce different backlogs
 	// This is probabilistic but failure is astronomically unlikely
-	if app1.sim.Seed == app2.sim.Seed {
+	if sim1.Seed == sim2.Seed {
 		t.Errorf("Seed 0 should use current time, producing different seeds")
 	}
 }
@@ -40,23 +46,24 @@ func TestNewAppWithSeed_ZeroUsesRandomSeed(t *testing.T) {
 func TestSprintEndsWhenDurationReached(t *testing.T) {
 	app := NewAppWithSeed(42)
 	app.engine.StartSprint() // Use engine to emit events
-	app.paused = false                // Enable tick processing
-	app.currentView = ViewExecution   // Required for tick processing
+	app.paused = false              // Enable tick processing
+	app.currentView = ViewExecution // Required for tick processing
 
-	// Get sprint end day
-	sprint, ok := app.sim.CurrentSprintOption.Get()
+	// Get sprint end day from engine projection
+	sim := app.engine.Sim()
+	sprint, ok := sim.CurrentSprintOption.Get()
 	if !ok {
 		t.Fatal("Expected sprint to be started")
 	}
 
-	// Move to end day
-	app.sim.CurrentTick = sprint.EndDay
+	// Run ticks until sprint ends (engine handles everything via events)
+	for i := 0; i < sprint.DurationDays+1; i++ {
+		app.Update(tickMsg(time.Now()))
+	}
 
-	// Simulate tick that should end sprint
-	app.Update(tickMsg(time.Now()))
-
-	// Sprint should be cleared
-	if _, ok := app.sim.CurrentSprintOption.Get(); ok {
+	// Sprint should be cleared in projection
+	sim = app.engine.Sim()
+	if _, ok := sim.CurrentSprintOption.Get(); ok {
 		t.Error("Sprint should be cleared after end day reached")
 	}
 	if !app.paused {
@@ -76,9 +83,31 @@ func TestNewAppWithRegistry_SubscribesToEvents(t *testing.T) {
 
 	// TUI should be registered in the shared registry
 	// (accessible via API)
-	evts := registry.Store().Replay(app.sim.ID)
+	sim := app.engine.Sim()
+	evts := registry.Store().Replay(sim.ID)
 	if len(evts) == 0 {
 		t.Error("Expected SimulationCreated event in shared store")
+	}
+}
+
+// TestNewAppWithSeed_ProjectionHasInitialState verifies projection has devs and tickets.
+func TestNewAppWithSeed_ProjectionHasInitialState(t *testing.T) {
+	app := NewAppWithSeed(42)
+
+	// Projection should have the developers
+	sim := app.engine.Sim()
+	if len(sim.Developers) != 3 {
+		t.Errorf("Projection should have 3 developers, got %d", len(sim.Developers))
+	}
+
+	// Projection should have the backlog
+	if len(sim.Backlog) != 12 {
+		t.Errorf("Projection should have 12 tickets in backlog, got %d", len(sim.Backlog))
+	}
+
+	// First developer should be Alice
+	if sim.Developers[0].Name != "Alice" {
+		t.Errorf("First developer should be Alice, got %s", sim.Developers[0].Name)
 	}
 }
 

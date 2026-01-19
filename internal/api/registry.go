@@ -52,21 +52,21 @@ func (r SimRegistry) CreateSimulation(seed int64, policy model.SizingPolicy) str
 	sim := model.NewSimulation(policy, seed)
 	sim.ID = id // Set ID for event sourcing
 
-	// Add default team (matching TUI pattern)
-	sim.AddDeveloper(model.NewDeveloper("dev-1", "Alice", 1.0))
-	sim.AddDeveloper(model.NewDeveloper("dev-2", "Bob", 0.8))
-	sim.AddDeveloper(model.NewDeveloper("dev-3", "Carol", 1.2))
+	eng := engine.NewEngineWithStore(sim, r.store)
+	eng.EmitCreated() // Emit SimulationCreated first
 
-	// Generate backlog (matching TUI pattern)
+	// Add default team via engine (emits DeveloperAdded events)
+	eng.AddDeveloper("dev-1", "Alice", 1.0)
+	eng.AddDeveloper("dev-2", "Bob", 0.8)
+	eng.AddDeveloper("dev-3", "Carol", 1.2)
+
+	// Generate backlog via engine (emits TicketCreated events)
 	gen := engine.Scenarios["healthy"]
 	rng := rand.New(rand.NewSource(seed))
 	tickets := gen.Generate(rng, 12)
 	for _, t := range tickets {
-		sim.AddTicket(t)
+		eng.AddTicket(t)
 	}
-
-	eng := engine.NewEngineWithStore(sim, r.store)
-	eng.EmitCreated() // Emit after setup complete
 
 	r.instances[id] = SimInstance{
 		sim:     sim,
@@ -106,7 +106,7 @@ func (r SimRegistry) ListSimulations() []SimulationSummary {
 	for id, inst := range r.instances {
 		result = append(result, SimulationSummary{
 			ID:           id,
-			SprintActive: inst.sim.CurrentSprintOption.IsOk(),
+			SprintActive: inst.engine.Sim().CurrentSprintOption.IsOk(),
 		})
 	}
 	return result

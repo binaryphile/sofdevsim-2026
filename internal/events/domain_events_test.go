@@ -36,7 +36,7 @@ func TestSimulationCreated(t *testing.T) {
 }
 
 func TestSprintStarted(t *testing.T) {
-	e := NewSprintStarted("sim-1", 0, 1)
+	e := NewSprintStarted("sim-1", 0, 1, 2.0)
 
 	if e.SimulationID() != "sim-1" {
 		t.Errorf("SimulationID() = %s, want sim-1", e.SimulationID())
@@ -161,7 +161,7 @@ func TestSprintEnded(t *testing.T) {
 func TestEventInterfaceCompliance(t *testing.T) {
 	var events []Event = []Event{
 		NewSimulationCreated("s", 0, SimConfig{}),
-		NewSprintStarted("s", 0, 1),
+		NewSprintStarted("s", 0, 1, 2.0),
 		NewTicked("s", 0),
 		NewTicketAssigned("s", 0, "t", "d"),
 		NewTicketCompleted("s", 0, "t", "d"),
@@ -241,7 +241,7 @@ func TestAllEventTypes_WithTrace(t *testing.T) {
 		event Event
 	}{
 		{"SimulationCreated", NewSimulationCreated("s", 0, SimConfig{}).WithTrace("t", "s", "p")},
-		{"SprintStarted", NewSprintStarted("s", 0, 1).WithTrace("t", "s", "p")},
+		{"SprintStarted", NewSprintStarted("s", 0, 1, 2.0).WithTrace("t", "s", "p")},
 		{"SprintEnded", NewSprintEnded("s", 0, 1).WithTrace("t", "s", "p")},
 		{"Ticked", NewTicked("s", 0).WithTrace("t", "s", "p")},
 		{"TicketAssigned", NewTicketAssigned("s", 0, "t", "d").WithTrace("t", "s", "p")},
@@ -321,7 +321,7 @@ func TestAllEventTypes_WithCausedBy(t *testing.T) {
 		event Event
 	}{
 		{"SimulationCreated", NewSimulationCreated("s", 0, SimConfig{}).WithCausedBy("cause-1")},
-		{"SprintStarted", NewSprintStarted("s", 0, 1).WithCausedBy("cause-1")},
+		{"SprintStarted", NewSprintStarted("s", 0, 1, 2.0).WithCausedBy("cause-1")},
 		{"SprintEnded", NewSprintEnded("s", 0, 1).WithCausedBy("cause-1")},
 		{"Ticked", NewTicked("s", 0).WithCausedBy("cause-1")},
 		{"TicketAssigned", NewTicketAssigned("s", 0, "t", "d").WithCausedBy("cause-1")},

@@ -258,6 +258,295 @@ func TestEngine_CurrentTraceReturnsContext(t *testing.T) {
 	}
 }
 
+func TestEngine_HasProjectionField(t *testing.T) {
+	store := events.NewMemoryStore()
+	sim := createTestSimulation()
+	eng := NewEngineWithStore(sim, store)
+
+	// Projection should be initialized (version 0)
+	if eng.proj.Version() != 0 {
+		t.Errorf("New engine proj.Version() = %d, want 0", eng.proj.Version())
+	}
+}
+
+func TestEngine_EmitUpdatesProjection(t *testing.T) {
+	store := events.NewMemoryStore()
+	sim := createTestSimulation()
+	eng := NewEngineWithStore(sim, store)
+
+	// Before EmitCreated, projection should be empty
+	if eng.proj.Version() != 0 {
+		t.Errorf("Before EmitCreated, proj.Version() = %d, want 0", eng.proj.Version())
+	}
+
+	eng.EmitCreated()
+
+	// After EmitCreated, projection should have applied the event
+	if eng.proj.Version() != 1 {
+		t.Errorf("After EmitCreated, proj.Version() = %d, want 1", eng.proj.Version())
+	}
+
+	// Verify state was set correctly
+	state := eng.proj.State()
+	if state.ID != sim.ID {
+		t.Errorf("proj.State().ID = %s, want %s", state.ID, sim.ID)
+	}
+}
+
+func TestEngine_SimReturnsProjectionState(t *testing.T) {
+	store := events.NewMemoryStore()
+	sim := createTestSimulation()
+	eng := NewEngineWithStore(sim, store)
+	eng.EmitCreated()
+
+	// Sim() should return state derived from projection
+	state := eng.Sim()
+
+	if state.ID != sim.ID {
+		t.Errorf("Sim().ID = %s, want %s", state.ID, sim.ID)
+	}
+	if state.Seed != sim.Seed {
+		t.Errorf("Sim().Seed = %d, want %d", state.Seed, sim.Seed)
+	}
+}
+
+func TestEngine_AddDeveloperEmitsEvent(t *testing.T) {
+	store := events.NewMemoryStore()
+	sim := model.NewSimulation(model.PolicyNone, 42)
+	sim.ID = "test-sim"
+	eng := NewEngineWithStore(sim, store)
+	eng.EmitCreated()
+
+	eng.AddDeveloper("dev-1", "Alice", 1.0)
+
+	// Find DeveloperAdded event
+	evts := store.Replay(sim.ID)
+	var found *events.DeveloperAdded
+	for _, e := range evts {
+		if e.EventType() == "DeveloperAdded" {
+			da := e.(events.DeveloperAdded)
+			found = &da
+			break
+		}
+	}
+
+	if found == nil {
+		t.Fatal("Expected DeveloperAdded event not found")
+	}
+
+	if found.DeveloperID != "dev-1" {
+		t.Errorf("DeveloperAdded.DeveloperID = %s, want dev-1", found.DeveloperID)
+	}
+	if found.Name != "Alice" {
+		t.Errorf("DeveloperAdded.Name = %s, want Alice", found.Name)
+	}
+
+	// Verify projection has the developer
+	state := eng.Sim()
+	if len(state.Developers) != 1 {
+		t.Fatalf("Sim().Developers length = %d, want 1", len(state.Developers))
+	}
+	if state.Developers[0].ID != "dev-1" {
+		t.Errorf("Sim().Developers[0].ID = %s, want dev-1", state.Developers[0].ID)
+	}
+}
+
+func TestEngine_AddTicketEmitsEvent(t *testing.T) {
+	store := events.NewMemoryStore()
+	sim := model.NewSimulation(model.PolicyNone, 42)
+	sim.ID = "test-sim"
+	eng := NewEngineWithStore(sim, store)
+	eng.EmitCreated()
+
+	ticket := model.NewTicket("TKT-001", "Test Ticket", 3.0, model.HighUnderstanding)
+	eng.AddTicket(ticket)
+
+	// Find TicketCreated event
+	evts := store.Replay(sim.ID)
+	var found *events.TicketCreated
+	for _, e := range evts {
+		if e.EventType() == "TicketCreated" {
+			tc := e.(events.TicketCreated)
+			found = &tc
+			break
+		}
+	}
+
+	if found == nil {
+		t.Fatal("Expected TicketCreated event not found")
+	}
+
+	if found.TicketID != "TKT-001" {
+		t.Errorf("TicketCreated.TicketID = %s, want TKT-001", found.TicketID)
+	}
+
+	// Verify projection has the ticket in backlog
+	state := eng.Sim()
+	if len(state.Backlog) != 1 {
+		t.Fatalf("Sim().Backlog length = %d, want 1", len(state.Backlog))
+	}
+	if state.Backlog[0].ID != "TKT-001" {
+		t.Errorf("Sim().Backlog[0].ID = %s, want TKT-001", state.Backlog[0].ID)
+	}
+}
+
+func TestEngine_EmitsWorkProgressedEvent(t *testing.T) {
+	store := events.NewMemoryStore()
+	sim := createTestSimulation()
+	eng := NewEngineWithStore(sim, store)
+	eng.EmitCreated()
+
+	// Setup a ticket that has work remaining (won't complete in one tick)
+	ticket := model.NewTicket("TKT-001", "Test Ticket", 5, model.HighUnderstanding)
+	ticket.AssignedTo = "DEV-001"
+	ticket.Phase = model.PhaseResearch
+	ticket.RemainingEffort = 5.0
+	sim.ActiveTickets = append(sim.ActiveTickets, ticket)
+	sim.Developers[0] = sim.Developers[0].WithTicket("TKT-001")
+
+	eng.Tick()
+
+	// Find WorkProgressed event
+	evts := store.Replay(sim.ID)
+	var found *events.WorkProgressed
+	for _, e := range evts {
+		if e.EventType() == "WorkProgressed" {
+			wp := e.(events.WorkProgressed)
+			found = &wp
+			break
+		}
+	}
+
+	if found == nil {
+		t.Fatal("Expected WorkProgressed event not found")
+	}
+
+	if found.TicketID != "TKT-001" {
+		t.Errorf("WorkProgressed.TicketID = %s, want TKT-001", found.TicketID)
+	}
+	if found.EffortApplied <= 0 {
+		t.Errorf("WorkProgressed.EffortApplied = %v, want > 0", found.EffortApplied)
+	}
+}
+
+func TestEngine_EmitsTicketPhaseChangedEvent(t *testing.T) {
+	store := events.NewMemoryStore()
+	sim := createTestSimulation()
+	eng := NewEngineWithStore(sim, store)
+	eng.EmitCreated()
+
+	// Setup a ticket that will complete current phase (but not entire ticket)
+	ticket := model.NewTicket("TKT-001", "Test Ticket", 5, model.HighUnderstanding)
+	ticket.AssignedTo = "DEV-001"
+	ticket.Phase = model.PhaseResearch
+	ticket.RemainingEffort = 0.1 // Will complete this phase in one tick
+	sim.ActiveTickets = append(sim.ActiveTickets, ticket)
+	sim.Developers[0] = sim.Developers[0].WithTicket("TKT-001")
+
+	eng.Tick()
+
+	// Find TicketPhaseChanged event
+	evts := store.Replay(sim.ID)
+	var found *events.TicketPhaseChanged
+	for _, e := range evts {
+		if e.EventType() == "TicketPhaseChanged" {
+			pc := e.(events.TicketPhaseChanged)
+			found = &pc
+			break
+		}
+	}
+
+	if found == nil {
+		t.Fatal("Expected TicketPhaseChanged event not found")
+	}
+
+	if found.TicketID != "TKT-001" {
+		t.Errorf("TicketPhaseChanged.TicketID = %s, want TKT-001", found.TicketID)
+	}
+	if found.OldPhase != model.PhaseResearch {
+		t.Errorf("TicketPhaseChanged.OldPhase = %v, want PhaseResearch", found.OldPhase)
+	}
+	if found.NewPhase != model.PhaseSizing {
+		t.Errorf("TicketPhaseChanged.NewPhase = %v, want PhaseSizing", found.NewPhase)
+	}
+}
+
+func TestEngine_EmitsSprintEndedEvent(t *testing.T) {
+	store := events.NewMemoryStore()
+	sim := createTestSimulation()
+	eng := NewEngineWithStore(sim, store)
+	eng.EmitCreated()
+
+	// Start sprint
+	eng.StartSprint()
+
+	// Get sprint info to know when it ends
+	sprint, _ := sim.CurrentSprintOption.Get()
+
+	// Advance to sprint end
+	for sim.CurrentTick < sprint.EndDay {
+		eng.Tick()
+	}
+
+	// Find SprintEnded event
+	evts := store.Replay(sim.ID)
+	var found *events.SprintEnded
+	for _, e := range evts {
+		if e.EventType() == "SprintEnded" {
+			se := e.(events.SprintEnded)
+			found = &se
+			break
+		}
+	}
+
+	if found == nil {
+		t.Fatal("Expected SprintEnded event not found")
+	}
+
+	if found.Number != sprint.Number {
+		t.Errorf("SprintEnded.Number = %d, want %d", found.Number, sprint.Number)
+	}
+}
+
+func TestEngine_SetPolicyEmitsEvent(t *testing.T) {
+	store := events.NewMemoryStore()
+	sim := model.NewSimulation(model.PolicyNone, 42)
+	sim.ID = "test-sim"
+	eng := NewEngineWithStore(sim, store)
+	eng.EmitCreated()
+
+	// Change policy
+	eng.SetPolicy(model.PolicyDORAStrict)
+
+	// Find PolicyChanged event
+	evts := store.Replay(sim.ID)
+	var found *events.PolicyChanged
+	for _, e := range evts {
+		if e.EventType() == "PolicyChanged" {
+			pc := e.(events.PolicyChanged)
+			found = &pc
+			break
+		}
+	}
+
+	if found == nil {
+		t.Fatal("Expected PolicyChanged event not found")
+	}
+
+	if found.OldPolicy != model.PolicyNone {
+		t.Errorf("PolicyChanged.OldPolicy = %v, want PolicyNone", found.OldPolicy)
+	}
+	if found.NewPolicy != model.PolicyDORAStrict {
+		t.Errorf("PolicyChanged.NewPolicy = %v, want PolicyDORAStrict", found.NewPolicy)
+	}
+
+	// Verify projection has the new policy
+	state := eng.Sim()
+	if state.SizingPolicy != model.PolicyDORAStrict {
+		t.Errorf("Sim().SizingPolicy = %v, want PolicyDORAStrict", state.SizingPolicy)
+	}
+}
+
 // createTestSimulation creates a minimal simulation for testing.
 func createTestSimulation() *model.Simulation {
 	sim := model.NewSimulation(model.PolicyNone, 42)

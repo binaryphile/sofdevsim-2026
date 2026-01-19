@@ -762,6 +762,14 @@ BenchmarkFindActiveTicketIndex-8       7165947       152.7 ns/op      0 B/op    
 BenchmarkVarianceCalculate-8            130179      8916 ns/op     5376 B/op     1 allocs/op
 ```
 
+**Event Sourcing (Projection):**
+```
+BenchmarkProjection_Apply_SingleEvent-8  22574644      45.12 ns/op      0 B/op     0 allocs/op
+BenchmarkProjection_ReplayFull-8            29217     36419 ns/op    560 B/op     3 allocs/op
+```
+
+Targets: SingleEvent < 1μs/op, ReplayFull (1000 events) < 1ms. Both well under targets.
+
 **FluentFP vs Loop Comparisons:**
 ```
 BenchmarkFluentFP_ToFloat64-8          6981193       171.5 ns/op    896 B/op     1 allocs/op

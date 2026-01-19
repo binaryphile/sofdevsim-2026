@@ -29,8 +29,7 @@ const (
 
 // App is the main bubbletea model
 type App struct {
-	// Simulation state
-	sim      *model.Simulation
+	// Simulation state - all access via engine.Sim() (projection)
 	engine   *engine.Engine
 	tracker  metrics.Tracker
 	store    events.Store       // event store for event sourcing
@@ -89,19 +88,6 @@ func NewAppWithRegistry(seed int64, registry api.SimRegistry) *App {
 	sim := model.NewSimulation(model.PolicyDORAStrict, seed)
 	sim.ID = simID
 
-	// Add default team
-	sim.AddDeveloper(model.NewDeveloper("dev-1", "Alice", 1.0))
-	sim.AddDeveloper(model.NewDeveloper("dev-2", "Bob", 0.8))
-	sim.AddDeveloper(model.NewDeveloper("dev-3", "Carol", 1.2))
-
-	// Generate initial backlog
-	gen := engine.Scenarios["healthy"]
-	rng := rand.New(rand.NewSource(seed))
-	tickets := gen.Generate(rng, 12)
-	for _, t := range tickets {
-		sim.AddTicket(t)
-	}
-
 	tracker := metrics.NewTracker()
 
 	var store events.Store
@@ -118,11 +104,23 @@ func NewAppWithRegistry(seed int64, registry api.SimRegistry) *App {
 		eng.EmitCreated()
 	}
 
+	// Add default team via engine (emits DeveloperAdded events)
+	eng.AddDeveloper("dev-1", "Alice", 1.0)
+	eng.AddDeveloper("dev-2", "Bob", 0.8)
+	eng.AddDeveloper("dev-3", "Carol", 1.2)
+
+	// Generate initial backlog via engine (emits TicketCreated events)
+	gen := engine.Scenarios["healthy"]
+	rng := rand.New(rand.NewSource(seed))
+	tickets := gen.Generate(rng, 12)
+	for _, t := range tickets {
+		eng.AddTicket(t)
+	}
+
 	// Subscribe to event store for live updates
 	eventSub := store.Subscribe(simID)
 
 	return &App{
-		sim:          sim,
 		engine:       eng,
 		tracker:      tracker,
 		store:        store,
@@ -170,7 +168,8 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case eventMsg:
 		// Received event from subscription - update display
 		// This enables live updates when API modifies the simulation
-		a.tracker = a.tracker.Updated(a.sim)
+		sim := a.engine.Sim()
+		a.tracker = a.tracker.Updated(&sim)
 		// Show status for significant events
 		switch events.Event(msg).EventType() {
 		case "SprintStarted":
@@ -182,7 +181,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.statusMessage = "Ticket assigned (external)"
 			a.statusExpiry = time.Now().Add(2 * time.Second)
 		case "Ticked":
-			a.statusMessage = fmt.Sprintf("Tick %d (external)", a.sim.CurrentTick)
+			a.statusMessage = fmt.Sprintf("Tick %d (external)", sim.CurrentTick)
 			a.statusExpiry = time.Now().Add(1 * time.Second)
 		}
 		// Continue listening for more events
@@ -192,11 +191,13 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if !a.paused && a.currentView == ViewExecution {
 			tickEvents := a.engine.Tick()
 			a.modelEvents = append(a.modelEvents, tickEvents...)
-			a.tracker = a.tracker.Updated(a.sim)
 
-			// End sprint when duration reached
-			if sprint, ok := a.sim.CurrentSprintOption.Get(); ok && a.sim.CurrentTick >= sprint.EndDay {
-				a.sim.CurrentSprintOption = model.NoSprint // Clear sprint
+			// Get current state from projection
+			sim := a.engine.Sim()
+			a.tracker = a.tracker.Updated(&sim)
+
+			// Check if sprint ended (SprintEnded event already cleared it in projection)
+			if _, sprintActive := sim.CurrentSprintOption.Get(); !sprintActive {
 				a.paused = true
 				a.statusMessage = "Sprint complete - press 's' for next sprint"
 				a.statusExpiry = time.Now().Add(5 * time.Second)
@@ -235,13 +236,16 @@ func (a *App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case "p":
-		// Cycle policy
-		a.sim.SizingPolicy = (a.sim.SizingPolicy + 1) % 4
+		// Cycle policy via engine (emits PolicyChanged event)
+		sim := a.engine.Sim()
+		newPolicy := (sim.SizingPolicy + 1) % 4
+		a.engine.SetPolicy(newPolicy)
 		return a, nil
 
 	case "s":
 		// Start sprint (from planning view)
-		if _, ok := a.sim.CurrentSprintOption.Get(); a.currentView == ViewPlanning && !ok {
+		sim := a.engine.Sim()
+		if _, ok := sim.CurrentSprintOption.Get(); a.currentView == ViewPlanning && !ok {
 			a.engine.StartSprint()
 			a.currentView = ViewExecution
 			a.paused = false
@@ -251,9 +255,10 @@ func (a *App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case "a":
 		// Assign selected ticket to first idle developer
-		if a.currentView == ViewPlanning && a.selected < len(a.sim.Backlog) {
-			ticket := a.sim.Backlog[a.selected]
-			for _, dev := range a.sim.Developers {
+		sim := a.engine.Sim()
+		if a.currentView == ViewPlanning && a.selected < len(sim.Backlog) {
+			ticket := sim.Backlog[a.selected]
+			for _, dev := range sim.Developers {
 				if dev.IsIdle() {
 					a.engine.AssignTicket(ticket.ID, dev.ID)
 					break
@@ -264,8 +269,9 @@ func (a *App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case "d":
 		// Decompose selected ticket
-		if a.currentView == ViewPlanning && a.selected < len(a.sim.Backlog) {
-			ticket := a.sim.Backlog[a.selected]
+		sim := a.engine.Sim()
+		if a.currentView == ViewPlanning && a.selected < len(sim.Backlog) {
+			ticket := sim.Backlog[a.selected]
 			a.engine.TryDecompose(ticket.ID)
 		}
 		return a, nil
@@ -290,12 +296,13 @@ func (a *App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case "e":
 		// Export simulation data
-		if len(a.sim.CompletedTickets) == 0 {
+		sim := a.engine.Sim()
+		if len(sim.CompletedTickets) == 0 {
 			a.statusMessage = "Nothing to export - no completed tickets"
 			a.statusExpiry = time.Now().Add(3 * time.Second)
 			return a, nil
 		}
-		exporter := export.New(a.sim, a.tracker, a.comparisonResult)
+		exporter := export.New(&sim, a.tracker, a.comparisonResult)
 		result, err := exporter.Export()
 		if err != nil {
 			a.statusMessage = fmt.Sprintf("Export failed: %v", err)
@@ -308,9 +315,10 @@ func (a *App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case "ctrl+s":
 		// Save simulation state
-		saveName := fmt.Sprintf("sim-%d-%s", a.sim.Seed, time.Now().Format("150405"))
+		sim := a.engine.Sim()
+		saveName := fmt.Sprintf("sim-%d-%s", sim.Seed, time.Now().Format("150405"))
 		savePath := persistence.GenerateSavePath(persistence.DefaultSavesDir(), saveName)
-		err := persistence.Save(savePath, saveName, a.sim, a.tracker)
+		err := persistence.Save(savePath, saveName, &sim, a.tracker)
 		if err != nil {
 			a.statusMessage = fmt.Sprintf("Save failed: %v", err)
 			a.statusExpiry = time.Now().Add(5 * time.Second)
@@ -342,7 +350,6 @@ func (a *App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return a, nil
 		}
 		// Restore state
-		a.sim = sim
 		a.tracker = tracker
 		// Ensure simulation has ID for event sourcing
 		if sim.ID == "" {
@@ -355,8 +362,9 @@ func (a *App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		} else {
 			a.store = events.NewMemoryStore()
 			a.engine = engine.NewEngineWithStore(sim, a.store)
-			a.engine.EmitCreated()
 		}
+		// Emit events to populate projection from loaded state
+		a.engine.EmitLoadedState()
 		// Re-subscribe to new simulation's events
 		a.eventSub = a.store.Subscribe(sim.ID)
 		a.paused = true
@@ -499,7 +507,8 @@ func (a *App) View() string {
 
 	// Compose with lessons panel when visible
 	if a.lessonState.Visible {
-		_, hasActiveSprint := a.sim.CurrentSprintOption.Get()
+		sim := a.engine.Sim()
+		_, hasActiveSprint := sim.CurrentSprintOption.Get()
 		lesson := SelectLesson(a.currentView, a.lessonState, hasActiveSprint, a.comparisonResult != nil)
 		a.lessonState = a.lessonState.WithSeen(lesson.ID)
 		lessonPanel := a.lessonsPanel(lesson)
@@ -533,13 +542,14 @@ func (a *App) headerView() string {
 		tabs += style.Render(fmt.Sprintf(" %s ", name))
 	}
 
-	policy := fmt.Sprintf("Policy: %s", a.sim.SizingPolicy)
+	sim := a.engine.Sim()
+	policy := fmt.Sprintf("Policy: %s", sim.SizingPolicy)
 	status := "PAUSED"
 	if !a.paused {
 		status = "RUNNING"
 	}
 
-	right := MutedStyle.Render(fmt.Sprintf("%s | %s | Day %d | Backlog: %d | Done: %d | Seed %d", policy, status, a.sim.CurrentTick, len(a.sim.Backlog), len(a.sim.CompletedTickets), a.sim.Seed))
+	right := MutedStyle.Render(fmt.Sprintf("%s | %s | Day %d | Backlog: %d | Done: %d | Seed %d", policy, status, sim.CurrentTick, len(sim.Backlog), len(sim.CompletedTickets), sim.Seed))
 
 	return BoxStyle.Width(a.width - 2).Render(
 		lipgloss.JoinHorizontal(lipgloss.Top, tabs, "  ", right),

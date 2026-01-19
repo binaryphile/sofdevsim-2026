@@ -111,7 +111,7 @@ func (r SimRegistry) HandleCreateSimulation(w http.ResponseWriter, req *http.Req
 	id := r.CreateSimulation(body.Seed, policy)
 
 	inst, _ := r.getInstance(id)
-	state := ToState(*inst.sim)
+	state := ToState(inst.engine.Sim())
 	response := HALResponse{
 		State: state,
 		Links: LinksFor(state),
@@ -130,7 +130,7 @@ func (r SimRegistry) HandleGetSimulation(w http.ResponseWriter, req *http.Reques
 		return
 	}
 
-	state := ToState(*inst.sim)
+	state := ToState(inst.engine.Sim())
 	response := HALResponse{
 		State: state,
 		Links: LinksFor(state),
@@ -150,14 +150,15 @@ func (r SimRegistry) HandleStartSprint(w http.ResponseWriter, req *http.Request)
 	}
 
 	// Check if sprint already active
-	if _, active := inst.sim.CurrentSprintOption.Get(); active {
+	sim := inst.engine.Sim()
+	if _, active := sim.CurrentSprintOption.Get(); active {
 		writeError(w, http.StatusConflict, "sprint already active")
 		return
 	}
 
 	inst.engine.StartSprint()
 
-	state := ToState(*inst.sim)
+	state := ToState(inst.engine.Sim())
 	response := HALResponse{
 		State: state,
 		Links: LinksFor(state),
@@ -177,36 +178,25 @@ func (r SimRegistry) HandleTick(w http.ResponseWriter, req *http.Request) {
 	}
 
 	// Check if sprint is active
-	if _, active := inst.sim.CurrentSprintOption.Get(); !active {
+	sim := inst.engine.Sim()
+	if _, active := sim.CurrentSprintOption.Get(); !active {
 		writeError(w, http.StatusConflict, "no active sprint")
 		return
 	}
 
-	// Engine mutates *Simulation in place
+	// Engine emits events and updates projection
 	inst.engine.Tick()
 
-	// Clear sprint if it has ended (domain logic - could move to Simulation.EndSprintIfComplete)
-	clearSprintIfEnded(inst.sim)
+	// SprintEnded event clears sprint in projection automatically
+	sim = inst.engine.Sim()
+	inst.tracker = inst.tracker.Updated(&sim)
 
-	inst.tracker = inst.tracker.Updated(inst.sim)
-
-	state := ToState(*inst.sim)
+	state := ToState(sim)
 	response := HALResponse{
 		State: state,
 		Links: LinksFor(state),
 	}
 	writeJSON(w, http.StatusOK, response)
-}
-
-// clearSprintIfEnded clears the current sprint if CurrentTick has reached EndDay.
-func clearSprintIfEnded(sim *model.Simulation) {
-	sprint, ok := sim.CurrentSprintOption.Get()
-	if !ok {
-		return
-	}
-	if sim.CurrentTick >= sprint.EndDay {
-		sim.CurrentSprintOption = model.NoSprint
-	}
 }
 
 // AssignTicketRequest is the request body for assigning a ticket.
@@ -236,7 +226,8 @@ func (r SimRegistry) HandleAssignTicket(w http.ResponseWriter, req *http.Request
 	// Auto-assign if no developer specified
 	devID := body.DeveloperID
 	if devID == "" {
-		idle := inst.sim.IdleDevelopers()
+		sim := inst.engine.Sim()
+		idle := sim.IdleDevelopers()
 		if len(idle) == 0 {
 			writeError(w, http.StatusBadRequest, "no idle developers")
 			return
@@ -249,7 +240,7 @@ func (r SimRegistry) HandleAssignTicket(w http.ResponseWriter, req *http.Request
 		return
 	}
 
-	state := ToState(*inst.sim)
+	state := ToState(inst.engine.Sim())
 	response := HALResponse{
 		State: state,
 		Links: LinksFor(state),
@@ -406,11 +397,12 @@ func (r SimRegistry) HandleGetLessons(w http.ResponseWriter, req *http.Request) 
 	}
 
 	// Determine view context from simulation state
-	_, hasActiveSprint := inst.sim.CurrentSprintOption.Get()
+	sim := inst.engine.Sim()
+	_, hasActiveSprint := sim.CurrentSprintOption.Get()
 	var view lessons.ViewContext
 	if hasActiveSprint {
 		view = lessons.ViewExecution
-	} else if len(inst.sim.CompletedTickets) > 0 {
+	} else if len(sim.CompletedTickets) > 0 {
 		view = lessons.ViewMetrics
 	} else {
 		view = lessons.ViewPlanning

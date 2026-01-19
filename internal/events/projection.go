@@ -47,9 +47,12 @@ func (p Projection) Apply(evt Event) Projection {
 
 	case SprintStarted:
 		next.sim.CurrentSprintOption = option.Of(model.Sprint{
-			Number:   e.Number,
-			StartDay: e.StartTick,
-			EndDay:   e.StartTick + next.sim.SprintLength,
+			Number:       e.Number,
+			StartDay:     e.StartTick,
+			EndDay:       e.StartTick + next.sim.SprintLength,
+			DurationDays: next.sim.SprintLength,
+			BufferDays:   e.BufferDays,
+			FeverStatus:  model.FeverGreen, // Start with green status
 		})
 
 	case SprintEnded:
@@ -117,6 +120,7 @@ func (p Projection) Apply(evt Event) Projection {
 			if t.ID == e.TicketID {
 				next.sim.ActiveTickets[i].RemainingEffort -= e.EffortApplied
 				next.sim.ActiveTickets[i].ActualDays += e.EffortApplied
+				next.sim.ActiveTickets[i].PhaseEffortSpent[e.Phase] += e.EffortApplied
 				break
 			}
 		}
@@ -128,6 +132,17 @@ func (p Projection) Apply(evt Event) Projection {
 				next.sim.ActiveTickets[i].RemainingEffort = t.CalculatePhaseEffort(e.NewPhase)
 				break
 			}
+		}
+
+	case PolicyChanged:
+		next.sim.SizingPolicy = e.NewPolicy
+
+	case BufferConsumed:
+		// Update sprint buffer consumption
+		if sprint, ok := next.sim.CurrentSprintOption.Get(); ok {
+			sprint.BufferConsumed += e.DaysConsumed
+			sprint = sprint.WithUpdatedFeverStatus()
+			next.sim.CurrentSprintOption = option.Of(sprint)
 		}
 
 	case IncidentStarted:
