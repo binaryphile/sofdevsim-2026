@@ -10,23 +10,23 @@ import (
 	"github.com/binaryphile/sofdevsim-2026/internal/model"
 )
 
-// SimRegistry is an aggregate root (manages collection).
-// Uses pointer receiver because map is reference type.
+// SimRegistry manages simulation instances.
+// Value receiver: map/interface fields have reference semantics.
 type SimRegistry struct {
 	instances map[string]SimInstance
 	store     events.Store // shared event store for all simulations
 }
 
 // NewSimRegistry creates an empty registry with an in-memory event store.
-func NewSimRegistry() *SimRegistry {
-	return &SimRegistry{
+func NewSimRegistry() SimRegistry {
+	return SimRegistry{
 		instances: make(map[string]SimInstance),
 		store:     events.NewMemoryStore(),
 	}
 }
 
 // Store returns the shared event store for subscriptions.
-func (r *SimRegistry) Store() events.Store {
+func (r SimRegistry) Store() events.Store {
 	return r.store
 }
 
@@ -40,7 +40,7 @@ type SimInstance struct {
 }
 
 // CreateSimulation creates a new simulation with given seed and policy.
-func (r *SimRegistry) CreateSimulation(seed int64, policy model.SizingPolicy) string {
+func (r SimRegistry) CreateSimulation(seed int64, policy model.SizingPolicy) string {
 	id := fmt.Sprintf("sim-%d", seed)
 
 	sim := model.NewSimulation(policy, seed)
@@ -74,7 +74,7 @@ func (r *SimRegistry) CreateSimulation(seed int64, policy model.SizingPolicy) st
 // RegisterSimulation registers an existing simulation with the shared event store.
 // Returns the engine configured to emit to the shared store.
 // Use this to share simulations between TUI and API.
-func (r *SimRegistry) RegisterSimulation(sim *model.Simulation, tracker metrics.Tracker) *engine.Engine {
+func (r SimRegistry) RegisterSimulation(sim *model.Simulation, tracker metrics.Tracker) *engine.Engine {
 	eng := engine.NewEngineWithStore(sim, r.store)
 	eng.EmitCreated()
 
@@ -89,13 +89,13 @@ func (r *SimRegistry) RegisterSimulation(sim *model.Simulation, tracker metrics.
 
 // getInstance returns simulation instance using comma-ok pattern.
 // SimInstance contains pointers, so mutations via engine affect original.
-func (r *SimRegistry) getInstance(id string) (SimInstance, bool) {
+func (r SimRegistry) getInstance(id string) (SimInstance, bool) {
 	inst, ok := r.instances[id]
 	return inst, ok
 }
 
 // ListSimulations returns all active simulation IDs and their states.
-func (r *SimRegistry) ListSimulations() []SimulationSummary {
+func (r SimRegistry) ListSimulations() []SimulationSummary {
 	result := make([]SimulationSummary, 0, len(r.instances))
 	for id, inst := range r.instances {
 		result = append(result, SimulationSummary{

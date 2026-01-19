@@ -14955,3 +14955,185 @@ Implemented contextual lessons panel (UC13) that teaches simulation concepts thr
 
 **Why it matters:**
 Provides in-context learning for users exploring the simulation, teaching variance model, DORA metrics, and policy comparison concepts without leaving the TUI.
+
+---
+
+## Approved Plan: 2026-01-19
+
+Plan file: `/home/ted/.claude/plans/humming-cuddling-wigderson.md`
+Title: Event Sourcing Completion + Value Semantics Refactoring
+Phase: 1 of 2 (Value Semantics only)
+
+---
+
+## Approved Contract: 2026-01-19
+
+# Phase 1 Contract: Value Semantics Conversion
+
+**Created:** 2026-01-19
+
+## Step 1 Checklist
+- [x] 1a: Presented understanding
+- [x] 1b: Asked clarifying questions
+- [x] 1b-answer: Received answers (separate phases)
+- [x] 1c: Contract created (this file)
+- [x] 1d: Approval received
+- [x] 1e: Plan + contract archived
+
+## Objective
+
+Convert 3 pointer receiver types to value receivers per Go Development Guide:
+- VarianceModel
+- PolicyEngine
+- TicketGenerator
+
+## Success Criteria
+- [ ] VarianceModel: `*VarianceModel` → `VarianceModel` (variance.go)
+- [ ] PolicyEngine: `*PolicyEngine` → `PolicyEngine` (policies.go)
+- [ ] TicketGenerator: `*TicketGenerator` → `TicketGenerator` (generator.go)
+- [ ] Engine field types updated to match
+- [ ] All existing tests pass
+- [ ] No coverage regression
+
+## Approach
+
+1. Read each file to understand current structure
+2. Convert NewX() return types from `*T` to `T`
+3. Convert method receivers from `(x *T)` to `(x T)`
+4. Update Engine struct field types
+5. Run tests to verify no breakage
+
+## Token Budget
+Estimated: 15-20K tokens
+- 3 files × ~2K tokens/file for read + edit = 6K
+- Engine struct update = 2K
+- Test runs = 5K
+- Buffer for iteration = 5K
+
+## Out of Scope
+- Event sourcing changes (Task 2 - separate phase)
+- Projection type
+- API/TUI changes
+
+---
+
+## Archived: 2026-01-19
+
+# Phase 1 Contract: Value Semantics Conversion
+
+**Created:** 2026-01-19
+
+## Step 1 Checklist
+- [x] 1a: Presented understanding
+- [x] 1b: Asked clarifying questions
+- [x] 1b-answer: Received answers (separate phases)
+- [x] 1c: Contract created (this file)
+- [x] 1d: Approval received
+- [x] 1e: Plan + contract archived
+
+## Objective
+
+Convert 3 pointer receiver types to value receivers per Go Development Guide:
+- VarianceModel
+- PolicyEngine
+- TicketGenerator
+
+## Success Criteria
+- [x] VarianceModel: `*VarianceModel` → `VarianceModel` (variance.go:17-18, 24)
+- [x] PolicyEngine: `*PolicyEngine` → `PolicyEngine` (policies.go:18-19, 23, 38)
+- [x] TicketGenerator: `*TicketGenerator` → `TicketGenerator` (generator.go:56)
+- [x] Engine field types updated to match (engine.go:17, 19)
+- [x] All existing tests pass
+- [x] No coverage regression (engine: 85.4%, api: 87.6%)
+
+## Approach
+
+1. Read each file to understand current structure
+2. Convert NewX() return types from `*T` to `T`
+3. Convert method receivers from `(x *T)` to `(x T)`
+4. Update Engine struct field types
+5. Run tests to verify no breakage
+
+## Token Budget
+Estimated: 15-20K tokens
+- 3 files × ~2K tokens/file for read + edit = 6K
+- Engine struct update = 2K
+- Test runs = 5K
+- Buffer for iteration = 5K
+
+## Out of Scope
+- Event sourcing changes (Task 2 - separate phase)
+- Projection type
+- API/TUI changes
+
+---
+
+## Actual Results
+
+**Completed:** 2026-01-19
+
+### Files Changed
+
+| File | Changes | Lines |
+|------|---------|-------|
+| `internal/engine/variance.go` | NewVarianceModel returns value, Calculate value receiver | 17-18, 24 |
+| `internal/engine/policies.go` | NewPolicyEngine returns value, ShouldDecompose/Decompose value receivers | 18-19, 23, 38 |
+| `internal/engine/generator.go` | Generate value receiver | 56 |
+| `internal/engine/engine.go` | Engine struct: variance/policies now value types | 15-22 |
+| `internal/api/registry.go` | ALL receivers → value type (map is reference type) | 13-15, 21, 29, 43, 77, 92, 98 |
+| `internal/api/handlers.go` | ALL handlers → value receivers | 35, 60, 90, 124, 143, 170, 221, 262, 400 |
+| `internal/api/server.go` | NewRouter takes SimRegistry (value) | 9 |
+| `internal/api/api_test.go` | Added TestSimRegistry_ValueSemantics | 343-378 |
+| `go-development-guide.md` | Added "Reference Types Don't Require Pointer Receivers" section | 796-816 |
+
+### Test Results
+```
+ok  github.com/binaryphile/sofdevsim-2026/internal/api     0.024s  coverage: 87.6%
+ok  github.com/binaryphile/sofdevsim-2026/internal/engine  0.030s  coverage: 85.4%
+```
+
+All tests pass. Coverage improved vs baseline (engine was 79.1%, now 85.4%).
+
+### Self-Assessment
+**Grade: A- (92/100)**
+
+What went well:
+- Clean, minimal changes to value semantics for engine types
+- Discovered SimRegistry could also use value receivers (expanded scope)
+- All tests pass
+- Discovered and fixed gap in Go Dev Guide
+- Added regression test for value semantics (TestSimRegistry_ValueSemantics)
+
+Deductions:
+- (-4) Initially missed SimRegistry in scope assessment
+- (-4) Required user prompts to realize SimRegistry needed full conversion
+
+Lessons learned:
+- Maps are reference types - mutations persist with value receivers
+- "Needs to modify receiver" means non-reference fields, not map contents
+- Updated Go Dev Guide to prevent this confusion in future
+- Always question why pointer receivers exist; they often don't need to be
+
+## Step 4 Checklist
+- [x] 4a: Results presented to user
+- [x] 4b: Approval received
+
+## Approval
+✅ APPROVED BY USER - 2026-01-19
+Final: Value semantics conversion complete for engine types + SimRegistry + handlers. Regression test added.
+
+---
+
+## Log: 2026-01-19 - Phase 1: Value Semantics Conversion
+
+**What was done:**
+Converted pointer receivers to value receivers across engine and API packages. Maps and interfaces are reference types, so mutations persist even with value receivers. Added regression test to guard against future "fixes" that might revert to unnecessary pointers.
+
+**Key files changed:**
+- `internal/engine/variance.go`, `policies.go`, `generator.go`: Value receivers for pure calculation types
+- `internal/api/registry.go`, `handlers.go`, `server.go`: SimRegistry and all handlers now use value receivers
+- `internal/api/api_test.go`: Added TestSimRegistry_ValueSemantics
+- `go-development-guide.md`: Added "Reference Types Don't Require Pointer Receivers" section
+
+**Why it matters:**
+Value semantics eliminate nil panics, make mutation explicit at call sites, and enable FluentFP method expressions. This is foundational for Phase 2 (Event Sourcing) where Projection will also use value semantics.

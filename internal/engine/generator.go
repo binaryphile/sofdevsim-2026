@@ -51,8 +51,9 @@ var DefaultTitles = []string{
 	"Fix validation errors",
 }
 
-// Generate creates a batch of tickets with the configured distribution
-func (g *TicketGenerator) Generate(rng *rand.Rand, count int) []model.Ticket {
+// Generate creates a batch of tickets with the configured distribution.
+// Value receiver: pure generation, no mutation.
+func (g TicketGenerator) Generate(rng *rand.Rand, count int) []model.Ticket {
 	tickets := make([]model.Ticket, count)
 
 	for i := range tickets {

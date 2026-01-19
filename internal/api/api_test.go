@@ -340,6 +340,43 @@ func TestAPI_GetLessons_NotFound(t *testing.T) {
 	}
 }
 
+// TestSimRegistry_ValueSemantics verifies that SimRegistry works correctly with
+// value receivers. Maps are reference types, so mutations via value receiver
+// persist to the underlying data structure. This test guards against regression
+// if someone "fixes" the receivers to pointers thinking maps need them.
+func TestSimRegistry_ValueSemantics(t *testing.T) {
+	// Create registry as VALUE (not pointer)
+	registry := api.NewSimRegistry()
+
+	// Call method that mutates internal map (via value receiver)
+	id := registry.CreateSimulation(42, 0) // 0 = PolicyNone
+
+	// Verify mutation persisted by querying through same value
+	// If value semantics were broken, this would return empty list
+	sims := registry.ListSimulations()
+
+	if len(sims) != 1 {
+		t.Fatalf("ListSimulations() = %d items, want 1 (map mutation did not persist)", len(sims))
+	}
+	if sims[0].ID != id {
+		t.Errorf("simulation ID = %q, want %q", sims[0].ID, id)
+	}
+
+	// Verify via HTTP (double-check the router also works with value)
+	srv := httptest.NewServer(api.NewRouter(registry))
+	defer srv.Close()
+
+	resp, err := http.Get(srv.URL + "/simulations/" + id)
+	if err != nil {
+		t.Fatalf("GET failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("GET /simulations/%s status = %d, want 200", id, resp.StatusCode)
+	}
+}
+
 // TestAPI_ListSimulations tests the GET /simulations discovery endpoint.
 // Per UC10: "API client lists active simulations to discover available IDs"
 func TestAPI_ListSimulations(t *testing.T) {

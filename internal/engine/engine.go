@@ -10,13 +10,14 @@ import (
 	"github.com/binaryphile/sofdevsim-2026/internal/model"
 )
 
-// Engine runs the simulation tick loop
+// Engine runs the simulation tick loop.
+// Pointer receiver: mutates sim field (will be replaced by Projection in Phase 2).
 type Engine struct {
-	sim      *model.Simulation
-	variance *VarianceModel
-	evtGen   *EventGenerator
-	policies *PolicyEngine
-	store    events.Store       // optional event store for event sourcing
+	sim      *model.Simulation   // Will be replaced by Projection in Phase 2
+	variance VarianceModel       // Value type: pure calculation
+	evtGen   *EventGenerator     // Keep pointer: has *rand.Rand (stateful)
+	policies PolicyEngine        // Value type: pure decision logic
+	store    events.Store        // optional event store for event sourcing
 	trace    events.TraceContext // current trace context for event correlation
 }
 

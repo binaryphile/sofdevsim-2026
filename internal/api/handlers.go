@@ -32,7 +32,7 @@ type EntryPointResponse struct {
 
 // HandleEntryPoint returns HATEOAS discovery links for API navigation.
 // This is the API root - clients start here and follow links.
-func (r *SimRegistry) HandleEntryPoint(w http.ResponseWriter, req *http.Request) {
+func (r SimRegistry) HandleEntryPoint(w http.ResponseWriter, req *http.Request) {
 	response := EntryPointResponse{
 		Links: map[string]string{
 			"self":        "/",
@@ -57,7 +57,7 @@ type SimulationListResponse struct {
 
 // HandleListSimulations returns all active simulations with their IDs and links.
 // Per UC10: "API client lists active simulations to discover available IDs"
-func (r *SimRegistry) HandleListSimulations(w http.ResponseWriter, req *http.Request) {
+func (r SimRegistry) HandleListSimulations(w http.ResponseWriter, req *http.Request) {
 	summaries := r.ListSimulations()
 
 	items := make([]SimulationListItem, len(summaries))
@@ -87,7 +87,7 @@ type CreateSimulationRequest struct {
 
 // HandleCreateSimulation creates a new simulation with the given seed and policy.
 // Returns the initial state with links to start a sprint.
-func (r *SimRegistry) HandleCreateSimulation(w http.ResponseWriter, req *http.Request) {
+func (r SimRegistry) HandleCreateSimulation(w http.ResponseWriter, req *http.Request) {
 	var body CreateSimulationRequest
 	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -121,7 +121,7 @@ func (r *SimRegistry) HandleCreateSimulation(w http.ResponseWriter, req *http.Re
 
 // HandleGetSimulation returns the current state of a simulation.
 // Includes context-appropriate links based on whether a sprint is active.
-func (r *SimRegistry) HandleGetSimulation(w http.ResponseWriter, req *http.Request) {
+func (r SimRegistry) HandleGetSimulation(w http.ResponseWriter, req *http.Request) {
 	id := req.PathValue("id")
 
 	inst, ok := r.getInstance(id)
@@ -140,7 +140,7 @@ func (r *SimRegistry) HandleGetSimulation(w http.ResponseWriter, req *http.Reque
 
 // HandleStartSprint starts a new sprint for the simulation.
 // Returns 409 Conflict if a sprint is already active.
-func (r *SimRegistry) HandleStartSprint(w http.ResponseWriter, req *http.Request) {
+func (r SimRegistry) HandleStartSprint(w http.ResponseWriter, req *http.Request) {
 	id := req.PathValue("id")
 
 	inst, ok := r.getInstance(id)
@@ -167,7 +167,7 @@ func (r *SimRegistry) HandleStartSprint(w http.ResponseWriter, req *http.Request
 
 // HandleTick advances the simulation by one tick.
 // Returns updated state with context-appropriate links (tick disappears when sprint ends).
-func (r *SimRegistry) HandleTick(w http.ResponseWriter, req *http.Request) {
+func (r SimRegistry) HandleTick(w http.ResponseWriter, req *http.Request) {
 	id := req.PathValue("id")
 
 	inst, ok := r.getInstance(id)
@@ -218,7 +218,7 @@ type AssignTicketRequest struct {
 // HandleAssignTicket assigns a ticket to a developer.
 // If developerId is omitted, auto-assigns to first idle developer.
 // Returns 400 if ticket/developer not found or developer is busy.
-func (r *SimRegistry) HandleAssignTicket(w http.ResponseWriter, req *http.Request) {
+func (r SimRegistry) HandleAssignTicket(w http.ResponseWriter, req *http.Request) {
 	id := req.PathValue("id")
 
 	inst, ok := r.getInstance(id)
@@ -259,7 +259,7 @@ func (r *SimRegistry) HandleAssignTicket(w http.ResponseWriter, req *http.Reques
 
 // HandleCompare runs two simulations with different policies and compares them.
 // Returns DORA metrics and per-metric winners.
-func (r *SimRegistry) HandleCompare(w http.ResponseWriter, req *http.Request) {
+func (r SimRegistry) HandleCompare(w http.ResponseWriter, req *http.Request) {
 	var body CompareRequest
 	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -397,7 +397,7 @@ func buildWinners(c metrics.ComparisonResult) MetricWinners {
 
 // HandleGetLessons returns contextual lessons for a simulation.
 // Reuses shared lesson selection logic - API is stateless so always starts fresh.
-func (r *SimRegistry) HandleGetLessons(w http.ResponseWriter, req *http.Request) {
+func (r SimRegistry) HandleGetLessons(w http.ResponseWriter, req *http.Request) {
 	id := req.PathValue("id")
 	inst, ok := r.getInstance(id)
 	if !ok {

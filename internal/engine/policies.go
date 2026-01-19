@@ -13,13 +13,14 @@ type PolicyEngine struct {
 	seed int64
 }
 
-// NewPolicyEngine creates a policy engine
-func NewPolicyEngine(seed int64) *PolicyEngine {
-	return &PolicyEngine{seed: seed}
+// NewPolicyEngine creates a policy engine.
+// Returns value type: pure decision logic, no mutation.
+func NewPolicyEngine(seed int64) PolicyEngine {
+	return PolicyEngine{seed: seed}
 }
 
 // ShouldDecompose determines if a ticket should be decomposed based on policy
-func (p *PolicyEngine) ShouldDecompose(ticket model.Ticket, policy model.SizingPolicy) bool {
+func (p PolicyEngine) ShouldDecompose(ticket model.Ticket, policy model.SizingPolicy) bool {
 	switch policy {
 	case model.PolicyNone:
 		return false
@@ -34,7 +35,7 @@ func (p *PolicyEngine) ShouldDecompose(ticket model.Ticket, policy model.SizingP
 }
 
 // Decompose splits a ticket into smaller children
-func (p *PolicyEngine) Decompose(ticket model.Ticket) []model.Ticket {
+func (p PolicyEngine) Decompose(ticket model.Ticket) []model.Ticket {
 	rng := rand.New(rand.NewSource(p.seed + int64(ticket.ID[0])))
 
 	// Determine number of children (2-4, weighted toward 2-3)

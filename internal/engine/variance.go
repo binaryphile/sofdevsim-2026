@@ -12,15 +12,16 @@ type VarianceModel struct {
 	seed int64
 }
 
-// NewVarianceModel creates a variance model with a seed
-func NewVarianceModel(seed int64) *VarianceModel {
-	return &VarianceModel{seed: seed}
+// NewVarianceModel creates a variance model with a seed.
+// Returns value type: pure calculation, no mutation.
+func NewVarianceModel(seed int64) VarianceModel {
+	return VarianceModel{seed: seed}
 }
 
 // Calculate returns a variance multiplier for the given ticket and tick
 // High understanding = predictable (0.95-1.05x)
 // Low understanding = unpredictable, skewed slow (0.50-1.50x)
-func (v *VarianceModel) Calculate(ticket model.Ticket, tick int) float64 {
+func (v VarianceModel) Calculate(ticket model.Ticket, tick int) float64 {
 	rng := rand.New(rand.NewSource(v.seed + int64(tick) + int64(ticket.ID[0])))
 
 	var base, spread float64

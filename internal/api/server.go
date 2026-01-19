@@ -6,7 +6,7 @@ import (
 
 // NewRouter creates HTTP router with all API endpoints.
 // Uses Go 1.22+ ServeMux with path parameters.
-func NewRouter(registry *SimRegistry) *http.ServeMux {
+func NewRouter(registry SimRegistry) *http.ServeMux {
 	mux := http.NewServeMux()
 
 	// HATEOAS entry point
