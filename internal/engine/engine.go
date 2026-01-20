@@ -4,16 +4,14 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/binaryphile/fluentfp/option"
 	"github.com/binaryphile/fluentfp/slice"
 	"github.com/binaryphile/sofdevsim-2026/internal/events"
 	"github.com/binaryphile/sofdevsim-2026/internal/model"
 )
 
 // Engine runs the simulation tick loop.
-// Pointer receiver: mutates sim and proj fields.
+// Pointer receiver: mutates proj field.
 type Engine struct {
-	sim      *model.Simulation   // Legacy: will be removed in Step 2.3f
 	proj     events.Projection   // Source of truth for event sourcing
 	variance VarianceModel       // Value type: pure calculation
 	evtGen   *EventGenerator     // Keep pointer: has *rand.Rand (stateful)
@@ -22,41 +20,33 @@ type Engine struct {
 	trace    events.TraceContext // current trace context for event correlation
 }
 
-// NewEngine creates a simulation engine without event sourcing
-func NewEngine(sim *model.Simulation) *Engine {
+// NewEngine creates a simulation engine without event sourcing.
+// Use EmitCreated() or EmitLoadedState() to initialize projection state.
+func NewEngine(seed int64) *Engine {
 	return &Engine{
-		sim:      sim,
 		proj:     events.NewProjection(),
-		variance: NewVarianceModel(sim.Seed),
-		evtGen:   NewEventGenerator(sim.Seed),
-		policies: NewPolicyEngine(sim.Seed),
+		variance: NewVarianceModel(seed),
+		evtGen:   NewEventGenerator(seed),
+		policies: NewPolicyEngine(seed),
 	}
 }
 
 // NewEngineWithStore creates a simulation engine with event sourcing.
-// Call EmitCreated() after simulation setup is complete to emit SimulationCreated event.
-func NewEngineWithStore(sim *model.Simulation, store events.Store) *Engine {
+// Use EmitCreated() or EmitLoadedState() to initialize projection state.
+func NewEngineWithStore(seed int64, store events.Store) *Engine {
 	return &Engine{
-		sim:      sim,
 		proj:     events.NewProjection(),
-		variance: NewVarianceModel(sim.Seed),
-		evtGen:   NewEventGenerator(sim.Seed),
-		policies: NewPolicyEngine(sim.Seed),
+		variance: NewVarianceModel(seed),
+		evtGen:   NewEventGenerator(seed),
+		policies: NewPolicyEngine(seed),
 		store:    store,
 	}
 }
 
-// EmitCreated emits SimulationCreated event. Call after simulation setup is complete.
-func (e *Engine) EmitCreated() {
-	e.emit(events.NewSimulationCreated(
-		e.sim.ID,
-		e.sim.CurrentTick,
-		events.SimConfig{
-			TeamSize:     len(e.sim.Developers),
-			SprintLength: e.sim.SprintLength,
-			Seed:         e.sim.Seed,
-		},
-	))
+// EmitCreated emits SimulationCreated event with the given config.
+// Call after basic simulation setup is complete.
+func (e *Engine) EmitCreated(id string, tick int, config events.SimConfig) {
+	e.emit(events.NewSimulationCreated(id, tick, config))
 }
 
 // SetTrace sets the current trace context for event correlation.
@@ -81,6 +71,12 @@ func (e *Engine) Sim() model.Simulation {
 	return e.proj.State()
 }
 
+// state returns current simulation state from projection.
+// Internal helper for consistent state access within engine methods.
+func (e *Engine) state() model.Simulation {
+	return e.proj.State()
+}
+
 // emit sends an event to the store if configured, attaching trace context if set.
 // Also applies the event to the projection to keep derived state in sync.
 func (e *Engine) emit(evt events.Event) {
@@ -94,7 +90,7 @@ func (e *Engine) emit(evt events.Event) {
 
 	// Only append to store if configured
 	if e.store != nil {
-		e.store.Append(e.sim.ID, evt)
+		e.store.Append(e.state().ID, evt)
 	}
 }
 
@@ -106,64 +102,58 @@ func (e *Engine) applyTrace(evt events.Event) events.Event {
 // Tick advances the simulation by one day
 func (e *Engine) Tick() []model.Event {
 	allEvents := make([]model.Event, 0)
-	e.sim.CurrentTick++
 
-	// Emit Ticked event
-	e.emit(events.NewTicked(e.sim.ID, e.sim.CurrentTick))
+	// Increment tick: emit first, projection handler updates state
+	newTick := e.state().CurrentTick + 1
+	e.emit(events.NewTicked(e.state().ID, newTick))
 
 	// 1. Developers work on assigned tickets
-	for i := range e.sim.Developers {
-		dev := e.sim.Developers[i]
+	// Read from projection after Ticked emit
+	state := e.state()
+	for i := range state.Developers {
+		dev := state.Developers[i]
 		if dev.IsIdle() {
 			continue
 		}
 
-		ticketIdx := e.sim.FindActiveTicketIndex(dev.CurrentTicket)
+		ticketIdx := state.FindActiveTicketIndex(dev.CurrentTicket)
 		if ticketIdx == -1 {
-			e.sim.Developers[i] = dev.WithoutTicket()
+			// Developer assigned to non-existent ticket - shouldn't happen with proper ES
 			continue
 		}
 
-		ticket := e.sim.ActiveTickets[ticketIdx]
+		ticket := state.ActiveTickets[ticketIdx]
 
 		// Calculate work done with variance
-		variance := e.variance.Calculate(ticket, e.sim.CurrentTick)
+		variance := e.variance.Calculate(ticket, e.state().CurrentTick)
 		workDone := dev.Velocity * variance
-		ticket.RemainingEffort -= workDone
-		ticket.PhaseEffortSpent[ticket.Phase] += workDone
-		ticket.ActualDays += workDone
 
-		// Emit WorkProgressed event
-		e.emit(events.NewWorkProgressed(e.sim.ID, e.sim.CurrentTick, ticket.ID, ticket.Phase, workDone))
+		// Emit WorkProgressed event FIRST - projection handler updates:
+		// - ticket.RemainingEffort -= workDone
+		// - ticket.ActualDays += workDone
+		// - ticket.PhaseEffortSpent[phase] += workDone
+		e.emit(events.NewWorkProgressed(e.state().ID, e.state().CurrentTick, ticket.ID, ticket.Phase, workDone))
 
-		// Check phase completion
+		// Check phase completion from projection (now updated by WorkProgressed)
+		ticket = e.state().ActiveTickets[ticketIdx]
 		if ticket.RemainingEffort <= 0 {
-			events, updatedTicket, updatedDev := e.advancePhase(ticket, dev)
-			allEvents = append(allEvents, events...)
-			ticket = updatedTicket
-			dev = updatedDev
-
-			if ticket.Phase == model.PhaseDone {
-				// Ticket completed - add to completed and remove from active
-				e.sim.CompletedTickets = append(e.sim.CompletedTickets, ticket)
-				e.sim.ActiveTickets = append(e.sim.ActiveTickets[:ticketIdx], e.sim.ActiveTickets[ticketIdx+1:]...)
-				e.sim.Developers[i] = dev
-				continue
-			}
+			uiEvents := e.advancePhaseEmitOnly(ticket, dev)
+			allEvents = append(allEvents, uiEvents...)
 		}
-
-		// Write back (still active)
-		e.sim.ActiveTickets[ticketIdx] = ticket
-		e.sim.Developers[i] = dev
 	}
 
 	// 2. Generate random events (bugs, scope creep)
-	randomEvents := e.evtGen.GenerateRandomEvents(e.sim)
-	allEvents = append(allEvents, randomEvents...)
+	// Generators return ES events; emit them and convert to UI events
+	for _, evt := range e.evtGen.GenerateRandomEvents(e.state()) {
+		e.emit(evt)
+		allEvents = append(allEvents, e.toUIEvent(evt))
+	}
 
 	// 3. Check for incidents on recently deployed tickets
-	incidentEvents := e.evtGen.CheckForIncidents(e.sim)
-	allEvents = append(allEvents, incidentEvents...)
+	for _, evt := range e.evtGen.CheckForIncidents(e.state()) {
+		e.emit(evt)
+		allEvents = append(allEvents, e.toUIEvent(evt))
+	}
 
 	// 4. Update sprint buffer
 	e.updateBuffer()
@@ -171,8 +161,8 @@ func (e *Engine) Tick() []model.Event {
 	// 5. Track WIP for export
 	e.trackWIP()
 
-	// 6. Check sprint end
-	if sprint, ok := e.sim.CurrentSprintOption.Get(); ok && e.sim.CurrentTick >= sprint.EndDay {
+	// 6. Check sprint end (read from projection - updated by earlier emits)
+	if sprint, ok := e.state().CurrentSprintOption.Get(); ok && e.state().CurrentTick >= sprint.EndDay {
 		endEvents := e.endSprint()
 		allEvents = append(allEvents, endEvents...)
 	}
@@ -180,98 +170,86 @@ func (e *Engine) Tick() []model.Event {
 	return allEvents
 }
 
-// advancePhase moves a ticket to the next phase or completes it
-func (e *Engine) advancePhase(ticket model.Ticket, dev model.Developer) ([]model.Event, model.Ticket, model.Developer) {
+// advancePhaseEmitOnly emits phase change events - projection handlers update state.
+func (e *Engine) advancePhaseEmitOnly(ticket model.Ticket, dev model.Developer) []model.Event {
 	modelEvents := make([]model.Event, 0)
 
 	oldPhase := ticket.Phase
-	ticket.Phase++
+	newPhase := oldPhase + 1
 
-	if ticket.Phase == model.PhaseDone {
-		// Ticket complete
-		ticket.CompletedAt = time.Now()
-		ticket.CompletedTick = e.sim.CurrentTick
-		dev = dev.WithCompletedTicket(ticket.ActualDays)
-
-		// Emit TicketCompleted event
-		e.emit(events.NewTicketCompleted(e.sim.ID, e.sim.CurrentTick, ticket.ID, dev.ID))
+	if newPhase == model.PhaseDone {
+		// Emit TicketCompleted - projection handler:
+		// - Moves ticket to CompletedTickets
+		// - Updates developer stats (CurrentTicket="", TicketsCompleted++, etc)
+		e.emit(events.NewTicketCompleted(e.state().ID, e.state().CurrentTick, ticket.ID, dev.ID, ticket.ActualDays))
 
 		modelEvents = append(modelEvents, model.NewEvent(
 			model.EventTicketComplete,
 			fmt.Sprintf("%s completed (%.1f days actual vs %.1f estimated)", ticket.ID, ticket.ActualDays, ticket.EstimatedDays),
-			e.sim.CurrentTick,
+			e.state().CurrentTick,
 		))
 	} else {
-		// Advancing to next phase
-		ticket.RemainingEffort = ticket.CalculatePhaseEffort(ticket.Phase)
-
-		// Emit TicketPhaseChanged event
-		e.emit(events.NewTicketPhaseChanged(e.sim.ID, e.sim.CurrentTick, ticket.ID, oldPhase, ticket.Phase))
+		// Emit TicketPhaseChanged - projection handler:
+		// - Updates ticket.Phase
+		// - Sets ticket.RemainingEffort for new phase
+		e.emit(events.NewTicketPhaseChanged(e.state().ID, e.state().CurrentTick, ticket.ID, oldPhase, newPhase))
 
 		modelEvents = append(modelEvents, model.NewEvent(
 			model.EventPhaseAdvance,
-			fmt.Sprintf("%s: %s -> %s", ticket.ID, oldPhase, ticket.Phase),
-			e.sim.CurrentTick,
+			fmt.Sprintf("%s: %s -> %s", ticket.ID, oldPhase, newPhase),
+			e.state().CurrentTick,
 		))
 	}
 
-	return modelEvents, ticket, dev
+	return modelEvents
 }
 
 // updateBuffer consumes buffer when tickets are behind schedule
 func (e *Engine) updateBuffer() {
-	sprint, ok := e.sim.CurrentSprintOption.Get()
+	sprint, ok := e.state().CurrentSprintOption.Get()
 	if !ok {
 		return
 	}
 
 	// Calculate expected vs actual progress
-	progressPct := sprint.ProgressPct(e.sim.CurrentTick)
-	expectedComplete := progressPct * float64(len(e.sim.ActiveTickets))
+	progressPct := sprint.ProgressPct(e.state().CurrentTick)
+	expectedComplete := progressPct * float64(len(e.state().ActiveTickets))
 
 	// completedInCurrentSprint returns true if ticket was completed after sprint started.
 	completedInCurrentSprint := func(t model.Ticket) bool { return t.CompletedTick >= sprint.StartDay }
-	completedInSprint := slice.From(e.sim.CompletedTickets).
+	completedInSprint := slice.From(e.state().CompletedTickets).
 		KeepIf(completedInCurrentSprint).
 		Len()
 
 	// If behind schedule, consume buffer
 	if float64(completedInSprint) < expectedComplete {
 		bufferConsumption := (expectedComplete - float64(completedInSprint)) * 0.1
-		sprint = sprint.WithConsumedBuffer(bufferConsumption)
-		e.sim.CurrentSprintOption = option.Of(sprint)
-
-		// Emit BufferConsumed event for projection tracking
-		e.emit(events.NewBufferConsumed(e.sim.ID, e.sim.CurrentTick, bufferConsumption))
+		// Emit BufferConsumed - projection handler updates sprint.BufferConsumed
+		e.emit(events.NewBufferConsumed(e.state().ID, e.state().CurrentTick, bufferConsumption))
 	}
 }
 
 // trackWIP records work-in-progress metrics for export
 func (e *Engine) trackWIP() {
-	sprint, ok := e.sim.CurrentSprintOption.Get()
+	_, ok := e.state().CurrentSprintOption.Get()
 	if !ok {
 		return
 	}
 
-	currentWIP := len(e.sim.ActiveTickets)
+	currentWIP := len(e.state().ActiveTickets)
 
-	if currentWIP > sprint.MaxWIP {
-		sprint.MaxWIP = currentWIP
-	}
-	sprint.WIPSum += currentWIP
-	sprint.WIPTicks++
-
-	e.sim.CurrentSprintOption = option.Of(sprint)
+	// Emit event - projection handler will update WIP metrics
+	e.emit(events.NewSprintWIPUpdated(e.state().ID, e.state().CurrentTick, currentWIP))
 }
 
 // endSprint handles sprint completion
 func (e *Engine) endSprint() []model.Event {
 	modelEvents := make([]model.Event, 0)
 
-	sprint, ok := e.sim.CurrentSprintOption.Get()
+	sprint, ok := e.state().CurrentSprintOption.Get()
 	if ok {
 		// Emit SprintEnded event
-		e.emit(events.NewSprintEnded(e.sim.ID, e.sim.CurrentTick, sprint.Number))
+		e.emit(events.NewSprintEnded(e.state().ID, e.state().CurrentTick, sprint.Number))
 	}
 
 	// Any unfinished active tickets stay active for next sprint
@@ -280,12 +258,15 @@ func (e *Engine) endSprint() []model.Event {
 	return modelEvents
 }
 
-// StartSprint begins a new sprint and emits SprintStarted event
+// StartSprint begins a new sprint and emits SprintStarted event.
 func (e *Engine) StartSprint() {
-	e.sim.StartSprint()
+	// Calculate sprint data (what sim.StartSprint would do)
+	sprintNumber := e.state().SprintNumber + 1
+	startDay := e.state().CurrentTick
+	bufferDays := float64(e.state().SprintLength) * e.state().BufferPct
 
-	sprint, _ := e.sim.CurrentSprintOption.Get()
-	e.emit(events.NewSprintStarted(e.sim.ID, sprint.StartDay, sprint.Number, sprint.BufferDays))
+	// Emit first - projection handler creates the sprint
+	e.emit(events.NewSprintStarted(e.state().ID, startDay, sprintNumber, bufferDays))
 }
 
 // RunSprint executes a complete sprint
@@ -294,8 +275,9 @@ func (e *Engine) RunSprint() []model.Event {
 
 	e.StartSprint()
 
-	sprint, _ := e.sim.CurrentSprintOption.Get()
-	for e.sim.CurrentTick < sprint.EndDay {
+	// Read from projection (updated by SprintStarted emit in StartSprint)
+	sprint, _ := e.state().CurrentSprintOption.Get()
+	for e.state().CurrentTick < sprint.EndDay {
 		events := e.Tick()
 		allEvents = append(allEvents, events...)
 	}
@@ -303,164 +285,162 @@ func (e *Engine) RunSprint() []model.Event {
 	return allEvents
 }
 
-// AssignTicket assigns a ticket to a developer and starts work
+// AssignTicket assigns a ticket to a developer and starts work.
 func (e *Engine) AssignTicket(ticketID, devID string) error {
-	ticketIdx := e.sim.FindBacklogTicketIndex(ticketID)
-	if ticketIdx == -1 {
+	// Validate ticket exists in backlog
+	if e.state().FindBacklogTicketIndex(ticketID) == -1 {
 		return fmt.Errorf("ticket %s not found in backlog", ticketID)
 	}
 
-	devIdx := e.sim.FindDeveloperIndex(devID)
+	// Validate developer exists and is idle
+	devIdx := e.state().FindDeveloperIndex(devID)
 	if devIdx == -1 {
 		return fmt.Errorf("developer %s not found", devID)
 	}
-
-	dev := e.sim.Developers[devIdx]
-	if !dev.IsIdle() {
-		return fmt.Errorf("developer %s is busy with %s", devID, dev.CurrentTicket)
+	if !e.state().Developers[devIdx].IsIdle() {
+		return fmt.Errorf("developer %s is busy with %s", devID, e.state().Developers[devIdx].CurrentTicket)
 	}
 
-	// Move from backlog to active
-	e.moveToActive(ticketID)
-
-	// Find ticket in active (it was just moved)
-	ticketIdx = e.sim.FindActiveTicketIndex(ticketID)
-	ticket := e.sim.ActiveTickets[ticketIdx]
-
-	// Start the ticket
-	ticket.AssignedTo = devID
-	ticket.StartedAt = time.Now()
-	ticket.StartedTick = e.sim.CurrentTick
-	ticket.Phase = model.PhaseResearch
-	ticket.RemainingEffort = ticket.CalculatePhaseEffort(model.PhaseResearch)
-	e.sim.ActiveTickets[ticketIdx] = ticket
-
-	// Assign to developer
-	e.sim.Developers[devIdx] = dev.WithTicket(ticketID)
-
-	// Emit TicketAssigned event
-	e.emit(events.NewTicketAssigned(e.sim.ID, e.sim.CurrentTick, ticketID, devID))
-
-	// Add to sprint if there is one
-	if sprint, ok := e.sim.CurrentSprintOption.Get(); ok {
-		sprint = sprint.WithTicket(ticketID)
-		e.sim.CurrentSprintOption = option.Of(sprint)
-	}
+	// Emit FIRST - projection handler does all the work:
+	// - Moves ticket from backlog to active
+	// - Sets AssignedTo, StartedTick, StartedAt, Phase, RemainingEffort
+	// - Updates developer CurrentTicket, WIPCount
+	// - Adds ticket to sprint
+	startedAt := time.Now()
+	e.emit(events.NewTicketAssigned(e.state().ID, e.state().CurrentTick, ticketID, devID, startedAt))
 
 	return nil
 }
 
-// moveToActive moves a ticket from backlog to active
-func (e *Engine) moveToActive(ticketID string) {
-	for i, t := range e.sim.Backlog {
-		if t.ID == ticketID {
-			e.sim.ActiveTickets = append(e.sim.ActiveTickets, t)
-			e.sim.Backlog = append(e.sim.Backlog[:i], e.sim.Backlog[i+1:]...)
-			return
-		}
-	}
-}
-
 // TryDecompose applies sizing policy and decomposes if needed
 func (e *Engine) TryDecompose(ticketID string) ([]model.Ticket, bool) {
-	ticketIdx := e.sim.FindBacklogTicketIndex(ticketID)
+	ticketIdx := e.state().FindBacklogTicketIndex(ticketID)
 	if ticketIdx == -1 {
 		return nil, false
 	}
 
-	ticket := e.sim.Backlog[ticketIdx]
+	ticket := e.state().Backlog[ticketIdx]
 
-	if !e.policies.ShouldDecompose(ticket, e.sim.SizingPolicy) {
+	if !e.policies.ShouldDecompose(ticket, e.state().SizingPolicy) {
 		return nil, false
 	}
 
 	children := e.policies.Decompose(ticket)
 
-	// Remove parent from backlog
-	e.sim.Backlog = append(e.sim.Backlog[:ticketIdx], e.sim.Backlog[ticketIdx+1:]...)
-
-	// Add children to backlog
-	for _, child := range children {
-		e.sim.Backlog = append(e.sim.Backlog, child)
+	// Build ChildTicket slice for event
+	childTickets := make([]events.ChildTicket, len(children))
+	for i, c := range children {
+		childTickets[i] = events.ChildTicket{
+			ID:            c.ID,
+			Title:         c.Title,
+			EstimatedDays: c.EstimatedDays,
+			Understanding: c.UnderstandingLevel,
+		}
 	}
 
-	return children, true
+	// Emit TicketDecomposed - projection handler removes parent, adds children
+	e.emit(events.NewTicketDecomposed(e.state().ID, e.state().CurrentTick, ticketID, childTickets))
+
+	// Return children from projection (now populated by handler)
+	// Find them by matching IDs from the event
+	result := make([]model.Ticket, 0, len(children))
+	for _, child := range childTickets {
+		for _, t := range e.state().Backlog {
+			if t.ID == child.ID {
+				result = append(result, t)
+				break
+			}
+		}
+	}
+
+	return result, true
 }
 
 // AddDeveloper adds a developer and emits DeveloperAdded event.
 func (e *Engine) AddDeveloper(id, name string, velocity float64) {
-	// Add to legacy sim (for backwards compatibility during migration)
-	e.sim.AddDeveloper(model.NewDeveloper(id, name, velocity))
-
-	// Emit event (also updates projection via emit())
-	e.emit(events.NewDeveloperAdded(e.sim.ID, e.sim.CurrentTick, id, name, velocity))
+	e.emit(events.NewDeveloperAdded(e.state().ID, e.state().CurrentTick, id, name, velocity))
 }
 
 // AddTicket adds a ticket to the backlog and emits TicketCreated event.
 func (e *Engine) AddTicket(t model.Ticket) {
-	// Add to legacy sim (for backwards compatibility during migration)
-	e.sim.AddTicket(t)
-
-	// Emit event (also updates projection via emit())
-	e.emit(events.NewTicketCreated(e.sim.ID, e.sim.CurrentTick, t.ID, t.Title, t.EstimatedDays, t.UnderstandingLevel))
+	e.emit(events.NewTicketCreated(e.state().ID, e.state().CurrentTick, t.ID, t.Title, t.EstimatedDays, t.UnderstandingLevel))
 }
 
 // SetPolicy changes the sizing policy and emits PolicyChanged event.
 func (e *Engine) SetPolicy(newPolicy model.SizingPolicy) {
-	oldPolicy := e.sim.SizingPolicy
-
-	// Update legacy sim (for backwards compatibility during migration)
-	e.sim.SizingPolicy = newPolicy
-
-	// Emit event (also updates projection via emit())
-	e.emit(events.NewPolicyChanged(e.sim.ID, e.sim.CurrentTick, oldPolicy, newPolicy))
+	oldPolicy := e.state().SizingPolicy
+	e.emit(events.NewPolicyChanged(e.state().ID, e.state().CurrentTick, oldPolicy, newPolicy))
 }
 
 // EmitLoadedState emits events for all current state in the simulation.
 // Use this after loading from persistence to populate the projection.
-func (e *Engine) EmitLoadedState() {
+func (e *Engine) EmitLoadedState(sim model.Simulation) {
 	// Emit SimulationCreated
 	e.emit(events.NewSimulationCreated(
-		e.sim.ID,
+		sim.ID,
 		0, // Original tick 0
 		events.SimConfig{
-			TeamSize:     len(e.sim.Developers),
-			SprintLength: e.sim.SprintLength,
-			Seed:         e.sim.Seed,
-			Policy:       e.sim.SizingPolicy,
+			TeamSize:     len(sim.Developers),
+			SprintLength: sim.SprintLength,
+			Seed:         sim.Seed,
+			Policy:       sim.SizingPolicy,
 		},
 	))
 
+	// After SimulationCreated emit, e.state().ID is available
 	// Emit DeveloperAdded for each developer
-	for _, dev := range e.sim.Developers {
-		e.emit(events.NewDeveloperAdded(e.sim.ID, 0, dev.ID, dev.Name, dev.Velocity))
+	for _, dev := range sim.Developers {
+		e.emit(events.NewDeveloperAdded(e.state().ID, 0, dev.ID, dev.Name, dev.Velocity))
 	}
 
 	// Emit TicketCreated for backlog tickets
-	for _, t := range e.sim.Backlog {
-		e.emit(events.NewTicketCreated(e.sim.ID, 0, t.ID, t.Title, t.EstimatedDays, t.UnderstandingLevel))
+	for _, t := range sim.Backlog {
+		e.emit(events.NewTicketCreated(e.state().ID, 0, t.ID, t.Title, t.EstimatedDays, t.UnderstandingLevel))
 	}
 
-	// Emit TicketCreated + TicketAssigned for active tickets
-	for _, t := range e.sim.ActiveTickets {
-		e.emit(events.NewTicketCreated(e.sim.ID, 0, t.ID, t.Title, t.EstimatedDays, t.UnderstandingLevel))
-		e.emit(events.NewTicketAssigned(e.sim.ID, t.StartedTick, t.ID, t.AssignedTo))
+	// Emit TicketCreated + TicketStateRestored for active tickets
+	// Use TicketStateRestored (not TicketAssigned) to preserve full state including Phase, RemainingEffort
+	for _, t := range sim.ActiveTickets {
+		e.emit(events.NewTicketCreated(e.state().ID, 0, t.ID, t.Title, t.EstimatedDays, t.UnderstandingLevel))
+		e.emit(events.NewTicketStateRestored(e.state().ID, t.StartedTick, t.ID, t.AssignedTo, t.Phase, t.RemainingEffort, t.ActualDays, t.StartedAt))
 	}
 
 	// Emit TicketCreated + TicketAssigned + TicketCompleted for completed tickets
-	for _, t := range e.sim.CompletedTickets {
-		e.emit(events.NewTicketCreated(e.sim.ID, 0, t.ID, t.Title, t.EstimatedDays, t.UnderstandingLevel))
-		e.emit(events.NewTicketAssigned(e.sim.ID, t.StartedTick, t.ID, t.AssignedTo))
-		e.emit(events.NewTicketCompleted(e.sim.ID, t.CompletedTick, t.ID, t.AssignedTo))
+	for _, t := range sim.CompletedTickets {
+		e.emit(events.NewTicketCreated(e.state().ID, 0, t.ID, t.Title, t.EstimatedDays, t.UnderstandingLevel))
+		e.emit(events.NewTicketAssigned(e.state().ID, t.StartedTick, t.ID, t.AssignedTo, t.StartedAt))
+		e.emit(events.NewTicketCompleted(e.state().ID, t.CompletedTick, t.ID, t.AssignedTo, t.ActualDays))
 	}
 
 	// Emit Ticked to set current tick
-	if e.sim.CurrentTick > 0 {
-		e.emit(events.NewTicked(e.sim.ID, e.sim.CurrentTick))
+	if sim.CurrentTick > 0 {
+		e.emit(events.NewTicked(e.state().ID, sim.CurrentTick))
 	}
 
 	// Emit SprintStarted if sprint is active
-	if sprint, ok := e.sim.CurrentSprintOption.Get(); ok {
-		e.emit(events.NewSprintStarted(e.sim.ID, sprint.StartDay, sprint.Number, sprint.BufferDays))
+	if sprint, ok := sim.CurrentSprintOption.Get(); ok {
+		e.emit(events.NewSprintStarted(e.state().ID, sprint.StartDay, sprint.Number, sprint.BufferDays))
+	}
+}
+
+// toUIEvent converts an event-sourcing event to a UI display event.
+// This bridges the two event systems: ES events for state mutations, UI events for display.
+func (e *Engine) toUIEvent(evt events.Event) model.Event {
+	tick := evt.OccurrenceTime()
+	switch ev := evt.(type) {
+	case events.BugDiscovered:
+		return model.NewEvent(model.EventBugDiscovered,
+			fmt.Sprintf("Bug discovered in %s (+%.1f days)", ev.TicketID, ev.ReworkEffort), tick)
+	case events.ScopeCreepOccurred:
+		return model.NewEvent(model.EventScopeCreep,
+			fmt.Sprintf("Scope creep on %s (+%.1f days)", ev.TicketID, ev.EffortAdded), tick)
+	case events.IncidentStarted:
+		return model.NewEvent(model.EventIncident,
+			fmt.Sprintf("Incident %s: %s caused production issue", ev.IncidentID, ev.TicketID), tick)
+	case events.IncidentResolved:
+		return model.NewEvent(model.EventIncidentResolved,
+			fmt.Sprintf("Incident %s resolved", ev.IncidentID), tick)
+	default:
+		return model.Event{} // Unknown event type - shouldn't happen for generator events
 	}
 }

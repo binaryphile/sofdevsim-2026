@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/binaryphile/sofdevsim-2026/internal/model"
 )
 
 func TestSimulationCreated(t *testing.T) {
@@ -76,7 +78,7 @@ func TestTicked(t *testing.T) {
 }
 
 func TestTicketAssigned(t *testing.T) {
-	e := NewTicketAssigned("sim-1", 10, "TKT-001", "DEV-001")
+	e := NewTicketAssigned("sim-1", 10, "TKT-001", "DEV-001", time.Now())
 
 	if e.SimulationID() != "sim-1" {
 		t.Errorf("SimulationID() = %s, want sim-1", e.SimulationID())
@@ -99,7 +101,7 @@ func TestTicketAssigned(t *testing.T) {
 }
 
 func TestTicketCompleted(t *testing.T) {
-	e := NewTicketCompleted("sim-1", 25, "TKT-001", "DEV-001")
+	e := NewTicketCompleted("sim-1", 25, "TKT-001", "DEV-001", 5.0)
 
 	if e.SimulationID() != "sim-1" {
 		t.Errorf("SimulationID() = %s, want sim-1", e.SimulationID())
@@ -113,7 +115,7 @@ func TestTicketCompleted(t *testing.T) {
 }
 
 func TestIncidentStarted(t *testing.T) {
-	e := NewIncidentStarted("sim-1", 15, "INC-001", "DEV-001")
+	e := NewIncidentStarted("sim-1", 15, "INC-001", "DEV-001", "TKT-001", model.SeverityHigh)
 
 	if e.SimulationID() != "sim-1" {
 		t.Errorf("SimulationID() = %s, want sim-1", e.SimulationID())
@@ -163,9 +165,9 @@ func TestEventInterfaceCompliance(t *testing.T) {
 		NewSimulationCreated("s", 0, SimConfig{}),
 		NewSprintStarted("s", 0, 1, 2.0),
 		NewTicked("s", 0),
-		NewTicketAssigned("s", 0, "t", "d"),
-		NewTicketCompleted("s", 0, "t", "d"),
-		NewIncidentStarted("s", 0, "i", "d"),
+		NewTicketAssigned("s", 0, "t", "d", time.Time{}),
+		NewTicketCompleted("s", 0, "t", "d", 5.0),
+		NewIncidentStarted("s", 0, "i", "d", "", model.SeverityLow),
 		NewIncidentResolved("s", 0, "i", "d"),
 		NewSprintEnded("s", 0, 1),
 	}
@@ -187,7 +189,7 @@ func TestEventInterfaceCompliance(t *testing.T) {
 }
 
 func TestWithTrace(t *testing.T) {
-	e := NewTicketAssigned("sim-1", 10, "TKT-001", "DEV-001").
+	e := NewTicketAssigned("sim-1", 10, "TKT-001", "DEV-001", time.Now()).
 		WithTrace("trace-123", "span-456", "span-parent")
 
 	if e.TraceID() != "trace-123" {
@@ -202,7 +204,7 @@ func TestWithTrace(t *testing.T) {
 }
 
 func TestWithCausedBy(t *testing.T) {
-	e := NewTicketCompleted("sim-1", 25, "TKT-001", "DEV-001").
+	e := NewTicketCompleted("sim-1", 25, "TKT-001", "DEV-001", 5.0).
 		WithCausedBy("TicketAssigned-1")
 
 	if e.CausedBy() != "TicketAssigned-1" {
@@ -244,9 +246,9 @@ func TestAllEventTypes_WithTrace(t *testing.T) {
 		{"SprintStarted", NewSprintStarted("s", 0, 1, 2.0).WithTrace("t", "s", "p")},
 		{"SprintEnded", NewSprintEnded("s", 0, 1).WithTrace("t", "s", "p")},
 		{"Ticked", NewTicked("s", 0).WithTrace("t", "s", "p")},
-		{"TicketAssigned", NewTicketAssigned("s", 0, "t", "d").WithTrace("t", "s", "p")},
-		{"TicketCompleted", NewTicketCompleted("s", 0, "t", "d").WithTrace("t", "s", "p")},
-		{"IncidentStarted", NewIncidentStarted("s", 0, "i", "d").WithTrace("t", "s", "p")},
+		{"TicketAssigned", NewTicketAssigned("s", 0, "t", "d", time.Time{}).WithTrace("t", "s", "p")},
+		{"TicketCompleted", NewTicketCompleted("s", 0, "t", "d", 5.0).WithTrace("t", "s", "p")},
+		{"IncidentStarted", NewIncidentStarted("s", 0, "i", "d", "", model.SeverityLow).WithTrace("t", "s", "p")},
 		{"IncidentResolved", NewIncidentResolved("s", 0, "i", "d").WithTrace("t", "s", "p")},
 	}
 
@@ -324,9 +326,9 @@ func TestAllEventTypes_WithCausedBy(t *testing.T) {
 		{"SprintStarted", NewSprintStarted("s", 0, 1, 2.0).WithCausedBy("cause-1")},
 		{"SprintEnded", NewSprintEnded("s", 0, 1).WithCausedBy("cause-1")},
 		{"Ticked", NewTicked("s", 0).WithCausedBy("cause-1")},
-		{"TicketAssigned", NewTicketAssigned("s", 0, "t", "d").WithCausedBy("cause-1")},
-		{"TicketCompleted", NewTicketCompleted("s", 0, "t", "d").WithCausedBy("cause-1")},
-		{"IncidentStarted", NewIncidentStarted("s", 0, "i", "d").WithCausedBy("cause-1")},
+		{"TicketAssigned", NewTicketAssigned("s", 0, "t", "d", time.Time{}).WithCausedBy("cause-1")},
+		{"TicketCompleted", NewTicketCompleted("s", 0, "t", "d", 5.0).WithCausedBy("cause-1")},
+		{"IncidentStarted", NewIncidentStarted("s", 0, "i", "d", "", model.SeverityLow).WithCausedBy("cause-1")},
 		{"IncidentResolved", NewIncidentResolved("s", 0, "i", "d").WithCausedBy("cause-1")},
 	}
 
@@ -347,7 +349,7 @@ func TestApplyTrace(t *testing.T) {
 	}
 
 	// Test with TicketAssigned (representative event type)
-	original := NewTicketAssigned("sim-1", 10, "TKT-001", "DEV-001")
+	original := NewTicketAssigned("sim-1", 10, "TKT-001", "DEV-001", time.Now())
 	result := ApplyTrace(original, tc)
 
 	if result.TraceID() != "trace-test" {

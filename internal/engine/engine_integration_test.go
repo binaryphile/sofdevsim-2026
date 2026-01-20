@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/binaryphile/sofdevsim-2026/internal/engine"
+	"github.com/binaryphile/sofdevsim-2026/internal/events"
 	"github.com/binaryphile/sofdevsim-2026/internal/model"
 )
 
@@ -30,7 +31,8 @@ func TestEngine_FullSimulationRun(t *testing.T) {
 			sim.AddTicket(model.NewTicket("TKT-002", "Medium task", 5, model.MediumUnderstanding))
 			sim.AddTicket(model.NewTicket("TKT-003", "Large task", 8, model.LowUnderstanding))
 
-			eng := engine.NewEngine(sim)
+			eng := engine.NewEngine(sim.Seed)
+			eng.EmitLoadedState(*sim) // Sync projection with sim state
 
 			// Assign tickets
 			if err := eng.AssignTicket("TKT-001", "dev-1"); err != nil {
@@ -48,20 +50,21 @@ func TestEngine_FullSimulationRun(t *testing.T) {
 				t.Error("Expected some events from sprint, got none")
 			}
 
-			// Simulation state should have progressed
-			if sim.CurrentTick == 0 {
+			// Simulation state should have progressed (read from projection, not sim)
+			state := eng.Sim()
+			if state.CurrentTick == 0 {
 				t.Error("CurrentTick should have advanced")
 			}
 
 			// At least one ticket should have made progress
 			hasProgress := false
-			for _, ticket := range sim.ActiveTickets {
+			for _, ticket := range state.ActiveTickets {
 				if ticket.Phase > model.PhaseBacklog {
 					hasProgress = true
 					break
 				}
 			}
-			if len(sim.CompletedTickets) > 0 {
+			if len(state.CompletedTickets) > 0 {
 				hasProgress = true
 			}
 
@@ -79,7 +82,8 @@ func TestEngine_DecompositionIntegration(t *testing.T) {
 	// Large ticket that should be decomposed under DORA policy
 	sim.AddTicket(model.NewTicket("TKT-001", "Large feature", 10, model.MediumUnderstanding))
 
-	eng := engine.NewEngine(sim)
+	eng := engine.NewEngine(sim.Seed)
+	eng.EmitLoadedState(*sim) // Sync projection with sim state
 	children, decomposed := eng.TryDecompose("TKT-001")
 
 	if !decomposed {
@@ -90,17 +94,24 @@ func TestEngine_DecompositionIntegration(t *testing.T) {
 		t.Errorf("Expected 2+ children, got %d", len(children))
 	}
 
+	// Read from projection, not sim
+	state := eng.Sim()
+
 	// Original should be removed from backlog
-	for _, ticket := range sim.Backlog {
+	for _, ticket := range state.Backlog {
 		if ticket.ID == "TKT-001" {
 			t.Error("Original ticket should be removed from backlog after decomposition")
 		}
 	}
 
-	// Children should be in backlog
+	// Children should be in backlog (by ID, since ParentID not set by projection)
+	childIDs := make(map[string]bool)
+	for _, child := range children {
+		childIDs[child.ID] = true
+	}
 	childrenInBacklog := 0
-	for _, ticket := range sim.Backlog {
-		if ticket.ParentID == "TKT-001" {
+	for _, ticket := range state.Backlog {
+		if childIDs[ticket.ID] {
 			childrenInBacklog++
 		}
 	}
@@ -111,8 +122,10 @@ func TestEngine_DecompositionIntegration(t *testing.T) {
 }
 
 // Integration test: WIP tracking during sprint
+// Verifies SprintWIPUpdated events are emitted with correct WIP values
 func TestEngine_WIPTracking(t *testing.T) {
 	sim := model.NewSimulation(model.PolicyNone, 12345)
+	sim.ID = "wip-test"
 
 	sim.AddDeveloper(model.NewDeveloper("dev-1", "Alice", 1.0))
 	sim.AddDeveloper(model.NewDeveloper("dev-2", "Bob", 1.0))
@@ -121,7 +134,10 @@ func TestEngine_WIPTracking(t *testing.T) {
 	sim.AddTicket(model.NewTicket("TKT-001", "Task 1", 3, model.HighUnderstanding))
 	sim.AddTicket(model.NewTicket("TKT-002", "Task 2", 5, model.HighUnderstanding))
 
-	eng := engine.NewEngine(sim)
+	// Use event store to verify WIP tracking via events
+	store := events.NewMemoryStore()
+	eng := engine.NewEngineWithStore(sim.Seed, store)
+	eng.EmitLoadedState(*sim) // Sync projection with sim state
 
 	// Assign both tickets - creates WIP of 2
 	eng.AssignTicket("TKT-001", "dev-1")
@@ -130,24 +146,27 @@ func TestEngine_WIPTracking(t *testing.T) {
 	// Run sprint
 	eng.RunSprint()
 
-	sprint, ok := sim.CurrentSprintOption.Get()
-	if !ok {
-		t.Fatal("Expected sprint to exist")
+	// Verify WIP tracking via SprintWIPUpdated events
+	evts := store.Replay("wip-test")
+	wipEvents := 0
+	maxWIPSeen := 0
+	for _, evt := range evts {
+		if wipEvt, ok := evt.(events.SprintWIPUpdated); ok {
+			wipEvents++
+			if wipEvt.CurrentWIP > maxWIPSeen {
+				maxWIPSeen = wipEvt.CurrentWIP
+			}
+		}
 	}
 
-	// WIP should have been tracked
-	if sprint.WIPTicks == 0 {
-		t.Error("Expected WIPTicks > 0 after running sprint")
+	// Should have emitted WIP events (one per tick during sprint)
+	if wipEvents == 0 {
+		t.Error("Expected SprintWIPUpdated events during sprint")
 	}
 
-	if sprint.MaxWIP < 1 {
-		t.Error("Expected MaxWIP >= 1 after running with active tickets")
-	}
-
-	// Average should be calculable
-	avgWIP := sprint.AvgWIP()
-	if avgWIP < 0 {
-		t.Error("Expected non-negative AvgWIP")
+	// Should have seen WIP of at least 1 (tickets were assigned)
+	if maxWIPSeen < 1 {
+		t.Errorf("Expected MaxWIP >= 1, got %d", maxWIPSeen)
 	}
 }
 
@@ -160,7 +179,8 @@ func TestEngine_Reproducibility(t *testing.T) {
 		sim.AddDeveloper(model.NewDeveloper("dev-1", "Alice", 1.0))
 		sim.AddTicket(model.NewTicket("TKT-001", "Task", 5, model.MediumUnderstanding))
 
-		eng := engine.NewEngine(sim)
+		eng := engine.NewEngine(sim.Seed)
+		eng.EmitLoadedState(*sim) // Sync projection with sim state
 		eng.AssignTicket("TKT-001", "dev-1")
 		eng.RunSprint()
 

@@ -50,6 +50,7 @@ func (p Projection) Apply(evt Event) Projection {
 		next.sim.CurrentTick = e.Tick
 
 	case SprintStarted:
+		next.sim.SprintNumber = e.Number
 		next.sim.CurrentSprintOption = option.Of(model.Sprint{
 			Number:       e.Number,
 			StartDay:     e.StartTick,
@@ -85,6 +86,8 @@ func (p Projection) Apply(evt Event) Projection {
 			if t.ID == e.TicketID {
 				// Start the ticket
 				t.AssignedTo = e.DeveloperID
+				t.StartedTick = e.OccurrenceTime()
+				t.StartedAt = e.StartedAt
 				t.Phase = model.PhaseResearch
 				t.RemainingEffort = t.CalculatePhaseEffort(model.PhaseResearch)
 				next.sim.ActiveTickets = append(next.sim.ActiveTickets, t)
@@ -96,8 +99,45 @@ func (p Projection) Apply(evt Event) Projection {
 		for i, d := range next.sim.Developers {
 			if d.ID == e.DeveloperID {
 				next.sim.Developers[i].CurrentTicket = e.TicketID
+				next.sim.Developers[i].WIPCount++
 				break
 			}
+		}
+		// Add ticket to current sprint if one exists
+		if sprint, ok := next.sim.CurrentSprintOption.Get(); ok {
+			sprint = sprint.WithTicket(e.TicketID)
+			next.sim.CurrentSprintOption = option.Of(sprint)
+		}
+
+	case TicketStateRestored:
+		// Restore full ticket state from persistence (used by EmitLoadedState)
+		// Unlike TicketAssigned, this preserves the actual Phase and RemainingEffort
+		for i, t := range next.sim.Backlog {
+			if t.ID == e.TicketID {
+				// Restore full state
+				t.AssignedTo = e.DeveloperID
+				t.StartedTick = e.OccurrenceTime()
+				t.StartedAt = e.StartedAt
+				t.Phase = e.Phase
+				t.RemainingEffort = e.RemainingEffort
+				t.ActualDays = e.ActualDays
+				next.sim.ActiveTickets = append(next.sim.ActiveTickets, t)
+				next.sim.Backlog = append(next.sim.Backlog[:i], next.sim.Backlog[i+1:]...)
+				break
+			}
+		}
+		// Update developer state
+		for i, d := range next.sim.Developers {
+			if d.ID == e.DeveloperID {
+				next.sim.Developers[i].CurrentTicket = e.TicketID
+				next.sim.Developers[i].WIPCount++
+				break
+			}
+		}
+		// Add ticket to current sprint if one exists
+		if sprint, ok := next.sim.CurrentSprintOption.Get(); ok {
+			sprint = sprint.WithTicket(e.TicketID)
+			next.sim.CurrentSprintOption = option.Of(sprint)
 		}
 
 	case TicketCompleted:
@@ -111,10 +151,13 @@ func (p Projection) Apply(evt Event) Projection {
 				break
 			}
 		}
-		// Clear developer assignment
+		// Update developer stats (matches Developer.WithCompletedTicket)
 		for i, d := range next.sim.Developers {
 			if d.ID == e.DeveloperID {
 				next.sim.Developers[i].CurrentTicket = ""
+				next.sim.Developers[i].TicketsCompleted++
+				next.sim.Developers[i].TotalEffort += e.ActualDays
+				next.sim.Developers[i].WIPCount--
 				break
 			}
 		}
@@ -151,8 +194,18 @@ func (p Projection) Apply(evt Event) Projection {
 
 	case IncidentStarted:
 		next.sim.OpenIncidents = append(next.sim.OpenIncidents, model.Incident{
-			ID: e.IncidentID,
+			ID:       e.IncidentID,
+			TicketID: e.TicketID,
+			Severity: e.Severity,
 		})
+		// Mark the completed ticket as having caused this incident
+		for i, t := range next.sim.CompletedTickets {
+			if t.ID == e.TicketID {
+				next.sim.CompletedTickets[i].CausedIncident = true
+				next.sim.CompletedTickets[i].IncidentID = e.IncidentID
+				break
+			}
+		}
 
 	case IncidentResolved:
 		for i, inc := range next.sim.OpenIncidents {
@@ -161,6 +214,56 @@ func (p Projection) Apply(evt Event) Projection {
 				inc.ResolvedAt = &resolved
 				next.sim.ResolvedIncidents = append(next.sim.ResolvedIncidents, inc)
 				next.sim.OpenIncidents = append(next.sim.OpenIncidents[:i], next.sim.OpenIncidents[i+1:]...)
+				break
+			}
+		}
+
+	case TicketDecomposed:
+		// Remove parent ticket from backlog
+		for i, t := range next.sim.Backlog {
+			if t.ID == e.ParentTicketID {
+				next.sim.Backlog = append(next.sim.Backlog[:i], next.sim.Backlog[i+1:]...)
+				break
+			}
+		}
+		// Add children to backlog
+		for _, child := range e.Children {
+			next.sim.Backlog = append(next.sim.Backlog, model.Ticket{
+				ID:                 child.ID,
+				Title:              child.Title,
+				EstimatedDays:      child.EstimatedDays,
+				UnderstandingLevel: child.Understanding,
+				Phase:              model.PhaseBacklog,
+				PhaseEffortSpent:   make(map[model.WorkflowPhase]float64),
+			})
+		}
+
+	case SprintWIPUpdated:
+		// Update sprint WIP metrics
+		if sprint, ok := next.sim.CurrentSprintOption.Get(); ok {
+			if e.CurrentWIP > sprint.MaxWIP {
+				sprint.MaxWIP = e.CurrentWIP
+			}
+			sprint.WIPSum += e.CurrentWIP
+			sprint.WIPTicks++
+			next.sim.CurrentSprintOption = option.Of(sprint)
+		}
+
+	case BugDiscovered:
+		// Add rework effort to the active ticket
+		for i, t := range next.sim.ActiveTickets {
+			if t.ID == e.TicketID {
+				next.sim.ActiveTickets[i].RemainingEffort += e.ReworkEffort
+				break
+			}
+		}
+
+	case ScopeCreepOccurred:
+		// Add effort and estimate to the active ticket
+		for i, t := range next.sim.ActiveTickets {
+			if t.ID == e.TicketID {
+				next.sim.ActiveTickets[i].RemainingEffort += e.EffortAdded
+				next.sim.ActiveTickets[i].EstimatedDays += e.EstimateAdded
 				break
 			}
 		}

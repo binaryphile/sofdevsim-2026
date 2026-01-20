@@ -31,19 +31,20 @@ func TestSharedAccess_TUISimulationAccessibleViaAPI(t *testing.T) {
 	}
 
 	// Verify events are emitted to shared store
+	// EmitLoadedState emits SimulationCreated + DeveloperAdded for each developer
 	evts := registry.Store().Replay("sim-42")
-	if len(evts) != 1 {
-		t.Fatalf("Expected 1 event (SimulationCreated), got %d", len(evts))
+	if len(evts) != 2 {
+		t.Fatalf("Expected 2 events (SimulationCreated + DeveloperAdded), got %d", len(evts))
 	}
 	if evts[0].EventType() != "SimulationCreated" {
-		t.Errorf("Expected SimulationCreated, got %s", evts[0].EventType())
+		t.Errorf("Expected SimulationCreated first, got %s", evts[0].EventType())
 	}
 
 	// TUI starts sprint via engine
 	eng.StartSprint()
 
-	// API should see the sprint started
-	if _, active := inst.sim.CurrentSprintOption.Get(); !active {
+	// API should see the sprint started via engine projection (not sim directly)
+	if _, active := inst.engine.Sim().CurrentSprintOption.Get(); !active {
 		t.Error("API does not see sprint started by TUI")
 	}
 
@@ -78,9 +79,10 @@ func TestSharedAccess_APIChangesVisibleToTUI(t *testing.T) {
 	inst.engine.StartSprint()
 	inst.engine.AssignTicket("TKT-001", "dev-1")
 
-	// TUI should see the changes (same *Simulation)
-	if len(sim.ActiveTickets) != 1 {
-		t.Errorf("TUI doesn't see ticket assigned by API: active=%d", len(sim.ActiveTickets))
+	// TUI should see the changes via engine projection (not sim pointer)
+	state := inst.engine.Sim()
+	if len(state.ActiveTickets) != 1 {
+		t.Errorf("TUI doesn't see ticket assigned by API: active=%d", len(state.ActiveTickets))
 	}
 
 	// Both should see events in shared store

@@ -100,8 +100,12 @@ func NewAppWithRegistry(seed int64, registry api.SimRegistry) *App {
 	} else {
 		// Standalone mode - own event store
 		store = events.NewMemoryStore()
-		eng = engine.NewEngineWithStore(sim, store)
-		eng.EmitCreated()
+		eng = engine.NewEngineWithStore(sim.Seed, store)
+		eng.EmitCreated(sim.ID, sim.CurrentTick, events.SimConfig{
+			TeamSize:     len(sim.Developers),
+			SprintLength: sim.SprintLength,
+			Seed:         sim.Seed,
+		})
 	}
 
 	// Add default team via engine (emits DeveloperAdded events)
@@ -359,12 +363,13 @@ func (a *App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if !a.registry.IsZero() {
 			a.store = a.registry.Store()
 			a.engine = a.registry.RegisterSimulation(sim, tracker)
+			// RegisterSimulation already calls EmitLoadedState
 		} else {
 			a.store = events.NewMemoryStore()
-			a.engine = engine.NewEngineWithStore(sim, a.store)
+			a.engine = engine.NewEngineWithStore(sim.Seed, a.store)
+			// Emit events to populate projection from loaded state
+			a.engine.EmitLoadedState(*sim)
 		}
-		// Emit events to populate projection from loaded state
-		a.engine.EmitLoadedState()
 		// Re-subscribe to new simulation's events
 		a.eventSub = a.store.Subscribe(sim.ID)
 		a.paused = true
@@ -395,23 +400,27 @@ func (a *App) runComparison() {
 
 	// Run simulation with DORA-Strict policy
 	simA := a.createSimulation(model.PolicyDORAStrict, seed)
-	engA := engine.NewEngine(simA)
+	engA := engine.NewEngine(simA.Seed)
+	engA.EmitLoadedState(*simA)
 	trackerA := metrics.NewTracker()
 
 	// Run simulation with TameFlow-Cognitive policy
 	simB := a.createSimulation(model.PolicyTameFlowCognitive, seed)
-	engB := engine.NewEngine(simB)
+	engB := engine.NewEngine(simB.Seed)
+	engB.EmitLoadedState(*simB)
 	trackerB := metrics.NewTracker()
 
 	// Run 3 sprints each
 	for i := 0; i < 3; i++ {
-		trackerA = a.runSprintWithAutoAssign(simA, engA, trackerA)
-		trackerB = a.runSprintWithAutoAssign(simB, engB, trackerB)
+		trackerA = a.runSprintWithAutoAssign(engA, trackerA)
+		trackerB = a.runSprintWithAutoAssign(engB, trackerB)
 	}
 
 	// Get results and compare
-	resultA := trackerA.GetResult(model.PolicyDORAStrict, simA)
-	resultB := trackerB.GetResult(model.PolicyTameFlowCognitive, simB)
+	stateA := engA.Sim()
+	stateB := engB.Sim()
+	resultA := trackerA.GetResult(model.PolicyDORAStrict, &stateA)
+	resultB := trackerB.GetResult(model.PolicyTameFlowCognitive, &stateB)
 
 	comparison := metrics.Compare(resultA, resultB, seed)
 	a.comparisonResult = &comparison
@@ -438,13 +447,16 @@ func (a *App) createSimulation(policy model.SizingPolicy, seed int64) *model.Sim
 }
 
 // runSprintWithAutoAssign runs a sprint with automatic ticket assignment
-func (a *App) runSprintWithAutoAssign(sim *model.Simulation, eng *engine.Engine, tracker metrics.Tracker) metrics.Tracker {
-	sim.StartSprint()
+func (a *App) runSprintWithAutoAssign(eng *engine.Engine, tracker metrics.Tracker) metrics.Tracker {
+	eng.StartSprint()
 
 	// Auto-assign tickets to idle developers at start
-	for _, dev := range sim.Developers {
-		if dev.IsIdle() && len(sim.Backlog) > 0 {
-			ticket := sim.Backlog[0]
+	// Use index-based iteration so re-reads affect subsequent checks
+	state := eng.Sim()
+	for i := 0; i < len(state.Developers); i++ {
+		dev := state.Developers[i]
+		if dev.IsIdle() && len(state.Backlog) > 0 {
+			ticket := state.Backlog[0]
 			// Try decomposition first based on policy
 			if children, decomposed := eng.TryDecompose(ticket.ID); decomposed {
 				// Assign first child
@@ -454,20 +466,23 @@ func (a *App) runSprintWithAutoAssign(sim *model.Simulation, eng *engine.Engine,
 			} else {
 				eng.AssignTicket(ticket.ID, dev.ID)
 			}
+			// Re-read state after assignment - affects subsequent iterations
+			state = eng.Sim()
 		}
 	}
 
 	// Run the sprint
-	sprint, _ := sim.CurrentSprintOption.Get()
-	for sim.CurrentTick < sprint.EndDay {
+	sprint, _ := eng.Sim().CurrentSprintOption.Get()
+	for eng.Sim().CurrentTick < sprint.EndDay {
 		eng.Tick()
-		tracker = tracker.Updated(sim)
+		state = eng.Sim()
+		tracker = tracker.Updated(&state)
 
 		// Re-assign idle developers mid-sprint
-		for i := range sim.Developers {
-			dev := &sim.Developers[i]
-			if dev.IsIdle() && len(sim.Backlog) > 0 {
-				ticket := sim.Backlog[0]
+		for i := 0; i < len(state.Developers); i++ {
+			dev := state.Developers[i]
+			if dev.IsIdle() && len(state.Backlog) > 0 {
+				ticket := state.Backlog[0]
 				if children, decomposed := eng.TryDecompose(ticket.ID); decomposed {
 					if len(children) > 0 {
 						eng.AssignTicket(children[0].ID, dev.ID)
@@ -475,6 +490,8 @@ func (a *App) runSprintWithAutoAssign(sim *model.Simulation, eng *engine.Engine,
 				} else {
 					eng.AssignTicket(ticket.ID, dev.ID)
 				}
+				// Re-read state after assignment - affects subsequent iterations
+				state = eng.Sim()
 			}
 		}
 	}

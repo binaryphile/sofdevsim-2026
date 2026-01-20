@@ -16465,3 +16465,610 @@ Implemented IncidentStarted and IncidentResolved handlers in the event sourcing 
 
 **Why it matters:**
 Completes the event sourcing projection so all 15 event types are properly handled, enabling incident tracking in the simulation.
+
+---
+
+## Approved Plan: 2026-01-19 - Phase 5
+
+# Plan: Phase 5 - Remove `sim`, Make Projection Source of Truth
+
+## Why Now
+
+Phase 2 log falsely claimed "events are the source of truth." Reality: `sim` is mutated directly, `proj` just shadows. Must fix before documenting.
+
+---
+
+## Scope Analysis
+
+| Category | Count |
+|----------|-------|
+| READ operations | 38 |
+| WRITE operations | 41 |
+| **Total e.sim accesses** | **79** |
+| Existing events | 14 |
+| New events needed | 2 (+ 1 enhancement) |
+
+---
+
+## Missing Events (must add first)
+
+| Event | Purpose | Engine Location |
+|-------|---------|-----------------|
+| `TicketDecomposed` | Parent removed, children added to backlog | engine.go:366-384 |
+| `SprintWIPUpdated` | Track MaxWIP, WIPSum, WIPTicks | engine.go:256-264 |
+| Enhance `TicketAssigned` | Add StartedTick field (currently set at engine.go:332-333) | event already exists |
+
+**Note:** `DeveloperFreed` NOT needed - `TicketCompleted` projection handler already clears `CurrentTicket` (projection.go:114-120)
+
+---
+
+## Key Architectural Facts
+
+| Concern | Status | Details |
+|---------|--------|---------|
+| emit() → proj.Apply() | ✅ Already wired | engine.go:93 calls `e.proj = e.proj.Apply(evt)` |
+| sim.StartSprint() | ✅ Replaceable | SprintStarted projection handler creates Sprint struct (projection.go:52-60) |
+| EmitLoadedState() | ⚠️ Needs refactor | TUI caller (app.go:367) already has `sim` - trivial update |
+| StartedAt (time.Time) | ⚠️ Add to event | Currently set via time.Now() at engine.go:332 |
+| SprintNumber tracking | ❌ Bug | Projection doesn't update `sim.SprintNumber` - must fix in SprintStarted handler |
+
+---
+
+## Implementation Steps
+
+### Step 1: Add missing events + projection handlers (TDD)
+- Add `TicketDecomposed` event type + projection handler
+- Add `SprintWIPUpdated` event type + projection handler
+- Enhance `TicketAssigned` to include `StartedTick` and `StartedAt` fields
+- Update TicketAssigned projection handler to set both fields on ticket
+- **Bug fix:** Update SprintStarted handler to set `next.sim.SprintNumber = e.Number`
+- Tests for each new/modified handler
+
+### Step 2: Add `state()` helper
+```go
+func (e *Engine) state() model.Simulation {
+    return e.proj.State()
+}
+```
+
+### Step 3: Convert reads (38 usages)
+Replace `e.sim.X` → `e.state().X` for all read operations.
+
+**Order:** Safe to do all at once - reads don't affect correctness.
+
+### Step 4: Convert writes (41 usages)
+Change from mutate-then-emit to emit-only:
+
+```go
+// OLD: mutate sim, then emit event
+e.sim.CurrentTick++
+e.emit(events.NewTicked(...))
+
+// NEW: emit event, projection updates state
+e.emit(events.NewTicked(...))
+// state() now returns updated tick
+```
+
+**Conversion order (dependency-safe):**
+1. `AddDeveloper()` - 1 write, no dependencies
+2. `AddTicket()` - 1 write, no dependencies
+3. `SetPolicy()` - 1 write, no dependencies
+4. `StartSprint()` - 1 write, depends on sim.StartSprint()
+5. `AssignTicket()` - 6 writes, depends on backlog/active lists
+6. `TryDecompose()` - 4 writes, depends on new TicketDecomposed event
+7. `updateWIP()` - 3 writes, depends on new SprintWIPUpdated event
+8. `completeTicket()` - 4 writes, depends on active/completed lists
+9. `Tick()` - 15 writes, most complex, do last
+
+### Step 5: Remove `sim` field
+Delete `sim *model.Simulation` from Engine struct.
+
+**EmitLoadedState() refactor:**
+```go
+// OLD: reads from e.sim
+func (e *Engine) EmitLoadedState() { ... }
+
+// NEW: accepts loaded state as parameter
+func (e *Engine) EmitLoadedState(sim model.Simulation) {
+    // emit events from passed sim, which updates e.proj
+}
+```
+Callers (persistence layer) pass the loaded Simulation.
+
+### Step 6: Fix tests
+**Test files affected:**
+- `internal/engine/engine_test.go` - main test file, ~50 tests
+- `internal/events/projection_test.go` - add tests for new handlers
+
+**Expected test changes:**
+- Tests that construct Engine may need updating
+- Tests that check `e.sim` directly must use `e.State()` or `e.proj.State()`
+- Add new table-driven tests for TicketDecomposed, SprintWIPUpdated handlers
+
+---
+
+## Critical Mutations by Method
+
+| Method | Writes | Events | Status |
+|--------|--------|--------|--------|
+| `Tick()` | 15 | WorkProgressed, Ticked, BufferConsumed, TicketPhaseChanged | ✅ Ready |
+| `AssignTicket()` | 6 | TicketAssigned (needs StartedTick) | ⚠️ Enhance |
+| `completeTicket()` | 4 | TicketCompleted | ✅ Ready |
+| `TryDecompose()` | 4 | **TicketDecomposed** | ❌ Add |
+| `updateWIP()` | 3 | **SprintWIPUpdated** | ❌ Add |
+| `AddDeveloper()` | 1 | DeveloperAdded | ✅ Ready |
+| `AddTicket()` | 1 | TicketCreated | ✅ Ready |
+| `SetPolicy()` | 1 | PolicyChanged | ✅ Ready |
+| `StartSprint()` | 1 | SprintStarted | ✅ Ready |
+
+---
+
+## Files to Modify
+
+| File | Changes |
+|------|---------|
+| `internal/events/types.go` | Add 2 new event types, enhance TicketAssigned |
+| `internal/events/projection.go` | Add handlers, fix SprintNumber bug, update TicketAssigned handler |
+| `internal/events/projection_test.go` | Tests for new/modified handlers |
+| `internal/engine/engine.go` | Remove `sim`, refactor 79 usages, rework EmitLoadedState(sim) |
+| `internal/engine/engine_test.go` | Update tests |
+| `internal/tui/app.go` | Update EmitLoadedState() call to pass sim (line 367) |
+
+---
+
+## Success Criteria
+
+- [ ] 2 new events added (TicketDecomposed, SprintWIPUpdated)
+- [ ] TicketAssigned enhanced with StartedTick + StartedAt fields
+- [ ] SprintNumber bug fixed in SprintStarted projection handler
+- [ ] `sim *model.Simulation` removed from Engine struct
+- [ ] All 79 `e.sim` usages converted
+- [ ] All state access via `proj.State()`
+- [ ] All mutations via events
+- [ ] EmitLoadedState(sim) refactored + TUI caller updated
+- [ ] All 202+ tests pass
+
+---
+
+## TUI Impact
+
+The TUI (`internal/tui/`) reads engine state via:
+- `engine.State()` or `engine.Simulation()` - already returns `model.Simulation`
+- No direct `e.sim` access from TUI
+
+**Impact:** None expected. TUI already uses public accessor methods.
+
+---
+
+## Risk
+
+**MEDIUM-HIGH** - 79 code paths, 9 methods. Break into sub-phases:
+1. Add missing events (low risk) - 2 new events + 1 enhancement
+2. Convert reads (low risk) - mechanical `e.sim.X` → `e.state().X`
+3. Convert writes (high risk) - must maintain event ordering
+4. Remove field (verification) - compile-time check
+
+**Rollback:** Each step can be tested independently. If Step 4 fails, revert to Step 3 state.
+
+---
+
+## Token Budget
+
+Estimated: 80-100K tokens
+
+| Phase | Estimate |
+|-------|----------|
+| Step 1: Events + handlers (TDD) | 15-20K |
+| Step 2: state() helper | 2K |
+| Step 3: Convert reads | 15-20K |
+| Step 4: Convert writes | 30-40K |
+| Step 5: Remove sim | 5K |
+| Step 6: Fix tests | 10-15K |
+
+---
+
+## Approved Contract: 2026-01-19 - Phase 5
+
+# Phase 5 Contract
+
+**Created:** 2026-01-19
+
+## Step 1 Checklist
+- [x] 1a: Presented understanding
+- [x] 1b: Asked clarifying questions (via iterative grading)
+- [x] 1c: Contract created (this file)
+- [x] 1d: Approval received (user said "proceed")
+- [ ] 1e: Plan + contract archived
+
+## Objective
+Remove `sim *model.Simulation` from Engine struct, making `proj events.Projection` the sole source of truth. Fix the false Phase 2 claim that "events are the source of truth."
+
+## Success Criteria
+- [ ] 2 new events added (TicketDecomposed, SprintWIPUpdated)
+- [ ] TicketAssigned enhanced with StartedTick + StartedAt fields
+- [ ] SprintNumber bug fixed in SprintStarted projection handler
+- [ ] `sim *model.Simulation` removed from Engine struct
+- [ ] All 79 `e.sim` usages converted
+- [ ] All state access via `proj.State()`
+- [ ] All mutations via events
+- [ ] EmitLoadedState(sim) refactored + TUI caller updated
+- [ ] All 202+ tests pass
+
+## Approach
+1. Add missing events + projection handlers (TDD)
+2. Add `state()` helper method
+3. Convert 38 read operations (`e.sim.X` → `e.state().X`)
+4. Convert 41 write operations (emit-only pattern)
+5. Remove `sim` field, refactor EmitLoadedState
+6. Fix tests
+
+## Files to Modify
+- `internal/events/types.go`
+- `internal/events/projection.go`
+- `internal/events/projection_test.go`
+- `internal/engine/engine.go`
+- `internal/engine/engine_test.go`
+- `internal/tui/app.go`
+
+## Token Budget
+Estimated: 80-100K tokens
+
+---
+
+## Log: 2026-01-20 - Phase 5A Refinements
+
+**What was done:**
+Post-Phase 5A compliance review and fixes. Added table-driven test for `toUIEvent()`, clarified Go Dev Guide on when named predicates apply (FluentFP chains only, not simple ifs), added "generators with probabilistic logic" to loops guidance.
+
+**Key files changed:**
+- `internal/engine/event_sourcing_test.go`: Added `TestEngine_ToUIEvent` (5 cases)
+- `go-development-guide.md`: Clarified named predicates scope, added generators example
+- `CLAUDE.md`: Synced with guide updates
+
+**Why it matters:**
+Ensures Phase 5A work meets Go Dev Guide standards and has proper test coverage.
+
+---
+
+## Approved Plan: 2026-01-20 - Phase 5B
+
+**Plan file:** `/home/ted/.claude/plans/humming-cuddling-wigderson.md`
+
+### Summary
+Remove `e.sim` field from Engine, making `e.proj` the sole source of truth per ES guide §6.
+
+### Ordering
+1. Remove dual-writes FIRST (27 usages) - projection handlers already do the work
+2. Refactor bootstrap methods (EmitCreated, EmitLoadedState) - take params instead of reading e.sim
+3. Update constructors to take seed instead of sim pointer
+4. Remove e.sim field last
+
+### Sub-phases
+- 5B.1a-f: Remove dual-writes incrementally (6 test checkpoints)
+- 5B.2: EmitCreated takes (id, tick, config) params
+- 5B.3: EmitLoadedState takes sim param
+- 5B.4: Constructors take seed only
+- 5B.5: Delete e.sim field
+- 5B.6: Verify grep + tests
+
+---
+
+## Approved Contract: 2026-01-20 - Phase 5B
+
+# Phase 5B Contract: Remove e.sim Field
+
+**Created:** 2026-01-20
+
+## Step 1 Checklist
+- [x] 1a: Presented understanding (audit: 48 e.sim usages)
+- [x] 1b: Asked clarifying questions (fresh audit, ES guide approach)
+- [x] 1c: Contract created (this file)
+- [ ] 1d: Approval received
+- [ ] 1e: Plan + contract archived
+
+## Objective
+
+Remove `sim *model.Simulation` from Engine struct, making `proj events.Projection` the sole source of truth per CQRS/Event Sourcing guide §6:
+
+> "current state is the result of folding all events over the initial state"
+
+Fix the dual-write anti-pattern identified in §10.
+
+## Success Criteria
+- [ ] `sim *model.Simulation` field removed from Engine struct
+- [ ] All 48 `e.sim` usages eliminated
+- [ ] `grep -n "e\.sim" internal/engine/engine.go` returns 0 matches
+- [ ] All state access via `e.state()` (projection)
+- [ ] All mutations via `e.emit()` → projection handlers
+- [ ] `EmitLoadedState(sim)` refactored (takes sim, doesn't store it)
+- [ ] TUI caller updated (passes loaded sim, no other changes)
+- [ ] All 202+ tests pass
+
+## Fresh Audit (48 usages)
+
+| Category | Count | Lines | Action |
+|----------|-------|-------|--------|
+| EmitCreated | 6 | 52-57 | Keep reads, emit builds projection |
+| EmitLoadedState | 15 | 422-463 | Keep reads from param, don't store |
+| Tick dual-writes | 8 | 119,132,157-159,165-166 | Delete dual-writes |
+| StartSprint | 2 | 294,296 | Emit first, read from projection |
+| AssignTicket | 11 | 335-363 | Emit first, read from projection |
+| updateBuffer | 1 | 256 | Delete dual-write |
+| TryDecompose | 2 | 385,389 | Emit TicketDecomposed, projection handles |
+| AddDeveloper | 1 | 398 | Delete dual-write (emit already exists) |
+| AddTicket | 1 | 405 | Delete dual-write (emit already exists) |
+| SetPolicy | 1 | 413 | Delete dual-write (emit already exists) |
+
+## Approach
+
+### Sub-phase 5B.1: Refactor EmitLoadedState
+
+**Current flow (wrong per ES guide §10):**
+```
+NewEngineWithStore(sim, store)  →  e.sim = sim (stored)
+EmitLoadedState()               →  reads e.sim, emits events
+                                →  TWO sources: e.sim AND projection
+```
+
+**New flow (ES guide §6 compliant):**
+```
+NewEngineWithStore(store)       →  no sim stored
+EmitLoadedState(sim)            →  reads param, emits events
+                                →  ONE source: projection only
+```
+
+**TUI change:** `app.go` already passes sim to engine constructor. Change to pass to `EmitLoadedState(sim)` instead.
+
+### Sub-phase 5B.2: Remove dual-writes (incremental by category)
+
+Remove in order, run tests after each:
+
+| Step | Category | Count | Test after |
+|------|----------|-------|------------|
+| 2a | AddDeveloper, AddTicket, SetPolicy | 3 | `go test ./internal/engine/...` |
+| 2b | StartSprint | 2 | `go test ./internal/engine/...` |
+| 2c | updateBuffer | 1 | `go test ./internal/engine/...` |
+| 2d | TryDecompose | 2 | `go test ./internal/engine/...` |
+| 2e | AssignTicket | 11 | `go test ./internal/engine/...` |
+| 2f | Tick | 8 | `go test ./internal/engine/...` |
+
+### Sub-phase 5B.3: Remove e.sim field
+- Delete `sim *model.Simulation` from Engine struct
+- Update constructors (NewEngine, NewEngineWithStore)
+- Fix compilation errors (if any remain)
+
+### Sub-phase 5B.4: Verify
+- `grep -n "e\.sim" internal/engine/engine.go` → 0 matches
+- `go test ./...` → all 202+ tests pass
+
+## Files to Modify
+- `internal/engine/engine.go` - Remove field, refactor methods
+- `internal/engine/engine_test.go` - Fix any test dependencies
+- `internal/engine/event_sourcing_test.go` - Fix any test dependencies
+- `internal/tui/app.go` - Update EmitLoadedState caller if needed
+
+## Risk Assessment
+- **Medium risk:** Sub-phase 5B.2 removes dual-writes incrementally by category
+- **Mitigation:**
+  - Tests run after each category (6 checkpoints)
+  - Projection handlers verified complete in Phase 5A audit
+  - Easiest categories first (AddDeveloper/AddTicket/SetPolicy) to build confidence
+  - Hardest category last (Tick - 8 usages with complex state updates)
+
+## Token Budget
+Estimated: 35-50K tokens
+
+| Sub-phase | Estimate |
+|-----------|----------|
+| 5B.1: EmitLoadedState refactor + TUI | 10-12K |
+| 5B.2a-c: Easy dual-writes (6 usages) | 5-8K |
+| 5B.2d-e: Medium dual-writes (13 usages) | 8-12K |
+| 5B.2f: Tick dual-writes (8 usages) | 6-10K |
+| 5B.3: Remove e.sim field | 3-5K |
+| 5B.4: Verify | 3-5K |
+
+---
+
+## Archived: 2026-01-20 - Phase 5B Contract
+
+# Phase 5B Contract: Remove e.sim Field
+
+**Created:** 2026-01-20
+
+## Step 1 Checklist
+- [x] 1a: Presented understanding (audit: 48 e.sim usages)
+- [x] 1b: Asked clarifying questions (fresh audit, ES guide approach)
+- [x] 1c: Contract created (this file)
+- [x] 1d: Approval received
+- [x] 1e: Plan + contract archived
+
+## Objective
+
+Remove `sim *model.Simulation` from Engine struct, making `proj events.Projection` the sole source of truth per CQRS/Event Sourcing guide §6:
+
+> "current state is the result of folding all events over the initial state"
+
+Fix the dual-write anti-pattern identified in §10.
+
+## Success Criteria
+- [x] `sim *model.Simulation` field removed from Engine struct
+- [x] All 48 `e.sim` usages eliminated
+- [x] `grep -n "e\.sim" internal/engine/engine.go` returns 0 matches
+- [x] All state access via `e.state()` (projection)
+- [x] All mutations via `e.emit()` → projection handlers
+- [x] `EmitCreated(id, tick, config)` refactored (takes params)
+- [x] `EmitLoadedState(sim)` refactored (takes sim param)
+- [x] Constructors refactored (take seed, not sim pointer)
+- [x] TUI/API callers updated
+- [x] All tests pass (coverage: engine 86.8%)
+
+## Fresh Audit (48 usages)
+
+| Category | Count | Lines | Action |
+|----------|-------|-------|--------|
+| EmitCreated | 6 | 52-57 | Keep reads, emit builds projection |
+| EmitLoadedState | 15 | 422-463 | Keep reads from param, don't store |
+| Tick dual-writes | 8 | 119,132,157-159,165-166 | Delete dual-writes |
+| StartSprint | 2 | 294,296 | Emit first, read from projection |
+| AssignTicket | 11 | 335-363 | Emit first, read from projection |
+| updateBuffer | 1 | 256 | Delete dual-write |
+| TryDecompose | 2 | 385,389 | Emit TicketDecomposed, projection handles |
+| AddDeveloper | 1 | 398 | Delete dual-write (emit already exists) |
+| AddTicket | 1 | 405 | Delete dual-write (emit already exists) |
+| SetPolicy | 1 | 413 | Delete dual-write (emit already exists) |
+
+## Approach
+
+### Sub-phase 5B.1: Refactor EmitLoadedState
+
+**Current flow (wrong per ES guide §10):**
+```
+NewEngineWithStore(sim, store)  →  e.sim = sim (stored)
+EmitLoadedState()               →  reads e.sim, emits events
+                                →  TWO sources: e.sim AND projection
+```
+
+**New flow (ES guide §6 compliant):**
+```
+NewEngineWithStore(store)       →  no sim stored
+EmitLoadedState(sim)            →  reads param, emits events
+                                →  ONE source: projection only
+```
+
+**TUI change:** `app.go` already passes sim to engine constructor. Change to pass to `EmitLoadedState(sim)` instead.
+
+### Sub-phase 5B.2: Remove dual-writes (incremental by category)
+
+Remove in order, run tests after each:
+
+| Step | Category | Count | Test after |
+|------|----------|-------|------------|
+| 2a | AddDeveloper, AddTicket, SetPolicy | 3 | `go test ./internal/engine/...` |
+| 2b | StartSprint | 2 | `go test ./internal/engine/...` |
+| 2c | updateBuffer | 1 | `go test ./internal/engine/...` |
+| 2d | TryDecompose | 2 | `go test ./internal/engine/...` |
+| 2e | AssignTicket | 11 | `go test ./internal/engine/...` |
+| 2f | Tick | 8 | `go test ./internal/engine/...` |
+
+### Sub-phase 5B.3: Remove e.sim field
+- Delete `sim *model.Simulation` from Engine struct
+- Update constructors (NewEngine, NewEngineWithStore)
+- Fix compilation errors (if any remain)
+
+### Sub-phase 5B.4: Verify
+- `grep -n "e\.sim" internal/engine/engine.go` → 0 matches
+- `go test ./...` → all 202+ tests pass
+
+## Files to Modify
+- `internal/engine/engine.go` - Remove field, refactor methods
+- `internal/engine/engine_test.go` - Fix any test dependencies
+- `internal/engine/event_sourcing_test.go` - Fix any test dependencies
+- `internal/tui/app.go` - Update EmitLoadedState caller if needed
+
+## Risk Assessment
+- **Medium risk:** Sub-phase 5B.2 removes dual-writes incrementally by category
+- **Mitigation:**
+  - Tests run after each category (6 checkpoints)
+  - Projection handlers verified complete in Phase 5A audit
+  - Easiest categories first (AddDeveloper/AddTicket/SetPolicy) to build confidence
+  - Hardest category last (Tick - 8 usages with complex state updates)
+
+## Token Budget
+Estimated: 35-50K tokens
+
+| Sub-phase | Estimate |
+|-----------|----------|
+| 5B.1: EmitLoadedState refactor + TUI | 10-12K |
+| 5B.2a-c: Easy dual-writes (6 usages) | 5-8K |
+| 5B.2d-e: Medium dual-writes (13 usages) | 8-12K |
+| 5B.2f: Tick dual-writes (8 usages) | 6-10K |
+| 5B.3: Remove e.sim field | 3-5K |
+| 5B.4: Verify | 3-5K |
+
+---
+
+## Actual Results
+
+**Completed:** 2026-01-20
+
+### Summary
+
+Removed `sim *model.Simulation` field from Engine struct, making projection the sole source of truth per CQRS/Event Sourcing guide.
+
+### Changes Made
+
+**5B.1: Remove all dual-writes (27 usages)**
+- AddDeveloper, AddTicket, SetPolicy: deleted dual-write lines
+- StartSprint: calculate data first, emit, no dual-write
+- AssignTicket: emit first, let projection handler do all work
+- Tick: emit events first, read from projection for subsequent checks
+- TryDecompose: emit TicketDecomposed, return children from projection
+- updateBuffer: removed dual-write
+
+**5B.2: Refactor EmitCreated (6 usages)**
+- Changed signature: `EmitCreated(id, tick, config)` takes params instead of reading e.sim
+- Added helper `emitCreatedFromSim` in tests
+
+**5B.3: Refactor EmitLoadedState (15 usages)**
+- Changed signature: `EmitLoadedState(sim model.Simulation)` takes sim as param
+- Fixed double-call bug in TUI (RegisterSimulation already calls it)
+
+**5B.4: Update constructors**
+- Changed `NewEngine(sim)` to `NewEngine(seed int64)`
+- Changed `NewEngineWithStore(sim, store)` to `NewEngineWithStore(seed, store)`
+- Updated all callers in TUI, API, and tests
+
+**5B.5: Remove e.sim field**
+- Removed `sim *model.Simulation` from Engine struct
+- Updated struct comment
+
+### Files Modified
+
+| File | Changes |
+|------|---------|
+| `internal/engine/engine.go` | Removed field, refactored all methods |
+| `internal/engine/event_sourcing_test.go` | Updated test helpers and callers |
+| `internal/engine/engine_integration_test.go` | Updated callers |
+| `internal/engine/benchmark_test.go` | Updated callers |
+| `internal/tui/app.go` | Updated callers, fixed runSprintWithAutoAssign |
+| `internal/api/registry.go` | Updated callers |
+| `internal/api/handlers.go` | Updated callers, fixed autoAssignForComparison |
+
+### Verification
+
+- `grep -n "e\.sim" internal/engine/engine.go` → 0 matches ✓
+- All tests pass ✓
+- Coverage: engine 86.8% (up from 79.1%) ✓
+- Benchmarks pass, performance comparable ✓
+
+### Post-Review Improvements
+
+**Fixed inconsistent state re-read pattern:**
+- Changed `for _, dev := range state.Developers` to `for i := 0; i < len(state.Developers); i++`
+- Index-based iteration ensures `state = eng.Sim()` re-reads affect subsequent iterations
+- Applied to: `runSprintWithAutoAssign` (tui/app.go), `autoAssignForComparison` (api/handlers.go)
+
+### Step 4 Checklist
+- [x] 4a: Results presented to user
+- [x] 4b: Approval received
+
+## Approval
+✅ APPROVED BY USER - 2026-01-20
+Phase 5B complete: `e.sim` field removed, projection is sole source of truth.
+
+---
+
+## Log: 2026-01-20 - Phase 5B: Remove e.sim Field
+
+**What was done:**
+Removed `sim *model.Simulation` field from Engine struct, making projection the sole source of truth per CQRS/Event Sourcing guide. Eliminated dual-write anti-pattern where code wrote to both e.sim AND emitted events.
+
+**Key files changed:**
+- `internal/engine/engine.go`: Removed field, refactored constructors to take `seed int64` instead of `*model.Simulation`
+- `internal/engine/*_test.go`: Updated all test callers
+- `internal/tui/app.go`: Fixed `runSprintWithAutoAssign` to use engine state
+- `internal/api/handlers.go`: Fixed `autoAssignForComparison` to use engine state
+- `internal/api/registry.go`: Updated constructor calls
+
+**Why it matters:**
+Completes event sourcing migration. Engine now has single source of truth (projection), eliminating state synchronization bugs and enabling proper event replay.

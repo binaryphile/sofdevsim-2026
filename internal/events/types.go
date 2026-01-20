@@ -71,11 +71,14 @@ func NextTraceID() string {
 // Event represents a domain event that occurred in a simulation.
 // All events are immutable value types.
 //
-// Per Etzion & Niblett "Event Processing in Action":
-// - EventID: unique identifier for tracing
-// - OccurrenceTime: when the event actually happened (simulation tick)
-// - DetectionTime: when the system detected it (wall clock)
-// - CausedBy: relationship to parent event (causation chain)
+// Per CQRS/Event Sourcing patterns (see cqrs-event-sourcing-guide.md):
+// - EventID: unique identifier (ES guide §11: part of StoredEvent)
+// - OccurrenceTime: simulation tick when event occurred (domain time)
+// - DetectionTime: wall clock when recorded (audit trail)
+// - CausedBy: causation ID linking to parent event (ES guide §11: Metadata)
+//
+// We keep both OccurrenceTime and DetectionTime because simulations have
+// two time dimensions: simulation ticks (domain) and wall clock (audit).
 //
 // Tracing fields (OpenTelemetry-style):
 // - TraceID: correlates all events from a single request
@@ -300,10 +303,12 @@ type TicketAssigned struct {
 	Header
 	TicketID    string
 	DeveloperID string
+	StartedAt   time.Time // Wall-clock time when ticket was started
 }
 
 // NewTicketAssigned creates a TicketAssigned event with proper header.
-func NewTicketAssigned(simID string, tick int, ticketID, developerID string) TicketAssigned {
+// The tick parameter is used as StartedTick (available via OccurrenceTime()).
+func NewTicketAssigned(simID string, tick int, ticketID, developerID string, startedAt time.Time) TicketAssigned {
 	return TicketAssigned{
 		Header: Header{
 			ID:         nextEventID("TicketAssigned"),
@@ -314,6 +319,7 @@ func NewTicketAssigned(simID string, tick int, ticketID, developerID string) Tic
 		},
 		TicketID:    ticketID,
 		DeveloperID: developerID,
+		StartedAt:   startedAt,
 	}
 }
 
@@ -336,15 +342,67 @@ func (e TicketAssigned) WithCausedBy(eventID string) TicketAssigned {
 	return e
 }
 
+// TicketStateRestored is emitted during EmitLoadedState to restore full ticket state.
+// Unlike TicketAssigned (which always starts at PhaseResearch), this preserves the
+// actual Phase and RemainingEffort from persistence.
+type TicketStateRestored struct {
+	Header
+	TicketID        string
+	DeveloperID     string
+	Phase           model.WorkflowPhase
+	RemainingEffort float64
+	ActualDays      float64
+	StartedAt       time.Time
+}
+
+// NewTicketStateRestored creates a TicketStateRestored event for persistence loading.
+func NewTicketStateRestored(simID string, tick int, ticketID, developerID string, phase model.WorkflowPhase, remainingEffort, actualDays float64, startedAt time.Time) TicketStateRestored {
+	return TicketStateRestored{
+		Header: Header{
+			ID:         nextEventID("TicketStateRestored"),
+			SimID:      simID,
+			Type:       "TicketStateRestored",
+			OccurredAt: tick,
+			DetectedAt: time.Now(),
+		},
+		TicketID:        ticketID,
+		DeveloperID:     developerID,
+		Phase:           phase,
+		RemainingEffort: remainingEffort,
+		ActualDays:      actualDays,
+		StartedAt:       startedAt,
+	}
+}
+
+// WithTrace returns a copy with tracing fields set for fluent chaining.
+func (e TicketStateRestored) WithTrace(traceID, spanID, parentSpanID string) TicketStateRestored {
+	e.Header.Trace = traceID
+	e.Header.Span = spanID
+	e.Header.ParentSpan = parentSpanID
+	return e
+}
+
+// withTrace implements Event interface for polymorphic tracing.
+func (e TicketStateRestored) withTrace(traceID, spanID, parentSpanID string) Event {
+	return e.WithTrace(traceID, spanID, parentSpanID)
+}
+
+// WithCausedBy returns a copy with causation link to parent event.
+func (e TicketStateRestored) WithCausedBy(eventID string) TicketStateRestored {
+	e.Header.CausedByID = eventID
+	return e
+}
+
 // TicketCompleted is emitted when a developer completes a ticket.
 type TicketCompleted struct {
 	Header
 	TicketID    string
 	DeveloperID string
+	ActualDays  float64 // Actual effort spent on ticket (for developer stats)
 }
 
 // NewTicketCompleted creates a TicketCompleted event with proper header.
-func NewTicketCompleted(simID string, tick int, ticketID, developerID string) TicketCompleted {
+func NewTicketCompleted(simID string, tick int, ticketID, developerID string, actualDays float64) TicketCompleted {
 	return TicketCompleted{
 		Header: Header{
 			ID:         nextEventID("TicketCompleted"),
@@ -355,6 +413,7 @@ func NewTicketCompleted(simID string, tick int, ticketID, developerID string) Ti
 		},
 		TicketID:    ticketID,
 		DeveloperID: developerID,
+		ActualDays:  actualDays,
 	}
 }
 
@@ -378,14 +437,17 @@ func (e TicketCompleted) WithCausedBy(eventID string) TicketCompleted {
 }
 
 // IncidentStarted is emitted when an incident occurs.
+// Incidents are caused by completed tickets that introduce production issues.
 type IncidentStarted struct {
 	Header
 	IncidentID  string
-	DeveloperID string
+	DeveloperID string         // Developer who completed the causing ticket
+	TicketID    string         // Ticket that caused the incident
+	Severity    model.Severity // Severity of the incident
 }
 
 // NewIncidentStarted creates an IncidentStarted event with proper header.
-func NewIncidentStarted(simID string, tick int, incidentID, developerID string) IncidentStarted {
+func NewIncidentStarted(simID string, tick int, incidentID, developerID, ticketID string, severity model.Severity) IncidentStarted {
 	return IncidentStarted{
 		Header: Header{
 			ID:         nextEventID("IncidentStarted"),
@@ -396,6 +458,8 @@ func NewIncidentStarted(simID string, tick int, incidentID, developerID string) 
 		},
 		IncidentID:  incidentID,
 		DeveloperID: developerID,
+		TicketID:    ticketID,
+		Severity:    severity,
 	}
 }
 
@@ -709,6 +773,180 @@ func (e PolicyChanged) withTrace(traceID, spanID, parentSpanID string) Event {
 
 // WithCausedBy returns a copy with causation link to parent event.
 func (e PolicyChanged) WithCausedBy(eventID string) PolicyChanged {
+	e.Header.CausedByID = eventID
+	return e
+}
+
+// ChildTicket contains essential fields for a decomposed child ticket.
+type ChildTicket struct {
+	ID            string
+	Title         string
+	EstimatedDays float64
+	Understanding model.UnderstandingLevel
+}
+
+// TicketDecomposed is emitted when a parent ticket is decomposed into children.
+type TicketDecomposed struct {
+	Header
+	ParentTicketID string
+	Children       []ChildTicket
+}
+
+// NewTicketDecomposed creates a TicketDecomposed event with proper header.
+func NewTicketDecomposed(simID string, tick int, parentID string, children []ChildTicket) TicketDecomposed {
+	return TicketDecomposed{
+		Header: Header{
+			ID:         nextEventID("TicketDecomposed"),
+			SimID:      simID,
+			Type:       "TicketDecomposed",
+			OccurredAt: tick,
+			DetectedAt: time.Now(),
+		},
+		ParentTicketID: parentID,
+		Children:       children,
+	}
+}
+
+// WithTrace returns a copy with tracing fields set for fluent chaining.
+func (e TicketDecomposed) WithTrace(traceID, spanID, parentSpanID string) TicketDecomposed {
+	e.Header.Trace = traceID
+	e.Header.Span = spanID
+	e.Header.ParentSpan = parentSpanID
+	return e
+}
+
+// withTrace implements Event interface for polymorphic tracing.
+func (e TicketDecomposed) withTrace(traceID, spanID, parentSpanID string) Event {
+	return e.WithTrace(traceID, spanID, parentSpanID)
+}
+
+// WithCausedBy returns a copy with causation link to parent event.
+func (e TicketDecomposed) WithCausedBy(eventID string) TicketDecomposed {
+	e.Header.CausedByID = eventID
+	return e
+}
+
+// SprintWIPUpdated is emitted to track WIP metrics during a sprint.
+type SprintWIPUpdated struct {
+	Header
+	CurrentWIP int // Number of active tickets at this moment
+}
+
+// NewSprintWIPUpdated creates a SprintWIPUpdated event with proper header.
+func NewSprintWIPUpdated(simID string, tick int, currentWIP int) SprintWIPUpdated {
+	return SprintWIPUpdated{
+		Header: Header{
+			ID:         nextEventID("SprintWIPUpdated"),
+			SimID:      simID,
+			Type:       "SprintWIPUpdated",
+			OccurredAt: tick,
+			DetectedAt: time.Now(),
+		},
+		CurrentWIP: currentWIP,
+	}
+}
+
+// WithTrace returns a copy with tracing fields set for fluent chaining.
+func (e SprintWIPUpdated) WithTrace(traceID, spanID, parentSpanID string) SprintWIPUpdated {
+	e.Header.Trace = traceID
+	e.Header.Span = spanID
+	e.Header.ParentSpan = parentSpanID
+	return e
+}
+
+// withTrace implements Event interface for polymorphic tracing.
+func (e SprintWIPUpdated) withTrace(traceID, spanID, parentSpanID string) Event {
+	return e.WithTrace(traceID, spanID, parentSpanID)
+}
+
+// WithCausedBy returns a copy with causation link to parent event.
+func (e SprintWIPUpdated) WithCausedBy(eventID string) SprintWIPUpdated {
+	e.Header.CausedByID = eventID
+	return e
+}
+
+// BugDiscovered is emitted when a bug is discovered in an active ticket.
+// This adds rework effort to the ticket's remaining work.
+type BugDiscovered struct {
+	Header
+	TicketID     string
+	ReworkEffort float64 // Additional effort needed (typically 0.5 days)
+}
+
+// NewBugDiscovered creates a BugDiscovered event with proper header.
+func NewBugDiscovered(simID string, tick int, ticketID string, reworkEffort float64) BugDiscovered {
+	return BugDiscovered{
+		Header: Header{
+			ID:         nextEventID("BugDiscovered"),
+			SimID:      simID,
+			Type:       "BugDiscovered",
+			OccurredAt: tick,
+			DetectedAt: time.Now(),
+		},
+		TicketID:     ticketID,
+		ReworkEffort: reworkEffort,
+	}
+}
+
+// WithTrace returns a copy with tracing fields set for fluent chaining.
+func (e BugDiscovered) WithTrace(traceID, spanID, parentSpanID string) BugDiscovered {
+	e.Header.Trace = traceID
+	e.Header.Span = spanID
+	e.Header.ParentSpan = parentSpanID
+	return e
+}
+
+// withTrace implements Event interface for polymorphic tracing.
+func (e BugDiscovered) withTrace(traceID, spanID, parentSpanID string) Event {
+	return e.WithTrace(traceID, spanID, parentSpanID)
+}
+
+// WithCausedBy returns a copy with causation link to parent event.
+func (e BugDiscovered) WithCausedBy(eventID string) BugDiscovered {
+	e.Header.CausedByID = eventID
+	return e
+}
+
+// ScopeCreepOccurred is emitted when scope creep increases a ticket's work.
+// This adds to both remaining effort and the original estimate.
+type ScopeCreepOccurred struct {
+	Header
+	TicketID      string
+	EffortAdded   float64 // Additional effort needed
+	EstimateAdded float64 // Additional estimate (may differ from effort)
+}
+
+// NewScopeCreepOccurred creates a ScopeCreepOccurred event with proper header.
+func NewScopeCreepOccurred(simID string, tick int, ticketID string, effortAdded, estimateAdded float64) ScopeCreepOccurred {
+	return ScopeCreepOccurred{
+		Header: Header{
+			ID:         nextEventID("ScopeCreepOccurred"),
+			SimID:      simID,
+			Type:       "ScopeCreepOccurred",
+			OccurredAt: tick,
+			DetectedAt: time.Now(),
+		},
+		TicketID:      ticketID,
+		EffortAdded:   effortAdded,
+		EstimateAdded: estimateAdded,
+	}
+}
+
+// WithTrace returns a copy with tracing fields set for fluent chaining.
+func (e ScopeCreepOccurred) WithTrace(traceID, spanID, parentSpanID string) ScopeCreepOccurred {
+	e.Header.Trace = traceID
+	e.Header.Span = spanID
+	e.Header.ParentSpan = parentSpanID
+	return e
+}
+
+// withTrace implements Event interface for polymorphic tracing.
+func (e ScopeCreepOccurred) withTrace(traceID, spanID, parentSpanID string) Event {
+	return e.WithTrace(traceID, spanID, parentSpanID)
+}
+
+// WithCausedBy returns a copy with causation link to parent event.
+func (e ScopeCreepOccurred) WithCausedBy(eventID string) ScopeCreepOccurred {
 	e.Header.CausedByID = eventID
 	return e
 }

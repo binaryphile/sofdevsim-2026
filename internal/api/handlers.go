@@ -307,27 +307,32 @@ func runComparison(policy model.SizingPolicy, seed int64, sprints int) metrics.S
 	sim.AddTicket(model.NewTicket("TKT-004", "Large unclear", 8, model.LowUnderstanding))
 	sim.AddTicket(model.NewTicket("TKT-005", "Medium mixed", 5, model.MediumUnderstanding))
 
-	eng := engine.NewEngine(sim)
+	eng := engine.NewEngine(sim.Seed)
+	eng.EmitLoadedState(*sim)
 	tracker := metrics.NewTracker()
 
 	for i := 0; i < sprints; i++ {
-		sim.StartSprint()
+		eng.StartSprint()
 		// Auto-assign idle developers to backlog tickets
-		autoAssignForComparison(eng, sim)
+		autoAssignForComparison(eng)
 		eng.RunSprint()
-		tracker = tracker.Updated(sim)
+		state := eng.Sim()
+		tracker = tracker.Updated(&state)
 	}
 
-	return tracker.GetResult(policy, sim)
+	state := eng.Sim()
+	return tracker.GetResult(policy, &state)
 }
 
 // autoAssignForComparison assigns backlog tickets to idle developers.
-func autoAssignForComparison(eng *engine.Engine, sim *model.Simulation) {
-	for _, dev := range sim.IdleDevelopers() {
-		if len(sim.Backlog) == 0 {
-			break
-		}
-		eng.AssignTicket(sim.Backlog[0].ID, dev.ID)
+func autoAssignForComparison(eng *engine.Engine) {
+	// Use index-based iteration so re-reads affect subsequent checks
+	state := eng.Sim()
+	idleDevs := state.IdleDevelopers()
+	for i := 0; i < len(idleDevs) && len(state.Backlog) > 0; i++ {
+		dev := idleDevs[i]
+		eng.AssignTicket(state.Backlog[0].ID, dev.ID)
+		state = eng.Sim() // Re-read after assignment - updates Backlog for next iteration
 	}
 }
 

@@ -71,15 +71,18 @@ func nameFor(n int) string {
 // This is the primary hot path - called once per simulated day.
 func BenchmarkTick(b *testing.B) {
 	sim := setupBenchmarkSimulation(10, 50)
-	eng := engine.NewEngine(sim)
+	eng := engine.NewEngine(sim.Seed)
+	eng.EmitLoadedState(*sim)
 
 	// Assign some tickets to make tick do real work
-	for i := 0; i < 10 && i < len(sim.Backlog); i++ {
-		eng.AssignTicket(sim.Backlog[0].ID, sim.Developers[i%len(sim.Developers)].ID)
+	state := eng.Sim()
+	for i := 0; i < 10 && i < len(state.Backlog); i++ {
+		eng.AssignTicket(state.Backlog[0].ID, state.Developers[i%len(state.Developers)].ID)
+		state = eng.Sim()
 	}
 
 	// Start a sprint
-	sim.StartSprint()
+	eng.StartSprint()
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -90,14 +93,17 @@ func BenchmarkTick(b *testing.B) {
 // BenchmarkTick_LargeSimulation measures tick with more developers and tickets.
 func BenchmarkTick_LargeSimulation(b *testing.B) {
 	sim := setupBenchmarkSimulation(30, 200)
-	eng := engine.NewEngine(sim)
+	eng := engine.NewEngine(sim.Seed)
+	eng.EmitLoadedState(*sim)
 
 	// Assign tickets
-	for i := 0; i < 30 && i < len(sim.Backlog); i++ {
-		eng.AssignTicket(sim.Backlog[0].ID, sim.Developers[i%len(sim.Developers)].ID)
+	state := eng.Sim()
+	for i := 0; i < 30 && i < len(state.Backlog); i++ {
+		eng.AssignTicket(state.Backlog[0].ID, state.Developers[i%len(state.Developers)].ID)
+		state = eng.Sim()
 	}
 
-	sim.StartSprint()
+	eng.StartSprint()
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -166,11 +172,14 @@ func BenchmarkRunSprint(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		b.StopTimer()
 		sim := setupBenchmarkSimulation(5, 20)
-		eng := engine.NewEngine(sim)
+		eng := engine.NewEngine(sim.Seed)
+		eng.EmitLoadedState(*sim)
 
 		// Assign tickets
-		for j := 0; j < 5 && j < len(sim.Backlog); j++ {
-			eng.AssignTicket(sim.Backlog[0].ID, sim.Developers[j].ID)
+		state := eng.Sim()
+		for j := 0; j < 5 && j < len(state.Backlog); j++ {
+			eng.AssignTicket(state.Backlog[0].ID, state.Developers[j].ID)
+			state = eng.Sim()
 		}
 
 		b.StartTimer()

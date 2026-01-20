@@ -52,8 +52,12 @@ func (r SimRegistry) CreateSimulation(seed int64, policy model.SizingPolicy) str
 	sim := model.NewSimulation(policy, seed)
 	sim.ID = id // Set ID for event sourcing
 
-	eng := engine.NewEngineWithStore(sim, r.store)
-	eng.EmitCreated() // Emit SimulationCreated first
+	eng := engine.NewEngineWithStore(sim.Seed, r.store)
+	eng.EmitCreated(sim.ID, sim.CurrentTick, events.SimConfig{
+		TeamSize:     len(sim.Developers),
+		SprintLength: sim.SprintLength,
+		Seed:         sim.Seed,
+	}) // Emit SimulationCreated first
 
 	// Add default team via engine (emits DeveloperAdded events)
 	eng.AddDeveloper("dev-1", "Alice", 1.0)
@@ -81,8 +85,8 @@ func (r SimRegistry) CreateSimulation(seed int64, policy model.SizingPolicy) str
 // Returns the engine configured to emit to the shared store.
 // Use this to share simulations between TUI and API.
 func (r SimRegistry) RegisterSimulation(sim *model.Simulation, tracker metrics.Tracker) *engine.Engine {
-	eng := engine.NewEngineWithStore(sim, r.store)
-	eng.EmitCreated()
+	eng := engine.NewEngineWithStore(sim.Seed, r.store)
+	eng.EmitLoadedState(*sim) // Syncs all sim state (developers, tickets) to projection
 
 	r.instances[sim.ID] = SimInstance{
 		sim:     sim,
