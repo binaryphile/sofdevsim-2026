@@ -399,5 +399,92 @@ func generateTestEvents(n int) []events.Event {
 	return result
 }
 
+func TestProjection_Apply_IncidentStarted(t *testing.T) {
+	proj := events.NewProjection()
+	proj = proj.Apply(events.NewSimulationCreated("sim-1", 0, events.SimConfig{Seed: 42}))
+
+	evt := events.NewIncidentStarted("sim-1", 10, "INC-001", "DEV-001")
+	got := proj.Apply(evt)
+
+	state := got.State()
+	if len(state.OpenIncidents) != 1 {
+		t.Fatalf("len(OpenIncidents) = %d, want 1", len(state.OpenIncidents))
+	}
+	if state.OpenIncidents[0].ID != "INC-001" {
+		t.Errorf("Incident.ID = %q, want %q", state.OpenIncidents[0].ID, "INC-001")
+	}
+}
+
+func TestProjection_Apply_IncidentResolved(t *testing.T) {
+	proj := events.NewProjection()
+	proj = proj.Apply(events.NewSimulationCreated("sim-1", 0, events.SimConfig{Seed: 42}))
+	proj = proj.Apply(events.NewIncidentStarted("sim-1", 10, "INC-001", "DEV-001"))
+
+	evt := events.NewIncidentResolved("sim-1", 15, "INC-001", "DEV-001")
+	got := proj.Apply(evt)
+
+	state := got.State()
+	if len(state.OpenIncidents) != 0 {
+		t.Errorf("len(OpenIncidents) = %d, want 0", len(state.OpenIncidents))
+	}
+	if len(state.ResolvedIncidents) != 1 {
+		t.Fatalf("len(ResolvedIncidents) = %d, want 1", len(state.ResolvedIncidents))
+	}
+	if state.ResolvedIncidents[0].ResolvedAt == nil {
+		t.Error("ResolvedAt should not be nil")
+	}
+}
+
+func TestProjection_Apply_IncidentResolved_MultipleIncidents(t *testing.T) {
+	// Verify resolving one incident doesn't affect others
+	proj := events.NewProjection()
+	proj = proj.Apply(events.NewSimulationCreated("sim-1", 0, events.SimConfig{Seed: 42}))
+	proj = proj.Apply(events.NewIncidentStarted("sim-1", 10, "INC-001", "DEV-001"))
+	proj = proj.Apply(events.NewIncidentStarted("sim-1", 12, "INC-002", "DEV-002"))
+
+	// Resolve first incident
+	got := proj.Apply(events.NewIncidentResolved("sim-1", 15, "INC-001", "DEV-001"))
+
+	state := got.State()
+	// Second incident should still be open
+	if len(state.OpenIncidents) != 1 {
+		t.Fatalf("len(OpenIncidents) = %d, want 1", len(state.OpenIncidents))
+	}
+	if state.OpenIncidents[0].ID != "INC-002" {
+		t.Errorf("OpenIncidents[0].ID = %q, want %q", state.OpenIncidents[0].ID, "INC-002")
+	}
+	// First incident should be resolved
+	if len(state.ResolvedIncidents) != 1 {
+		t.Fatalf("len(ResolvedIncidents) = %d, want 1", len(state.ResolvedIncidents))
+	}
+	if state.ResolvedIncidents[0].ID != "INC-001" {
+		t.Errorf("ResolvedIncidents[0].ID = %q, want %q", state.ResolvedIncidents[0].ID, "INC-001")
+	}
+}
+
+func TestProjection_Apply_IncidentResolved_NonExistent(t *testing.T) {
+	// Verify resolving non-existent incident is a no-op (event sourcing idempotency)
+	proj := events.NewProjection()
+	proj = proj.Apply(events.NewSimulationCreated("sim-1", 0, events.SimConfig{Seed: 42}))
+	proj = proj.Apply(events.NewIncidentStarted("sim-1", 10, "INC-001", "DEV-001"))
+
+	// Try to resolve incident that doesn't exist
+	got := proj.Apply(events.NewIncidentResolved("sim-1", 15, "INC-999", "DEV-001"))
+
+	state := got.State()
+	// Original incident should still be open
+	if len(state.OpenIncidents) != 1 {
+		t.Errorf("len(OpenIncidents) = %d, want 1", len(state.OpenIncidents))
+	}
+	// Nothing should be resolved
+	if len(state.ResolvedIncidents) != 0 {
+		t.Errorf("len(ResolvedIncidents) = %d, want 0", len(state.ResolvedIncidents))
+	}
+	// Version should still increment (event was processed)
+	if got.Version() != 3 {
+		t.Errorf("Version() = %d, want 3", got.Version())
+	}
+}
+
 // cmp is used for complex struct comparisons
 var _ = cmp.Diff

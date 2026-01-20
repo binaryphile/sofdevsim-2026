@@ -16275,3 +16275,193 @@ Completed full event sourcing implementation. The projection now tracks all TUI-
 
 **Why it matters:**
 TUI now derives all displayed state from events via projection. Fever chart and progress bars work correctly. This completes the event sourcing architecture where events are the source of truth.
+
+---
+
+## Approved Plan: 2026-01-19 - Phase 3
+
+# Plan: Phase 3 - Fix Incident Projection Handlers
+
+## Phased Improvement Roadmap
+
+| Phase | Scope | Status |
+|-------|-------|--------|
+| **3** | Fix incident projection handlers | **THIS PHASE** |
+| 4 | Documentation (docs/design.md) | Pending |
+| 5 | Remove `*sim` field | Pending |
+
+## Phase 3 Objective
+
+Fix the NOOP incident handlers in `projection.go` (lines 148-153).
+
+## Implementation
+
+| File | Change |
+|------|--------|
+| `internal/events/projection.go` | Implement IncidentStarted/Resolved handlers |
+| `internal/events/projection_test.go` | Add tests for incident tracking |
+
+## Success Criteria
+
+- [ ] IncidentStarted adds incident to `OpenIncidents` with correct ID
+- [ ] IncidentResolved moves incident to `ResolvedIncidents` with `ResolvedAt` set
+- [ ] Tests pass for both handlers
+- [ ] All 198+ tests still pass
+
+---
+
+## Approved Contract: 2026-01-19 - Phase 3
+
+# Phase 3 Contract
+
+**Created:** 2026-01-19
+
+## Objective
+Fix the NOOP incident handlers in `projection.go` (lines 148-153) so that IncidentStarted and IncidentResolved events properly update simulation state.
+
+## Success Criteria
+- [ ] IncidentStarted adds incident to `OpenIncidents` with correct ID
+- [ ] IncidentResolved moves incident from `OpenIncidents` to `ResolvedIncidents` with `ResolvedAt` set
+- [ ] Tests pass for both handlers
+- [ ] All 198+ existing tests still pass
+
+## Design Decisions
+| Field | Decision | Rationale |
+|-------|----------|-----------|
+| `TicketID` | Empty string | Not in event data |
+| `CreatedAt` | `time.Time{}` | Projection must be deterministic |
+| `ResolvedAt` | `&time.Time{}` | Same - zero time for purity |
+| `Severity` | Zero value | Not in event data |
+
+---
+
+## Archived: 2026-01-19 - Phase 3 Complete
+
+# Phase 3 Contract
+
+**Created:** 2026-01-19
+
+## Step 1 Checklist
+- [x] 1a: Presented understanding
+- [x] 1b: Asked clarifying questions
+- [x] 1b-answer: Received answers
+- [x] 1c: Contract created (this file)
+- [x] 1d: Approval received
+- [x] 1e: Plan + contract archived
+
+## Objective
+Fix the NOOP incident handlers in `projection.go` (lines 148-153) so that IncidentStarted and IncidentResolved events properly update simulation state.
+
+## Success Criteria
+- [x] IncidentStarted adds incident to `OpenIncidents` with correct ID
+- [x] IncidentResolved moves incident from `OpenIncidents` to `ResolvedIncidents` with `ResolvedAt` set
+- [x] Tests pass for both handlers
+- [x] All 198+ existing tests still pass (now 202 total)
+
+## Approach
+TDD cycle:
+1. Write failing test for IncidentStarted
+2. Implement handler to pass test
+3. Write failing test for IncidentResolved
+4. Implement handler to pass test
+5. Verify all tests pass
+
+## Design Decisions
+| Field | Decision | Rationale |
+|-------|----------|-----------|
+| `TicketID` | Empty string | Not in event data |
+| `CreatedAt` | `time.Time{}` | Projection must be deterministic |
+| `ResolvedAt` | `&time.Time{}` | Same - zero time for purity |
+| `Severity` | Zero value | Not in event data |
+
+## Token Budget
+Estimated: 15-20K tokens
+
+---
+
+## Actual Results
+
+**Completed:** 2026-01-19
+
+### Files Modified
+| File | Change |
+|------|--------|
+| `internal/events/projection.go:44-45` | Added `OpenIncidents` and `ResolvedIncidents` initialization in SimulationCreated |
+| `internal/events/projection.go:151-155` | Implemented IncidentStarted handler |
+| `internal/events/projection.go:157-166` | Implemented IncidentResolved handler, added time import |
+| `internal/events/projection_test.go:402-416` | Added TestProjection_Apply_IncidentStarted |
+| `internal/events/projection_test.go:418-436` | Added TestProjection_Apply_IncidentResolved |
+| `internal/events/projection_test.go:438-463` | Added TestProjection_Apply_IncidentResolved_MultipleIncidents |
+| `internal/events/projection_test.go:465-487` | Added TestProjection_Apply_IncidentResolved_NonExistent |
+
+### Verification
+- `go test ./...` - all 202 tests pass
+- Test count increased from 198 to 202 (4 new tests added)
+
+### Implementation Details
+
+**SimulationCreated initialization (added):**
+```go
+OpenIncidents:      make([]model.Incident, 0),
+ResolvedIncidents:  make([]model.Incident, 0),
+```
+
+**IncidentStarted handler:**
+```go
+case IncidentStarted:
+    next.sim.OpenIncidents = append(next.sim.OpenIncidents, model.Incident{
+        ID: e.IncidentID,
+    })
+```
+
+**IncidentResolved handler:**
+```go
+case IncidentResolved:
+    for i, inc := range next.sim.OpenIncidents {
+        if inc.ID == e.IncidentID {
+            resolved := time.Time{} // Use zero time for projection purity
+            inc.ResolvedAt = &resolved
+            next.sim.ResolvedIncidents = append(next.sim.ResolvedIncidents, inc)
+            next.sim.OpenIncidents = append(next.sim.OpenIncidents[:i], next.sim.OpenIncidents[i+1:]...)
+            break
+        }
+    }
+```
+
+### Improvements After Self-Grading
+1. Added missing slice initialization for `OpenIncidents`/`ResolvedIncidents` in `SimulationCreated` handler (consistency with other slices)
+2. Added edge case test `TestProjection_Apply_IncidentResolved_MultipleIncidents` to verify resolving one incident doesn't affect others
+3. Added edge case test `TestProjection_Apply_IncidentResolved_NonExistent` to document no-op behavior for non-existent incidents
+
+### Self-Assessment
+**Final Grade: A+ (100/100)**
+
+What went well:
+- Clean TDD cycle: RED -> GREEN for each handler
+- Projection purity maintained (deterministic with time.Time{})
+- Tests follow existing patterns exactly
+- Self-identified and fixed slice initialization gap
+- Complete edge case coverage (multiple incidents, non-existent incident)
+- Behavior fully documented through tests
+
+## Step 4 Checklist
+- [x] 4a: Results presented to user
+- [x] 4b: Approval received
+
+## Approval
+APPROVED BY USER - 2026-01-19
+Final results: 4 tests added, all 202 tests pass, incident projection handlers complete
+
+---
+
+## Log: 2026-01-19 - Phase 3: Fix Incident Projection Handlers
+
+**What was done:**
+Implemented IncidentStarted and IncidentResolved handlers in the event sourcing projection. Previously these were NOOP stubs. Now incidents are properly tracked in OpenIncidents and ResolvedIncidents slices.
+
+**Key files changed:**
+- `internal/events/projection.go`: Added handlers for IncidentStarted/IncidentResolved, added slice initialization in SimulationCreated
+- `internal/events/projection_test.go`: Added 4 tests covering basic handlers and edge cases
+
+**Why it matters:**
+Completes the event sourcing projection so all 15 event types are properly handled, enabling incident tracking in the simulation.

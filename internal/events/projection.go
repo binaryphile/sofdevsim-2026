@@ -1,6 +1,8 @@
 package events
 
 import (
+	"time"
+
 	"github.com/binaryphile/fluentfp/option"
 	"github.com/binaryphile/sofdevsim-2026/internal/model"
 )
@@ -39,6 +41,8 @@ func (p Projection) Apply(evt Event) Projection {
 			Backlog:            make([]model.Ticket, 0),
 			ActiveTickets:      make([]model.Ticket, 0),
 			CompletedTickets:   make([]model.Ticket, 0),
+			OpenIncidents:      make([]model.Incident, 0),
+			ResolvedIncidents:  make([]model.Incident, 0),
 			CurrentSprintOption: model.NoSprint,
 		}
 
@@ -146,11 +150,20 @@ func (p Projection) Apply(evt Event) Projection {
 		}
 
 	case IncidentStarted:
-		// Note: model.Incident may need to be defined or adjusted
-		// For now, skip incident handling until model is verified
+		next.sim.OpenIncidents = append(next.sim.OpenIncidents, model.Incident{
+			ID: e.IncidentID,
+		})
 
 	case IncidentResolved:
-		// Skip for now - verify model.Incident exists
+		for i, inc := range next.sim.OpenIncidents {
+			if inc.ID == e.IncidentID {
+				resolved := time.Time{} // Use zero time for projection purity
+				inc.ResolvedAt = &resolved
+				next.sim.ResolvedIncidents = append(next.sim.ResolvedIncidents, inc)
+				next.sim.OpenIncidents = append(next.sim.OpenIncidents[:i], next.sim.OpenIncidents[i+1:]...)
+				break
+			}
+		}
 
 	default:
 		// Unknown event type - silently ignore per event sourcing convention
