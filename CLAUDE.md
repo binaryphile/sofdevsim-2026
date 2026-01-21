@@ -458,8 +458,8 @@ See [fluentfp/slice/README.md](https://github.com/binaryphile/fluentfp/blob/deve
 - [x] Add `Fold`/`Reduce` for accumulating operations (v0.6.0)
 - [x] Add `Unzip2`/`Unzip3`/`Unzip4` for multi-field extraction (v0.6.0)
 - [x] Add `Zip`/`ZipWith` for parallel slice iteration (v0.6.0)
-- [x] Add `ToInt32`/`ToInt64` methods to slice package (v0.5.0)
-- [x] Add `either` package for sum types (v0.5.0)
+- [x] Add `ToInt32`/`ToInt64` methods to slice package (v0.8.0)
+- [x] Add `either` package for sum types (v0.8.0)
 
 ## Value Semantics
 
