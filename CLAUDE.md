@@ -279,13 +279,36 @@ leadTimes, deployFreqs, mttrs, cfrs := slice.Unzip4(history,
 )
 ```
 
-### Named vs Inline Functions
+### Named Functions in FluentFP Chains
 
-**Preference hierarchy:**
-1. **Method expressions** - `User.IsActive`, `Device.GetMAC` (cleanest, no function body)
-2. **Named functions** - `isActive := func(u User) bool {...}` (readable, documented)
+**This guidance applies to FluentFP chains only.** For simple if statements, inline conditions are clearer:
 
-Avoid inline anonymous functions in FluentFP chains. If the logic is simple enough to inline, it's simple enough to name and document.
+```go
+// Simple if: inline is fine
+if ticket.EstimatedDays > 5 {
+    failRate *= 1.5
+}
+
+// DON'T extract predicates for simple ifs - adds ceremony without benefit
+isLargeTicket := func(t Ticket) bool { return t.EstimatedDays > 5 }
+if isLargeTicket(ticket) { ... }  // Overkill
+```
+
+**For FluentFP chains**, prefer named functions over inline lambdas:
+
+```go
+// GOOD: Named predicate with godoc comment
+// completedAfterCutoff returns true if ticket was completed after the cutoff tick.
+completedAfterCutoff := func(t Ticket) bool { return t.CompletedTick >= cutoff }
+count := slice.From(tickets).KeepIf(completedAfterCutoff).Len()
+
+// BAD: Inline lambda in chain - harder to read
+count := slice.From(tickets).KeepIf(func(t Ticket) bool { return t.CompletedTick >= cutoff }).Len()
+```
+
+**Preference hierarchy for FluentFP:**
+1. **Method expressions** - `User.IsActive`, `Developer.IsIdle` (cleanest)
+2. **Named functions** - `completedAfterCutoff` (readable, documented)
 
 **All named functions get godoc-style comments:**
 

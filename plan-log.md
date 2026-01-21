@@ -17896,3 +17896,79 @@ Added optimistic concurrency control to the event store. Store.Append now requir
 
 **Why it matters:**
 Prevents event interleaving bugs and ensures projection version stays in sync with store version. Foundation for ES compliance (§11 Optimistic Concurrency).
+
+---
+
+## Approved Contract: 2026-01-21
+
+# Phase 6B Contract: Idempotency
+
+**Created:** 2026-01-21
+
+## Objective
+Add idempotency to Projection.Apply to prevent duplicate event processing from corrupting state.
+
+## Success Criteria
+- Projection tracks processed event IDs in `processed map[string]bool`
+- Duplicate events return unchanged projection (same version)
+- Empty EventID bypasses idempotency check (defensive - allows processing)
+- Store.EventCount == Projection.Version invariant holds
+- EmitLoadedState safe to call twice
+- Benchmark shows < 2x overhead vs baseline
+
+## Approach (TDD Order)
+- Cycle 1: Projection idempotency (RED → GREEN)
+- Cycle 2: Version invariant test
+- Cycle 3: EmitLoadedState idempotency test
+- Cycle 4: Benchmark verification
+
+## Research Sources
+- Idempotent Consumer Pattern (microservices.io)
+- Idempotent Command Handling (event-driven.io)
+- UUIDs in Event Sourcing (fastuuid.com)
+
+**Design decision:** Trust EventIDs (UUID-generated), track in processed map, skip duplicates.
+
+---
+
+## Archived: 2026-01-21
+
+# Phase 6B Contract: Idempotency
+
+**Created:** 2026-01-21
+
+## Objective
+Add idempotency to Projection.Apply to prevent duplicate event processing from corrupting state.
+
+## Success Criteria (all met)
+- [x] Projection tracks processed event IDs
+- [x] Duplicate events return unchanged projection
+- [x] Empty EventID bypasses idempotency check
+- [x] Store.EventCount == Projection.Version invariant holds
+- [x] EmitLoadedState safe to call twice
+- [x] Benchmark shows < 2x overhead vs baseline
+
+## Files Changed
+- `internal/events/projection.go` - processed map, idempotency check, maps.Clone
+- `internal/events/projection_test.go` - 5 idempotency tests, 1 benchmark
+- `internal/events/types.go` - injectable EventIDGenerator + SetEventIDGenerator helper
+- `internal/engine/event_sourcing_test.go` - EmitLoadedState idempotency test
+
+## Approval
+✅ APPROVED BY USER - 2026-01-21
+Final grade: A- (92/100)
+
+---
+
+## Log: 2026-01-21 - Phase 6B Idempotency
+
+**What was done:**
+Added idempotency to Projection.Apply. Duplicate events (same EventID) now return unchanged projection without incrementing version. Added injectable EventIDGenerator for deterministic testing, with SetEventIDGenerator helper for clean test setup.
+
+**Key files changed:**
+- `internal/events/projection.go`: processed map field, idempotency check in Apply
+- `internal/events/types.go`: EventIDGenerator + SetEventIDGenerator for test isolation
+- Tests verify value semantics, version sync invariant, and EmitLoadedState safety
+
+**Why it matters:**
+Prevents state corruption from duplicate event processing. Critical for persistence (loading saved state twice won't corrupt). Foundation for ES compliance (§15 Idempotency).

@@ -1,6 +1,7 @@
 package events
 
 import (
+	"maps"
 	"time"
 
 	"github.com/binaryphile/fluentfp/option"
@@ -11,23 +12,44 @@ import (
 // Value receiver: immutable, returns new Projection with updated state.
 // This is the core of event sourcing - state is derived, not stored.
 type Projection struct {
-	sim     model.Simulation // Value, not pointer - enables value semantics
-	version int              // Event count for optimistic concurrency
+	sim       model.Simulation   // Value, not pointer - enables value semantics
+	version   int                // Event count for optimistic concurrency
+	processed map[string]bool    // Track processed EventIDs for idempotency
 }
 
 // NewProjection creates an empty projection.
 func NewProjection() Projection {
-	return Projection{version: 0}
+	return Projection{
+		version:   0,
+		processed: make(map[string]bool),
+	}
 }
 
 // Apply processes a single event, returning new Projection.
 // Pure function: no side effects. Creates new Projection, doesn't mutate receiver.
+// Idempotent: duplicate events (same EventID) return unchanged projection.
 func (p Projection) Apply(evt Event) Projection {
-	// Create new projection with incremented version
+	// Idempotency check - skip if already processed (unless empty EventID)
+	eventID := evt.EventID()
+	if eventID != "" && p.processed[eventID] {
+		return p // Already processed, return unchanged (same version)
+	}
+
+	// Create new projection with incremented version and copied processed map
 	// Note: p.sim is a value, so this copies the Simulation
+	// maps.Clone creates shallow copy - safe for map[string]bool
 	next := Projection{
-		sim:     p.sim,
-		version: p.version + 1,
+		sim:       p.sim,
+		version:   p.version + 1,
+		processed: maps.Clone(p.processed),
+	}
+
+	// Track this event as processed (skip if empty EventID)
+	if eventID != "" {
+		if next.processed == nil {
+			next.processed = make(map[string]bool)
+		}
+		next.processed[eventID] = true
 	}
 
 	switch e := evt.(type) {

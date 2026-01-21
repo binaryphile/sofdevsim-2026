@@ -14,6 +14,29 @@ var eventCounter uint64
 // spanCounter provides unique sequential IDs for spans.
 var spanCounter uint64
 
+// EventIDGenerator is the function used to generate event IDs.
+// Override this in tests to use deterministic IDs.
+// Use SetEventIDGenerator for safe test setup with automatic cleanup.
+var EventIDGenerator = defaultEventIDGenerator
+
+// defaultEventIDGenerator generates unique sequential event IDs.
+func defaultEventIDGenerator(eventType string) string {
+	seq := atomic.AddUint64(&eventCounter, 1)
+	return fmt.Sprintf("%s-%d", eventType, seq)
+}
+
+// SetEventIDGenerator sets a custom generator and returns a restore function.
+// Use with t.Cleanup for safe test isolation:
+//
+//	t.Cleanup(events.SetEventIDGenerator(func(eventType string) string {
+//	    return "deterministic-" + eventType
+//	}))
+func SetEventIDGenerator(gen func(string) string) func() {
+	original := EventIDGenerator
+	EventIDGenerator = gen
+	return func() { EventIDGenerator = original }
+}
+
 // TraceContext holds tracing information for a request flowing through the system.
 // Use this to correlate events and measure spans.
 type TraceContext struct {
@@ -50,10 +73,9 @@ func ApplyTrace(evt Event, tc TraceContext) Event {
 	return evt.withTrace(tc.TraceID, tc.SpanID, tc.ParentSpanID)
 }
 
-// nextEventID generates a unique event ID.
+// nextEventID generates a unique event ID using the configured generator.
 func nextEventID(eventType string) string {
-	seq := atomic.AddUint64(&eventCounter, 1)
-	return fmt.Sprintf("%s-%d", eventType, seq)
+	return EventIDGenerator(eventType)
 }
 
 // NextSpanID generates a unique span ID for tracing.

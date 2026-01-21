@@ -718,3 +718,55 @@ func (s *storeWithConflict) Append(simID string, version int, evts ...events.Eve
 	}
 	return s.MemoryStore.Append(simID, version, evts...)
 }
+
+func TestEmitLoadedState_Idempotent(t *testing.T) {
+	// EmitLoadedState should be safe to call twice due to projection idempotency.
+	// This is critical for persistence - loading saved state shouldn't corrupt it.
+	//
+	// We use a deterministic EventIDGenerator so the same events get the same IDs
+	// when EmitLoadedState is called multiple times with the same data.
+	//
+	// NOTE: This test modifies package-level state (EventIDGenerator) and should
+	// NOT run in parallel with other tests that depend on event ID generation.
+
+	// Install deterministic ID generator (reset counter each time for same IDs)
+	var counter int
+	t.Cleanup(events.SetEventIDGenerator(func(eventType string) string {
+		counter++
+		return fmt.Sprintf("deterministic-%s-%d", eventType, counter)
+	}))
+
+	sim := model.NewSimulation(model.PolicyDORAStrict, 42)
+	sim.AddDeveloper(model.NewDeveloper("dev-1", "Alice", 1.0))
+	sim.AddDeveloper(model.NewDeveloper("dev-2", "Bob", 0.8))
+
+	eng := NewEngine(sim.Seed)
+
+	// First call
+	eng.EmitLoadedState(*sim)
+	version1 := eng.proj.Version()
+	devCount1 := len(eng.Sim().Developers)
+
+	// Reset counter so second call generates SAME IDs
+	counter = 0
+
+	// Second call with same sim - should be no-op due to idempotency
+	eng.EmitLoadedState(*sim)
+	version2 := eng.proj.Version()
+	devCount2 := len(eng.Sim().Developers)
+
+	// Version should NOT double
+	if version2 != version1 {
+		t.Errorf("EmitLoadedState not idempotent: version %d -> %d", version1, version2)
+	}
+
+	// Developer count should NOT double
+	if devCount2 != devCount1 {
+		t.Errorf("Developers doubled: %d -> %d", devCount1, devCount2)
+	}
+
+	// Verify we have expected count (2 developers)
+	if devCount1 != 2 {
+		t.Errorf("Expected 2 developers, got %d", devCount1)
+	}
+}
