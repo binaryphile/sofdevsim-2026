@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/binaryphile/sofdevsim-2026/internal/api"
+	"github.com/binaryphile/sofdevsim-2026/internal/registry"
 )
 
 // TestNewAppWithSeed_Reproducibility verifies same seed produces identical initial state.
@@ -73,8 +73,8 @@ func TestSprintEndsWhenDurationReached(t *testing.T) {
 
 // TestNewAppWithRegistry_SubscribesToEvents verifies TUI subscribes to event store.
 func TestNewAppWithRegistry_SubscribesToEvents(t *testing.T) {
-	registry := api.NewSimRegistry()
-	app := NewAppWithRegistry(42, registry)
+	reg := registry.NewSimRegistry()
+	app := NewAppWithRegistry(42, reg)
 
 	// TUI should have a subscription channel
 	if app.eventSub == nil {
@@ -84,7 +84,7 @@ func TestNewAppWithRegistry_SubscribesToEvents(t *testing.T) {
 	// TUI should be registered in the shared registry
 	// (accessible via API)
 	sim := app.engine.Sim()
-	evts := registry.Store().Replay(sim.ID)
+	evts := reg.Store().Replay(sim.ID)
 	if len(evts) == 0 {
 		t.Error("Expected SimulationCreated event in shared store")
 	}
@@ -113,8 +113,8 @@ func TestNewAppWithSeed_ProjectionHasInitialState(t *testing.T) {
 
 // TestTUI_ReceivesExternalEvents verifies TUI receives events from API actions.
 func TestTUI_ReceivesExternalEvents(t *testing.T) {
-	registry := api.NewSimRegistry()
-	app := NewAppWithRegistry(42, registry)
+	reg := registry.NewSimRegistry()
+	app := NewAppWithRegistry(42, reg)
 
 	// Simulate API starting a sprint (external to TUI)
 	// This goes through the same engine, which emits to shared store

@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/binaryphile/sofdevsim-2026/internal/api"
 	"github.com/binaryphile/sofdevsim-2026/internal/engine"
+	"github.com/binaryphile/sofdevsim-2026/internal/registry"
 	"github.com/binaryphile/sofdevsim-2026/internal/events"
 	"github.com/binaryphile/sofdevsim-2026/internal/export"
 	"github.com/binaryphile/sofdevsim-2026/internal/metrics"
@@ -32,8 +32,8 @@ type App struct {
 	// Simulation state - all access via engine.Sim() (projection)
 	engine   *engine.Engine
 	tracker  metrics.Tracker
-	store    events.Store       // event store for event sourcing
-	registry api.SimRegistry    // optional shared registry (zero value = no registry)
+	store    events.Store          // event store for event sourcing
+	registry registry.SimRegistry // optional shared registry (zero value = no registry)
 	eventSub <-chan events.Event // subscription channel for live updates
 
 	// UI state
@@ -73,13 +73,13 @@ type eventMsg events.Event
 // If seed is 0, uses current time for randomness.
 // Deprecated: Use NewAppWithRegistry for shared simulation access.
 func NewAppWithSeed(seed int64) *App {
-	return NewAppWithRegistry(seed, api.SimRegistry{}) // zero value = standalone mode
+	return NewAppWithRegistry(seed, registry.SimRegistry{}) // zero value = standalone mode
 }
 
 // NewAppWithRegistry creates a new App that shares simulations via the registry.
 // If registry is zero value, creates a standalone app with its own event store.
 // If seed is 0, uses current time for randomness.
-func NewAppWithRegistry(seed int64, registry api.SimRegistry) *App {
+func NewAppWithRegistry(seed int64, reg registry.SimRegistry) *App {
 	if seed == 0 {
 		seed = time.Now().UnixNano()
 	}
@@ -93,10 +93,10 @@ func NewAppWithRegistry(seed int64, registry api.SimRegistry) *App {
 	var store events.Store
 	var eng *engine.Engine
 
-	if !registry.IsZero() {
+	if !reg.IsZero() {
 		// Use shared registry - simulation accessible by both TUI and API
-		store = registry.Store()
-		eng = registry.RegisterSimulation(sim, tracker)
+		store = reg.Store()
+		eng = reg.RegisterSimulation(sim, tracker)
 	} else {
 		// Standalone mode - own event store
 		store = events.NewMemoryStore()
@@ -128,7 +128,7 @@ func NewAppWithRegistry(seed int64, registry api.SimRegistry) *App {
 		engine:       eng,
 		tracker:      tracker,
 		store:        store,
-		registry:     registry,
+		registry:     reg,
 		eventSub:     eventSub,
 		currentView:  ViewPlanning,
 		paused:       true,

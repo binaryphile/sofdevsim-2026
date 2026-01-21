@@ -13,7 +13,7 @@ import (
 
 func main() {
 	seed := flag.Int64("seed", 0, "Random seed for reproducibility (0 = use current time)")
-	apiPort := flag.Int("api-port", 8080, "HTTP API port")
+	port := flag.Int("port", 8080, "HTTP API port")
 	flag.Parse()
 
 	// Negative seeds treated as 0 (random)
@@ -27,7 +27,7 @@ func main() {
 	// Start HTTP API server in goroutine
 	router := api.NewRouter(registry)
 	go func() {
-		addr := fmt.Sprintf(":%d", *apiPort)
+		addr := fmt.Sprintf(":%d", *port)
 		if err := http.ListenAndServe(addr, router); err != nil {
 			fmt.Fprintf(os.Stderr, "API server error: %v\n", err)
 		}
@@ -35,7 +35,7 @@ func main() {
 
 	// Run TUI on main goroutine (Bubbletea requirement)
 	// Pass shared registry so TUI simulation is accessible via API
-	app := tui.NewAppWithRegistry(*seed, registry)
+	app := tui.NewAppWithRegistry(*seed, registry.SimRegistry)
 	p := tea.NewProgram(app, tea.WithAltScreen())
 
 	if _, err := p.Run(); err != nil {

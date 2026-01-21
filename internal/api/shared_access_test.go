@@ -20,13 +20,13 @@ func TestSharedAccess_TUISimulationAccessibleViaAPI(t *testing.T) {
 	eng := registry.RegisterSimulation(sim, tracker)
 
 	// Verify simulation is accessible via registry (API's access method)
-	inst, ok := registry.getInstance("sim-42")
+	inst, ok := registry.GetInstance("sim-42")
 	if !ok {
 		t.Fatal("Simulation not found in registry after TUI registration")
 	}
 
 	// Verify it's the same simulation
-	if inst.sim != sim {
+	if inst.Sim != sim {
 		t.Error("Registry returned different simulation instance")
 	}
 
@@ -44,7 +44,7 @@ func TestSharedAccess_TUISimulationAccessibleViaAPI(t *testing.T) {
 	eng.StartSprint()
 
 	// API should see the sprint started via engine projection (not sim directly)
-	if _, active := inst.engine.Sim().CurrentSprintOption.Get(); !active {
+	if _, active := inst.Engine.Sim().CurrentSprintOption.Get(); !active {
 		t.Error("API does not see sprint started by TUI")
 	}
 
@@ -75,12 +75,12 @@ func TestSharedAccess_APIChangesVisibleToTUI(t *testing.T) {
 	_ = registry.RegisterSimulation(sim, tracker)
 
 	// API gets the simulation instance and modifies it
-	inst, _ := registry.getInstance("sim-42")
-	inst.engine.StartSprint()
-	inst.engine.AssignTicket("TKT-001", "dev-1")
+	inst, _ := registry.GetInstance("sim-42")
+	inst.Engine.StartSprint()
+	inst.Engine.AssignTicket("TKT-001", "dev-1")
 
 	// TUI should see the changes via engine projection (not sim pointer)
-	state := inst.engine.Sim()
+	state := inst.Engine.Sim()
 	if len(state.ActiveTickets) != 1 {
 		t.Errorf("TUI doesn't see ticket assigned by API: active=%d", len(state.ActiveTickets))
 	}

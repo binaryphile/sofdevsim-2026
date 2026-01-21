@@ -11,6 +11,23 @@ import (
 	"github.com/binaryphile/sofdevsim-2026/internal/model"
 )
 
+// HealthResponse is returned by the /health endpoint for service identification.
+type HealthResponse struct {
+	Service string `json:"service"`
+	Version string `json:"version"`
+}
+
+// handleHealth returns service identification for discovery.
+// TUI uses this to verify it's connecting to a sofdevsim server.
+func handleHealth(w http.ResponseWriter, req *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(HealthResponse{
+		Service: "sofdevsim",
+		Version: "1.0",
+	})
+}
+
 // writeJSON writes a HAL+JSON response with proper content type and status.
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/hal+json")
@@ -110,8 +127,8 @@ func (r SimRegistry) HandleCreateSimulation(w http.ResponseWriter, req *http.Req
 
 	id := r.CreateSimulation(body.Seed, policy)
 
-	inst, _ := r.getInstance(id)
-	state := ToState(inst.engine.Sim())
+	inst, _ := r.GetInstance(id)
+	state := ToState(inst.Engine.Sim())
 	response := HALResponse{
 		State: state,
 		Links: LinksFor(state),
@@ -124,13 +141,13 @@ func (r SimRegistry) HandleCreateSimulation(w http.ResponseWriter, req *http.Req
 func (r SimRegistry) HandleGetSimulation(w http.ResponseWriter, req *http.Request) {
 	id := req.PathValue("id")
 
-	inst, ok := r.getInstance(id)
+	inst, ok := r.GetInstance(id)
 	if !ok {
 		writeError(w, http.StatusNotFound, "simulation not found")
 		return
 	}
 
-	state := ToState(inst.engine.Sim())
+	state := ToState(inst.Engine.Sim())
 	response := HALResponse{
 		State: state,
 		Links: LinksFor(state),
@@ -143,22 +160,22 @@ func (r SimRegistry) HandleGetSimulation(w http.ResponseWriter, req *http.Reques
 func (r SimRegistry) HandleStartSprint(w http.ResponseWriter, req *http.Request) {
 	id := req.PathValue("id")
 
-	inst, ok := r.getInstance(id)
+	inst, ok := r.GetInstance(id)
 	if !ok {
 		writeError(w, http.StatusNotFound, "simulation not found")
 		return
 	}
 
 	// Check if sprint already active
-	sim := inst.engine.Sim()
+	sim := inst.Engine.Sim()
 	if _, active := sim.CurrentSprintOption.Get(); active {
 		writeError(w, http.StatusConflict, "sprint already active")
 		return
 	}
 
-	inst.engine.StartSprint()
+	inst.Engine.StartSprint()
 
-	state := ToState(inst.engine.Sim())
+	state := ToState(inst.Engine.Sim())
 	response := HALResponse{
 		State: state,
 		Links: LinksFor(state),
@@ -171,25 +188,26 @@ func (r SimRegistry) HandleStartSprint(w http.ResponseWriter, req *http.Request)
 func (r SimRegistry) HandleTick(w http.ResponseWriter, req *http.Request) {
 	id := req.PathValue("id")
 
-	inst, ok := r.getInstance(id)
+	inst, ok := r.GetInstance(id)
 	if !ok {
 		writeError(w, http.StatusNotFound, "simulation not found")
 		return
 	}
 
 	// Check if sprint is active
-	sim := inst.engine.Sim()
+	sim := inst.Engine.Sim()
 	if _, active := sim.CurrentSprintOption.Get(); !active {
 		writeError(w, http.StatusConflict, "no active sprint")
 		return
 	}
 
 	// Engine emits events and updates projection
-	inst.engine.Tick()
+	inst.Engine.Tick()
 
 	// SprintEnded event clears sprint in projection automatically
-	sim = inst.engine.Sim()
-	inst.tracker = inst.tracker.Updated(&sim)
+	sim = inst.Engine.Sim()
+	inst.Tracker = inst.Tracker.Updated(&sim)
+	r.SetInstance(id, inst)
 
 	state := ToState(sim)
 	response := HALResponse{
@@ -211,7 +229,7 @@ type AssignTicketRequest struct {
 func (r SimRegistry) HandleAssignTicket(w http.ResponseWriter, req *http.Request) {
 	id := req.PathValue("id")
 
-	inst, ok := r.getInstance(id)
+	inst, ok := r.GetInstance(id)
 	if !ok {
 		writeError(w, http.StatusNotFound, "simulation not found")
 		return
@@ -226,7 +244,7 @@ func (r SimRegistry) HandleAssignTicket(w http.ResponseWriter, req *http.Request
 	// Auto-assign if no developer specified
 	devID := body.DeveloperID
 	if devID == "" {
-		sim := inst.engine.Sim()
+		sim := inst.Engine.Sim()
 		idle := sim.IdleDevelopers()
 		if len(idle) == 0 {
 			writeError(w, http.StatusBadRequest, "no idle developers")
@@ -235,12 +253,12 @@ func (r SimRegistry) HandleAssignTicket(w http.ResponseWriter, req *http.Request
 		devID = idle[0].ID
 	}
 
-	if err := inst.engine.AssignTicket(body.TicketID, devID); err != nil {
+	if err := inst.Engine.AssignTicket(body.TicketID, devID); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	state := ToState(inst.engine.Sim())
+	state := ToState(inst.Engine.Sim())
 	response := HALResponse{
 		State: state,
 		Links: LinksFor(state),
@@ -395,14 +413,14 @@ func buildWinners(c metrics.ComparisonResult) MetricWinners {
 // Reuses shared lesson selection logic - API is stateless so always starts fresh.
 func (r SimRegistry) HandleGetLessons(w http.ResponseWriter, req *http.Request) {
 	id := req.PathValue("id")
-	inst, ok := r.getInstance(id)
+	inst, ok := r.GetInstance(id)
 	if !ok {
 		writeError(w, http.StatusNotFound, "simulation not found")
 		return
 	}
 
 	// Determine view context from simulation state
-	sim := inst.engine.Sim()
+	sim := inst.Engine.Sim()
 	_, hasActiveSprint := sim.CurrentSprintOption.Get()
 	var view lessons.ViewContext
 	if hasActiveSprint {

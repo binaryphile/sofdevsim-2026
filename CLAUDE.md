@@ -825,6 +825,19 @@ BenchmarkLoop_SinglePass-8             1703955       700.2 ns/op   3584 B/op    
 
 **Future optimization candidate:** `FindActiveTicketIndex` is O(n) linear search. Consider hash map for large simulations.
 
+### HTTP Client Benchmarks (2026-01-21)
+
+```
+BenchmarkClient_CreateSimulation-8        9374    123921 ns/op    45733 B/op    339 allocs/op
+BenchmarkClient_Tick-8                    5919    402381 ns/op   550877 B/op    215 allocs/op
+BenchmarkClient_Assign-8                  7780    173472 ns/op    23359 B/op    183 allocs/op
+```
+
+Target: < 1ms for local operations. All benchmarks meet target:
+- CreateSimulation: ~124μs
+- Tick: ~402μs (includes sprint state changes)
+- Assign: ~173μs
+
 ## Persistence
 
 Save and load simulation state for long-running experiments.

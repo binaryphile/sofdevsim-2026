@@ -2,12 +2,17 @@ package api
 
 import (
 	"net/http"
+	"time"
 )
 
 // NewRouter creates HTTP router with all API endpoints.
 // Uses Go 1.22+ ServeMux with path parameters.
-func NewRouter(registry SimRegistry) *http.ServeMux {
+// Wraps mutating endpoints with deduplication middleware (5 min TTL).
+func NewRouter(registry SimRegistry) http.Handler {
 	mux := http.NewServeMux()
+
+	// Health check for service discovery
+	mux.HandleFunc("GET /health", handleHealth)
 
 	// HATEOAS entry point
 	mux.HandleFunc("GET /", registry.HandleEntryPoint)
@@ -24,5 +29,7 @@ func NewRouter(registry SimRegistry) *http.ServeMux {
 	// Comparison endpoint
 	mux.HandleFunc("POST /comparisons", registry.HandleCompare)
 
-	return mux
+	// Wrap with deduplication middleware (5 min TTL for request ID caching)
+	dedup := NewDedupMiddleware(5 * time.Minute)
+	return dedup.Wrap(mux)
 }
