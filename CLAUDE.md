@@ -297,7 +297,7 @@ if isLargeTicket(ticket) { ... }  // Overkill
 **For FluentFP chains**, prefer named functions over inline lambdas:
 
 ```go
-// GOOD: Named predicate with godoc comment
+// GOOD: Named predicate with leading comment
 // completedAfterCutoff returns true if ticket was completed after the cutoff tick.
 completedAfterCutoff := func(t Ticket) bool { return t.CompletedTick >= cutoff }
 count := slice.From(tickets).KeepIf(completedAfterCutoff).Len()
@@ -309,8 +309,19 @@ count := slice.From(tickets).KeepIf(func(t Ticket) bool { return t.CompletedTick
 **Preference hierarchy for FluentFP:**
 1. **Method expressions** - `User.IsActive`, `Developer.IsIdle` (cleanest)
 2. **Named functions** - `completedAfterCutoff` (readable, documented)
+3. **Inline lambdas** - fallback when trivial and one-time
 
-**All named functions get godoc-style comments:**
+**Decision flowchart:**
+```
+Method on type? → YES: Use method expression
+                → NO: Domain meaning? → YES: Named function with comment
+                                      → NO: Trivial? → YES: Inline ok
+                                                     → NO: Name it
+```
+
+See FP Guide Section 13 for point-free style, partial application, and pipeline formatting theory.
+
+**All named functions get leading comments:**
 
 ```go
 // completedAfterCutoff returns true if ticket was completed after the cutoff tick.
@@ -329,7 +340,7 @@ func (s FeverSnapshot) GetPercentUsed() float64 { return s.PercentUsed }
 
 **Why this matters:**
 
-Anonymous functions require parsing lambda syntax, predicate logic, and chain context simultaneously. Named functions with godoc comments let you read intent directly:
+Anonymous functions require parsing lambda syntax, predicate logic, and chain context simultaneously. Named functions with leading comments let you read intent directly:
 
 ```go
 // Inline: parse syntax, logic, and context together
@@ -447,7 +458,8 @@ See [fluentfp/slice/README.md](https://github.com/binaryphile/fluentfp/blob/deve
 - [x] Add `Fold`/`Reduce` for accumulating operations (v0.6.0)
 - [x] Add `Unzip2`/`Unzip3`/`Unzip4` for multi-field extraction (v0.6.0)
 - [x] Add `Zip`/`ZipWith` for parallel slice iteration (v0.6.0)
-- [ ] Add `ToInt32`/`ToInt64` methods to slice package (for Kubernetes-style APIs)
+- [x] Add `ToInt32`/`ToInt64` methods to slice package (v0.5.0)
+- [x] Add `either` package for sum types (v0.5.0)
 
 ## Value Semantics
 

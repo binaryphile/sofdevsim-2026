@@ -29,7 +29,13 @@ const (
 
 // App is the main bubbletea model
 type App struct {
-	// Simulation state - all access via engine.Sim() (projection)
+	// HTTP client mode (Phase 8C) - used when client != nil
+	client   *Client          // HTTP client for API calls
+	simID    string           // current simulation ID
+	state    SimulationState  // current state from HTTP responses
+	inFlight bool             // true while HTTP request in progress (Phase 8D)
+
+	// Legacy engine mode - used when engine != nil (comparison mode, standalone)
 	engine   *engine.Engine
 	tracker  metrics.Tracker
 	store    events.Store          // event store for event sourcing
@@ -63,11 +69,18 @@ type App struct {
 	statusExpiry  time.Time
 }
 
-// tickMsg is sent on each simulation tick
+// tickMsg is sent on each simulation tick (legacy engine mode)
 type tickMsg time.Time
 
 // eventMsg is sent when an event is received from the store subscription
 type eventMsg events.Event
+
+// httpResultMsg is returned by async HTTP operations (client mode)
+type httpResultMsg struct {
+	operation string          // "tick", "assign", "sprint", "policy", "decompose"
+	state     SimulationState // populated on success
+	err       error           // populated on failure
+}
 
 // NewAppWithSeed creates a new App with the specified random seed.
 // If seed is 0, uses current time for randomness.
@@ -138,6 +151,21 @@ func NewAppWithRegistry(seed int64, reg registry.SimRegistry) *App {
 	}
 }
 
+// NewAppWithClient creates a new App that uses HTTP client for all operations.
+// This is the Phase 8C constructor - TUI as pure HTTP client.
+func NewAppWithClient(client *Client, initialState SimulationState) *App {
+	return &App{
+		client:       client,
+		simID:        initialState.ID,
+		state:        initialState,
+		currentView:  ViewPlanning,
+		paused:       true,
+		speed:        1,
+		modelEvents:  make([]model.Event, 0),
+		tickInterval: 500 * time.Millisecond,
+	}
+}
+
 // Init implements tea.Model
 func (a *App) Init() tea.Cmd {
 	// Start listening for events from the store subscription
@@ -169,9 +197,37 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.height = msg.Height
 		return a, nil
 
+	case httpResultMsg:
+		// Handle async HTTP operation result (client mode)
+		a.inFlight = false // Clear in-flight flag
+		if msg.err != nil {
+			a.statusMessage = fmt.Sprintf("%s failed: %v", msg.operation, msg.err)
+			a.statusExpiry = time.Now().Add(5 * time.Second)
+		} else {
+			a.state = msg.state
+			switch msg.operation {
+			case "sprint":
+				// Switch to execution view and unpause
+				a.currentView = ViewExecution
+				a.paused = false
+			case "tick":
+				// Check if sprint ended
+				if !a.state.SprintActive {
+					a.paused = true
+					a.statusMessage = "Sprint complete - press 's' for next sprint"
+					a.statusExpiry = time.Now().Add(5 * time.Second)
+				}
+			}
+		}
+		return a, nil
+
 	case eventMsg:
 		// Received event from subscription - update display
 		// This enables live updates when API modifies the simulation
+		// Only applicable in engine mode (client mode doesn't use eventSub)
+		if a.client != nil {
+			return a, nil
+		}
 		sim := a.engine.Sim()
 		a.tracker = a.tracker.Updated(&sim)
 		// Show status for significant events
@@ -192,6 +248,11 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.listenForEvents()
 
 	case tickMsg:
+		// Automatic tick timer - only applicable in engine mode
+		// Client mode uses HTTP calls instead
+		if a.client != nil {
+			return a, nil
+		}
 		if !a.paused && a.currentView == ViewExecution {
 			tickEvents := a.engine.Tick()
 			a.modelEvents = append(a.modelEvents, tickEvents...)
@@ -223,6 +284,15 @@ func (a *App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case " ":
+		// Client mode: trigger HTTP tick (blocked if in-flight)
+		if a.client != nil {
+			if a.inFlight || a.paused || !a.state.SprintActive {
+				return a, nil // Blocked
+			}
+			a.inFlight = true
+			return a, a.doHTTPTick()
+		}
+		// Legacy engine mode: toggle pause
 		a.paused = !a.paused
 		if !a.paused {
 			return a, a.tickCmd()
@@ -240,7 +310,21 @@ func (a *App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case "p":
-		// Cycle policy via engine (emits PolicyChanged event)
+		// Cycle policy
+		if a.client != nil {
+			// Client mode: HTTP call - cycle through policy names
+			policies := []string{"none", "dora-strict", "tameflow-cognitive"}
+			currentIdx := 0
+			for i, p := range []string{"None", "DORA-Strict", "TameFlow-Cognitive"} {
+				if a.state.SizingPolicy == p {
+					currentIdx = i
+					break
+				}
+			}
+			nextIdx := (currentIdx + 1) % len(policies)
+			return a, a.doHTTPSetPolicy(policies[nextIdx])
+		}
+		// Legacy engine mode
 		sim := a.engine.Sim()
 		newPolicy := (sim.SizingPolicy + 1) % 4
 		a.engine.SetPolicy(newPolicy)
@@ -248,6 +332,14 @@ func (a *App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case "s":
 		// Start sprint (from planning view)
+		if a.client != nil {
+			// Client mode: HTTP call
+			if a.currentView == ViewPlanning && !a.state.SprintActive {
+				return a, a.doHTTPStartSprint()
+			}
+			return a, nil
+		}
+		// Legacy engine mode
 		sim := a.engine.Sim()
 		if _, ok := sim.CurrentSprintOption.Get(); a.currentView == ViewPlanning && !ok {
 			a.engine.StartSprint()
@@ -259,6 +351,25 @@ func (a *App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case "a":
 		// Assign selected ticket to first idle developer
+		if a.client != nil {
+			// Client mode: HTTP call
+			if a.currentView == ViewPlanning && a.selected < len(a.state.Backlog) {
+				ticket := a.state.Backlog[a.selected]
+				// Find first idle developer
+				var devID string
+				for _, dev := range a.state.Developers {
+					if dev.IsIdle {
+						devID = dev.ID
+						break
+					}
+				}
+				if devID != "" {
+					return a, a.doHTTPAssign(ticket.ID, devID)
+				}
+			}
+			return a, nil
+		}
+		// Legacy engine mode
 		sim := a.engine.Sim()
 		if a.currentView == ViewPlanning && a.selected < len(sim.Backlog) {
 			ticket := sim.Backlog[a.selected]
@@ -273,6 +384,15 @@ func (a *App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case "d":
 		// Decompose selected ticket
+		if a.client != nil {
+			// Client mode: HTTP call
+			if a.currentView == ViewPlanning && a.selected < len(a.state.Backlog) {
+				ticket := a.state.Backlog[a.selected]
+				return a, a.doHTTPDecompose(ticket.ID)
+			}
+			return a, nil
+		}
+		// Legacy engine mode
 		sim := a.engine.Sim()
 		if a.currentView == ViewPlanning && a.selected < len(sim.Backlog) {
 			ticket := sim.Backlog[a.selected]
@@ -293,13 +413,23 @@ func (a *App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case "c":
-		// Run comparison mode
+		// Run comparison mode (requires engine mode for local simulation)
+		if a.client != nil {
+			a.statusMessage = "Comparison requires local mode (run without --client)"
+			a.statusExpiry = time.Now().Add(3 * time.Second)
+			return a, nil
+		}
 		a.runComparison()
 		a.currentView = ViewComparison
 		return a, nil
 
 	case "e":
-		// Export simulation data
+		// Export simulation data (requires engine mode for local data)
+		if a.client != nil {
+			a.statusMessage = "Export requires local mode (run without --client)"
+			a.statusExpiry = time.Now().Add(3 * time.Second)
+			return a, nil
+		}
 		sim := a.engine.Sim()
 		if len(sim.CompletedTickets) == 0 {
 			a.statusMessage = "Nothing to export - no completed tickets"
@@ -318,7 +448,12 @@ func (a *App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case "ctrl+s":
-		// Save simulation state
+		// Save simulation state (requires engine mode for local state)
+		if a.client != nil {
+			a.statusMessage = "Save requires local mode (run without --client)"
+			a.statusExpiry = time.Now().Add(3 * time.Second)
+			return a, nil
+		}
 		sim := a.engine.Sim()
 		saveName := fmt.Sprintf("sim-%d-%s", sim.Seed, time.Now().Format("150405"))
 		savePath := persistence.GenerateSavePath(persistence.DefaultSavesDir(), saveName)
@@ -333,7 +468,13 @@ func (a *App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case "ctrl+o":
-		// Load simulation state (most recent save)
+		// Load simulation state (requires engine mode for local state)
+		if a.client != nil {
+			a.statusMessage = "Load requires local mode (run without --client)"
+			a.statusExpiry = time.Now().Add(3 * time.Second)
+			return a, nil
+		}
+		// Load most recent save
 		saves, err := persistence.ListSaves(persistence.DefaultSavesDir())
 		if err != nil || len(saves) == 0 {
 			a.statusMessage = "No saves found in saves/ directory"
@@ -504,6 +645,66 @@ func (a *App) tickCmd() tea.Cmd {
 	})
 }
 
+// doHTTPTick returns a Cmd that makes an HTTP tick request.
+func (a *App) doHTTPTick() tea.Cmd {
+	return func() tea.Msg {
+		resp, err := a.client.Tick(a.simID)
+		if err != nil {
+			return httpResultMsg{operation: "tick", err: err}
+		}
+		return httpResultMsg{operation: "tick", state: resp.Simulation}
+	}
+}
+
+// doHTTPStartSprint returns a Cmd that makes an HTTP start sprint request.
+func (a *App) doHTTPStartSprint() tea.Cmd {
+	return func() tea.Msg {
+		resp, err := a.client.StartSprint(a.simID)
+		if err != nil {
+			return httpResultMsg{operation: "sprint", err: err}
+		}
+		return httpResultMsg{operation: "sprint", state: resp.Simulation}
+	}
+}
+
+// doHTTPAssign returns a Cmd that makes an HTTP assign request.
+func (a *App) doHTTPAssign(ticketID, devID string) tea.Cmd {
+	return func() tea.Msg {
+		err := a.client.Assign(a.simID, ticketID, devID)
+		if err != nil {
+			return httpResultMsg{operation: "assign", err: err}
+		}
+		// Need to fetch updated state
+		resp, err := a.client.GetSimulation(a.simID)
+		if err != nil {
+			return httpResultMsg{operation: "assign", err: err}
+		}
+		return httpResultMsg{operation: "assign", state: resp.Simulation}
+	}
+}
+
+// doHTTPSetPolicy returns a Cmd that makes an HTTP set policy request.
+func (a *App) doHTTPSetPolicy(policy string) tea.Cmd {
+	return func() tea.Msg {
+		resp, err := a.client.SetPolicy(a.simID, policy)
+		if err != nil {
+			return httpResultMsg{operation: "policy", err: err}
+		}
+		return httpResultMsg{operation: "policy", state: resp.Simulation}
+	}
+}
+
+// doHTTPDecompose returns a Cmd that makes an HTTP decompose request.
+func (a *App) doHTTPDecompose(ticketID string) tea.Cmd {
+	return func() tea.Msg {
+		resp, err := a.client.Decompose(a.simID, ticketID)
+		if err != nil {
+			return httpResultMsg{operation: "decompose", err: err}
+		}
+		return httpResultMsg{operation: "decompose", state: resp.Simulation}
+	}
+}
+
 // View implements tea.Model
 func (a *App) View() string {
 	if a.width == 0 {
@@ -524,8 +725,13 @@ func (a *App) View() string {
 
 	// Compose with lessons panel when visible
 	if a.lessonState.Visible {
-		sim := a.engine.Sim()
-		_, hasActiveSprint := sim.CurrentSprintOption.Get()
+		var hasActiveSprint bool
+		if a.client != nil {
+			hasActiveSprint = a.state.SprintActive
+		} else {
+			sim := a.engine.Sim()
+			_, hasActiveSprint = sim.CurrentSprintOption.Get()
+		}
 		lesson := SelectLesson(a.currentView, a.lessonState, hasActiveSprint, a.comparisonResult != nil)
 		a.lessonState = a.lessonState.WithSeen(lesson.ID)
 		lessonPanel := a.lessonsPanel(lesson)
@@ -559,14 +765,35 @@ func (a *App) headerView() string {
 		tabs += style.Render(fmt.Sprintf(" %s ", name))
 	}
 
-	sim := a.engine.Sim()
-	policy := fmt.Sprintf("Policy: %s", sim.SizingPolicy)
+	// Get values from state source (client mode vs engine mode)
+	var policy string
+	var currentTick, backlogCount, completedCount int
+	var seed int64
+
+	if a.client != nil {
+		// Client mode: use HTTP state
+		policy = a.state.SizingPolicy
+		currentTick = a.state.CurrentTick
+		backlogCount = a.state.BacklogCount
+		completedCount = a.state.CompletedTicketCount
+		seed = a.state.Seed
+	} else {
+		// Engine mode: use local simulation
+		sim := a.engine.Sim()
+		policy = sim.SizingPolicy.String()
+		currentTick = sim.CurrentTick
+		backlogCount = len(sim.Backlog)
+		completedCount = len(sim.CompletedTickets)
+		seed = sim.Seed
+	}
+
+	policyStr := fmt.Sprintf("Policy: %s", policy)
 	status := "PAUSED"
 	if !a.paused {
 		status = "RUNNING"
 	}
 
-	right := MutedStyle.Render(fmt.Sprintf("%s | %s | Day %d | Backlog: %d | Done: %d | Seed %d", policy, status, sim.CurrentTick, len(sim.Backlog), len(sim.CompletedTickets), sim.Seed))
+	right := MutedStyle.Render(fmt.Sprintf("%s | %s | Day %d | Backlog: %d | Done: %d | Seed %d", policyStr, status, currentTick, backlogCount, completedCount, seed))
 
 	return BoxStyle.Width(a.width - 2).Render(
 		lipgloss.JoinHorizontal(lipgloss.Top, tabs, "  ", right),

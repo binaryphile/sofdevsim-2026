@@ -1,5 +1,6 @@
 # Binaries
 /sofdevsim
+/sofdevsim-server
 *.exe
 *.dll
 *.so

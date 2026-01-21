@@ -39,7 +39,7 @@ func BenchmarkClient_Tick(b *testing.B) {
 	if err != nil {
 		b.Fatalf("CreateSimulation failed: %v", err)
 	}
-	if err := client.StartSprint(resp.Simulation.ID); err != nil {
+	if _, err := client.StartSprint(resp.Simulation.ID); err != nil {
 		b.Fatalf("StartSprint failed: %v", err)
 	}
 
@@ -48,7 +48,7 @@ func BenchmarkClient_Tick(b *testing.B) {
 		_, err := client.Tick(resp.Simulation.ID)
 		if err != nil {
 			// Sprint may end, restart it
-			client.StartSprint(resp.Simulation.ID)
+			_, _ = client.StartSprint(resp.Simulation.ID)
 		}
 	}
 }

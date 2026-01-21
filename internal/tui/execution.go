@@ -32,6 +32,34 @@ func (a *App) executionView() string {
 }
 
 func (a *App) sprintProgress() string {
+	if a.client != nil {
+		// Client mode: use HTTP state
+		if !a.state.SprintActive || a.state.Sprint == nil {
+			return MutedStyle.Render("No active sprint")
+		}
+		sprint := a.state.Sprint
+		daysElapsed := a.state.CurrentTick - sprint.StartDay
+		progress := 0.0
+		if sprint.DurationDays > 0 {
+			progress = float64(daysElapsed) / float64(sprint.DurationDays)
+			if progress > 1 {
+				progress = 1
+			}
+		}
+		bar := RenderProgressBar(progress, 50)
+
+		title := TitleStyle.Render(fmt.Sprintf("Sprint %d", sprint.Number))
+		info := fmt.Sprintf("Day %d/%d  %s  %.0f%%",
+			daysElapsed,
+			sprint.DurationDays,
+			bar,
+			progress*100,
+		)
+
+		return lipgloss.JoinVertical(lipgloss.Left, title, info)
+	}
+
+	// Engine mode: use local simulation
 	sim := a.engine.Sim()
 	sprint, ok := sim.CurrentSprintOption.Get()
 	if !ok {
@@ -53,43 +81,80 @@ func (a *App) sprintProgress() string {
 }
 
 func (a *App) activeWorkPanel() string {
-	sim := a.engine.Sim()
 	title := TitleStyle.Render("Active Work")
 
 	var rows []string
-	for _, dev := range sim.Developers {
-		if dev.IsIdle() {
-			row := fmt.Sprintf("%-8s %s", dev.Name, MutedStyle.Render("[idle]"))
-			rows = append(rows, row)
-			continue
-		}
 
-		ticketIdx := sim.FindActiveTicketIndex(dev.CurrentTicket)
-		if ticketIdx == -1 {
-			continue
-		}
-		ticket := sim.ActiveTickets[ticketIdx]
-
-		// Calculate progress within current phase
-		phaseEffort := ticket.CalculatePhaseEffort(ticket.Phase)
-		spent := ticket.PhaseEffortSpent[ticket.Phase]
-		progress := 0.0
-		if phaseEffort > 0 {
-			progress = spent / phaseEffort
-			if progress > 1 {
-				progress = 1
+	if a.client != nil {
+		// Client mode: use HTTP state
+		for _, dev := range a.state.Developers {
+			if dev.IsIdle {
+				row := fmt.Sprintf("%-8s %s", dev.Name, MutedStyle.Render("[idle]"))
+				rows = append(rows, row)
+				continue
 			}
-		}
 
-		bar := RenderProgressBar(progress, 20)
-		row := fmt.Sprintf("%-8s → %-10s %s %.0f%% (%s)",
-			dev.Name,
-			ticket.ID,
-			bar,
-			progress*100,
-			ticket.Phase,
-		)
-		rows = append(rows, row)
+			// Find the active ticket for this developer
+			var ticket *TicketState
+			for i := range a.state.ActiveTickets {
+				if a.state.ActiveTickets[i].AssignedTo == dev.ID {
+					ticket = &a.state.ActiveTickets[i]
+					break
+				}
+			}
+			if ticket == nil {
+				continue
+			}
+
+			// Use pre-calculated progress from server
+			progress := ticket.Progress / 100.0 // Convert percentage to 0-1
+			bar := RenderProgressBar(progress, 20)
+			row := fmt.Sprintf("%-8s → %-10s %s %.0f%% (%s)",
+				dev.Name,
+				ticket.ID,
+				bar,
+				ticket.Progress,
+				ticket.Phase,
+			)
+			rows = append(rows, row)
+		}
+	} else {
+		// Engine mode: use local simulation
+		sim := a.engine.Sim()
+		for _, dev := range sim.Developers {
+			if dev.IsIdle() {
+				row := fmt.Sprintf("%-8s %s", dev.Name, MutedStyle.Render("[idle]"))
+				rows = append(rows, row)
+				continue
+			}
+
+			ticketIdx := sim.FindActiveTicketIndex(dev.CurrentTicket)
+			if ticketIdx == -1 {
+				continue
+			}
+			ticket := sim.ActiveTickets[ticketIdx]
+
+			// Calculate progress within current phase
+			phaseEffort := ticket.CalculatePhaseEffort(ticket.Phase)
+			spent := ticket.PhaseEffortSpent[ticket.Phase]
+			progress := 0.0
+			if phaseEffort > 0 {
+				progress = spent / phaseEffort
+				if progress > 1 {
+					progress = 1
+				}
+			}
+
+			bar := RenderProgressBar(progress, 20)
+			row := fmt.Sprintf("%-8s → %-10s %s %.0f%% (%s)",
+				dev.Name,
+				ticket.ID,
+				bar,
+				progress*100,
+				ticket.Phase,
+			)
+			rows = append(rows, row)
+		}
 	}
 
 	content := strings.Join(rows, "\n")
@@ -101,9 +166,40 @@ func (a *App) activeWorkPanel() string {
 }
 
 func (a *App) feverPanel() string {
-	sim := a.engine.Sim()
 	title := TitleStyle.Render("Fever Chart")
 
+	if a.client != nil {
+		// Client mode: use HTTP state
+		if !a.state.SprintActive || a.state.Sprint == nil {
+			return lipgloss.JoinVertical(lipgloss.Left, title, MutedStyle.Render("No active sprint"))
+		}
+		sprint := a.state.Sprint
+
+		pctUsed := 0.0
+		if sprint.BufferDays > 0 {
+			pctUsed = (sprint.BufferConsumed / sprint.BufferDays) * 100
+		}
+
+		bar := RenderProgressBar(pctUsed/100, 20)
+		statusStyle := FeverColor(pctUsed)
+		statusLabel := FeverLabel(pctUsed)
+
+		info := fmt.Sprintf("Buffer: %s %.0f%% %s",
+			bar,
+			pctUsed,
+			statusStyle.Render(statusLabel),
+		)
+
+		remaining := fmt.Sprintf("%.1f / %.1f days remaining",
+			sprint.BufferDays-sprint.BufferConsumed,
+			sprint.BufferDays,
+		)
+
+		return lipgloss.JoinVertical(lipgloss.Left, title, info, MutedStyle.Render(remaining))
+	}
+
+	// Engine mode: use local simulation
+	sim := a.engine.Sim()
 	sprint, ok := sim.CurrentSprintOption.Get()
 	if !ok {
 		return lipgloss.JoinVertical(lipgloss.Left, title, MutedStyle.Render("No active sprint"))

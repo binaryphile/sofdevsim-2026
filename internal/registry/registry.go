@@ -57,6 +57,7 @@ func (r SimRegistry) CreateSimulation(seed int64, policy model.SizingPolicy) str
 		TeamSize:     len(sim.Developers),
 		SprintLength: sim.SprintLength,
 		Seed:         sim.Seed,
+		Policy:       policy,
 	}) // Emit SimulationCreated first
 
 	// Add default team via engine (emits DeveloperAdded events)

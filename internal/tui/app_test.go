@@ -1,10 +1,13 @@
 package tui
 
 import (
+	"net/http/httptest"
 	"testing"
 	"time"
 
+	"github.com/binaryphile/sofdevsim-2026/internal/api"
 	"github.com/binaryphile/sofdevsim-2026/internal/registry"
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 // TestNewAppWithSeed_Reproducibility verifies same seed produces identical initial state.
@@ -128,5 +131,121 @@ func TestTUI_ReceivesExternalEvents(t *testing.T) {
 		}
 	case <-time.After(100 * time.Millisecond):
 		t.Error("Timed out waiting for SprintStarted event")
+	}
+}
+
+// TestApp_UsesHTTPClient verifies app makes HTTP calls instead of direct engine access.
+func TestApp_UsesHTTPClient(t *testing.T) {
+	// Setup: Create test server
+	reg := api.NewSimRegistry()
+	srv := httptest.NewServer(api.NewRouter(reg))
+	defer srv.Close()
+
+	client := NewClient(srv.URL)
+
+	// Create simulation via HTTP
+	createResp, err := client.CreateSimulation(42, "dora-strict")
+	if err != nil {
+		t.Fatalf("CreateSimulation failed: %v", err)
+	}
+
+	// Start sprint so tick is allowed - get updated state
+	sprintResp, err := client.StartSprint(createResp.Simulation.ID)
+	if err != nil {
+		t.Fatalf("StartSprint failed: %v", err)
+	}
+
+	// Create app with HTTP client using state AFTER sprint started
+	app := NewAppWithClient(client, sprintResp.Simulation)
+	app.paused = false
+	app.currentView = ViewExecution
+
+	// Verify sprint is active in app state
+	if !app.state.SprintActive {
+		t.Fatal("Expected SprintActive to be true after StartSprint")
+	}
+
+	// Trigger tick via Update - should make HTTP call
+	_, cmd := app.Update(tea.KeyMsg{Type: tea.KeySpace})
+
+	// Verify a command was returned (the HTTP tick command)
+	if cmd == nil {
+		t.Fatal("Expected tick command to be returned")
+	}
+
+	// Execute the command to make the HTTP call
+	msg := cmd()
+
+	// Process the result
+	app.Update(msg)
+
+	// Verify state was updated from HTTP response
+	if app.state.CurrentTick < 1 {
+		t.Errorf("Expected CurrentTick >= 1 after tick, got %d", app.state.CurrentTick)
+	}
+}
+
+// TestApp_DisablesWhileInFlight verifies spacebar is ignored during in-flight requests.
+// RED: This test fails because app doesn't have inFlight field yet.
+func TestApp_DisablesWhileInFlight(t *testing.T) {
+	reg := api.NewSimRegistry()
+	srv := httptest.NewServer(api.NewRouter(reg))
+	defer srv.Close()
+
+	client := NewClient(srv.URL)
+	createResp, err := client.CreateSimulation(42, "dora-strict")
+	if err != nil {
+		t.Fatalf("CreateSimulation failed: %v", err)
+	}
+
+	// Start sprint so tick would normally be allowed
+	sprintResp, err := client.StartSprint(createResp.Simulation.ID)
+	if err != nil {
+		t.Fatalf("StartSprint failed: %v", err)
+	}
+
+	app := NewAppWithClient(client, sprintResp.Simulation)
+	app.paused = false
+	app.currentView = ViewExecution
+
+	// Set inFlight to true - simulating a request in progress
+	app.inFlight = true
+
+	// Trigger spacebar - should be ignored because inFlight
+	_, cmd := app.Update(tea.KeyMsg{Type: tea.KeySpace})
+
+	// Verify no command was returned (request blocked)
+	if cmd != nil {
+		t.Error("Expected no command when inFlight is true")
+	}
+}
+
+// TestApp_HasClientField verifies app has client field instead of engine.
+func TestApp_HasClientField(t *testing.T) {
+	reg := api.NewSimRegistry()
+	srv := httptest.NewServer(api.NewRouter(reg))
+	defer srv.Close()
+
+	client := NewClient(srv.URL)
+	createResp, err := client.CreateSimulation(42, "dora-strict")
+	if err != nil {
+		t.Fatalf("CreateSimulation failed: %v", err)
+	}
+
+	app := NewAppWithClient(client, createResp.Simulation)
+
+	// App should have client field
+	if app.client == nil {
+		t.Error("Expected app.client to be set")
+	}
+
+	// App should have state field (SimulationState from HTTP)
+	if app.state.ID == "" {
+		t.Error("Expected app.state.ID to be set")
+	}
+
+	// App should have simID field
+	if app.simID == "" {
+		t.Error("Expected app.simID to be set")
 	}
 }

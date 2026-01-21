@@ -66,7 +66,7 @@ func TestClient_Tick(t *testing.T) {
 		t.Fatalf("CreateSimulation failed: %v", err)
 	}
 
-	if err := client.StartSprint(resp.Simulation.ID); err != nil {
+	if _, err := client.StartSprint(resp.Simulation.ID); err != nil {
 		t.Fatalf("StartSprint failed: %v", err)
 	}
 
@@ -142,7 +142,7 @@ func TestClient_StartSprint(t *testing.T) {
 	}
 
 	// Start sprint
-	if err := client.StartSprint(resp.Simulation.ID); err != nil {
+	if _, err := client.StartSprint(resp.Simulation.ID); err != nil {
 		t.Fatalf("StartSprint failed: %v", err)
 	}
 
@@ -291,6 +291,158 @@ func TestClient_DedupMiddleware(t *testing.T) {
 	// Dedup should return cached 200, not 409 (sprint already active)
 	if resp2.StatusCode != http.StatusOK {
 		t.Errorf("Dedup should return cached 200, got %d", resp2.StatusCode)
+	}
+}
+
+// TestClient_GetSimulation verifies fetching simulation state via HTTP.
+func TestClient_GetSimulation(t *testing.T) {
+	registry := api.NewSimRegistry()
+	srv := httptest.NewServer(api.NewRouter(registry))
+	defer srv.Close()
+
+	client := NewClient(srv.URL)
+
+	// Create simulation
+	createResp, err := client.CreateSimulation(42, "dora-strict")
+	if err != nil {
+		t.Fatalf("CreateSimulation failed: %v", err)
+	}
+
+	// Get simulation
+	getResp, err := client.GetSimulation(createResp.Simulation.ID)
+	if err != nil {
+		t.Fatalf("GetSimulation failed: %v", err)
+	}
+
+	// Verify state matches
+	if getResp.Simulation.ID != createResp.Simulation.ID {
+		t.Errorf("ID mismatch: got %s, want %s", getResp.Simulation.ID, createResp.Simulation.ID)
+	}
+	if getResp.Simulation.Seed != 42 {
+		t.Errorf("Seed mismatch: got %d, want 42", getResp.Simulation.Seed)
+	}
+	if getResp.Simulation.SizingPolicy != "DORA-Strict" {
+		t.Errorf("Policy mismatch: got %s, want DORA-Strict", getResp.Simulation.SizingPolicy)
+	}
+}
+
+// TestClient_SetPolicy verifies policy change via PATCH endpoint.
+func TestClient_SetPolicy(t *testing.T) {
+	tests := []struct {
+		name       string
+		policy     string
+		wantPolicy string
+		wantErr    bool
+	}{
+		{"valid none", "none", "None", false},
+		{"valid dora-strict", "dora-strict", "DORA-Strict", false},
+		{"valid tameflow", "tameflow-cognitive", "TameFlow-Cognitive", false},
+		{"invalid policy", "unknown", "", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			registry := api.NewSimRegistry()
+			srv := httptest.NewServer(api.NewRouter(registry))
+			defer srv.Close()
+
+			client := NewClient(srv.URL)
+
+			// Create simulation with default policy
+			createResp, err := client.CreateSimulation(42, "dora-strict")
+			if err != nil {
+				t.Fatalf("CreateSimulation failed: %v", err)
+			}
+
+			// Set policy
+			resp, err := client.SetPolicy(createResp.Simulation.ID, tt.policy)
+
+			if tt.wantErr {
+				if err == nil {
+					t.Error("expected error, got nil")
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("SetPolicy failed: %v", err)
+			}
+
+			if resp.Simulation.SizingPolicy != tt.wantPolicy {
+				t.Errorf("Policy = %s, want %s", resp.Simulation.SizingPolicy, tt.wantPolicy)
+			}
+		})
+	}
+}
+
+// TestClient_Decompose verifies ticket decomposition via HTTP.
+func TestClient_Decompose(t *testing.T) {
+	registry := api.NewSimRegistry()
+	srv := httptest.NewServer(api.NewRouter(registry))
+	defer srv.Close()
+
+	client := NewClient(srv.URL)
+
+	// Create simulation with dora-strict policy (will decompose large tickets)
+	createResp, err := client.CreateSimulation(42, "dora-strict")
+	if err != nil {
+		t.Fatalf("CreateSimulation failed: %v", err)
+	}
+
+	// Get a ticket from backlog
+	inst, _ := registry.GetInstance(createResp.Simulation.ID)
+	state := inst.Engine.Sim()
+
+	// Find a ticket that might be decomposable (large, unclear)
+	var ticketID string
+	for _, t := range state.Backlog {
+		ticketID = t.ID
+		break
+	}
+
+	if ticketID == "" {
+		t.Fatal("No tickets in backlog")
+	}
+
+	// Try to decompose
+	resp, err := client.Decompose(createResp.Simulation.ID, ticketID)
+	if err != nil {
+		t.Fatalf("Decompose failed: %v", err)
+	}
+
+	// Response should include simulation state regardless of whether decomposition happened
+	if resp.Simulation.ID != createResp.Simulation.ID {
+		t.Errorf("Simulation ID mismatch: got %s, want %s", resp.Simulation.ID, createResp.Simulation.ID)
+	}
+
+	// If decomposed, should have children
+	if resp.Decomposed && len(resp.Children) == 0 {
+		t.Error("Decomposed=true but no children returned")
+	}
+}
+
+// TestClient_Decompose_NotFound verifies decompose handles missing ticket.
+func TestClient_Decompose_NotFound(t *testing.T) {
+	registry := api.NewSimRegistry()
+	srv := httptest.NewServer(api.NewRouter(registry))
+	defer srv.Close()
+
+	client := NewClient(srv.URL)
+
+	createResp, err := client.CreateSimulation(42, "dora-strict")
+	if err != nil {
+		t.Fatalf("CreateSimulation failed: %v", err)
+	}
+
+	// Try to decompose non-existent ticket
+	resp, err := client.Decompose(createResp.Simulation.ID, "nonexistent")
+	if err != nil {
+		t.Fatalf("Decompose should not error for missing ticket: %v", err)
+	}
+
+	// Should return decomposed=false
+	if resp.Decomposed {
+		t.Error("Decomposed should be false for missing ticket")
 	}
 }
 

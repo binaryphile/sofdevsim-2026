@@ -128,7 +128,7 @@ func (r SimRegistry) HandleCreateSimulation(w http.ResponseWriter, req *http.Req
 	id := r.CreateSimulation(body.Seed, policy)
 
 	inst, _ := r.GetInstance(id)
-	state := ToState(inst.Engine.Sim())
+	state := ToState(inst.Engine.Sim(), inst.Tracker)
 	response := HALResponse{
 		State: state,
 		Links: LinksFor(state),
@@ -147,7 +147,7 @@ func (r SimRegistry) HandleGetSimulation(w http.ResponseWriter, req *http.Reques
 		return
 	}
 
-	state := ToState(inst.Engine.Sim())
+	state := ToState(inst.Engine.Sim(), inst.Tracker)
 	response := HALResponse{
 		State: state,
 		Links: LinksFor(state),
@@ -175,7 +175,7 @@ func (r SimRegistry) HandleStartSprint(w http.ResponseWriter, req *http.Request)
 
 	inst.Engine.StartSprint()
 
-	state := ToState(inst.Engine.Sim())
+	state := ToState(inst.Engine.Sim(), inst.Tracker)
 	response := HALResponse{
 		State: state,
 		Links: LinksFor(state),
@@ -209,7 +209,7 @@ func (r SimRegistry) HandleTick(w http.ResponseWriter, req *http.Request) {
 	inst.Tracker = inst.Tracker.Updated(&sim)
 	r.SetInstance(id, inst)
 
-	state := ToState(sim)
+	state := ToState(sim, inst.Tracker)
 	response := HALResponse{
 		State: state,
 		Links: LinksFor(state),
@@ -258,7 +258,7 @@ func (r SimRegistry) HandleAssignTicket(w http.ResponseWriter, req *http.Request
 		return
 	}
 
-	state := ToState(inst.Engine.Sim())
+	state := ToState(inst.Engine.Sim(), inst.Tracker)
 	response := HALResponse{
 		State: state,
 		Links: LinksFor(state),
@@ -407,6 +407,103 @@ func buildWinners(c metrics.ComparisonResult) MetricWinners {
 		ChangeFailRate:  policyName(c.CFRWinner),
 		Overall:         overall,
 	}
+}
+
+// UpdateSimulationRequest is the request body for updating simulation settings.
+type UpdateSimulationRequest struct {
+	Policy string `json:"policy,omitempty"`
+}
+
+// HandleUpdateSimulation updates simulation settings (currently just policy).
+// Returns 400 if invalid policy, 404 if simulation not found.
+func (r SimRegistry) HandleUpdateSimulation(w http.ResponseWriter, req *http.Request) {
+	id := req.PathValue("id")
+
+	inst, ok := r.GetInstance(id)
+	if !ok {
+		writeError(w, http.StatusNotFound, "simulation not found")
+		return
+	}
+
+	var body UpdateSimulationRequest
+	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	// Parse and validate policy
+	var policy model.SizingPolicy
+	switch body.Policy {
+	case "none":
+		policy = model.PolicyNone
+	case "dora-strict":
+		policy = model.PolicyDORAStrict
+	case "tameflow-cognitive":
+		policy = model.PolicyTameFlowCognitive
+	default:
+		writeError(w, http.StatusBadRequest, "invalid policy")
+		return
+	}
+
+	inst.Engine.SetPolicy(policy)
+
+	state := ToState(inst.Engine.Sim(), inst.Tracker)
+	response := HALResponse{
+		State: state,
+		Links: LinksFor(state),
+	}
+	writeJSON(w, http.StatusOK, response)
+}
+
+// DecomposeRequest is the request body for ticket decomposition.
+type DecomposeRequest struct {
+	TicketID string `json:"ticketId"`
+}
+
+// DecomposeResponse is the response from decomposing a ticket.
+type DecomposeResponse struct {
+	Decomposed bool              `json:"decomposed"`
+	Children   []TicketState     `json:"children,omitempty"`
+	Simulation SimulationState   `json:"simulation"`
+	Links      map[string]string `json:"_links"`
+}
+
+// HandleDecompose attempts to decompose a ticket into smaller tasks.
+// Returns decomposed=false if ticket not found or policy doesn't allow decomposition.
+func (r SimRegistry) HandleDecompose(w http.ResponseWriter, req *http.Request) {
+	id := req.PathValue("id")
+
+	inst, ok := r.GetInstance(id)
+	if !ok {
+		writeError(w, http.StatusNotFound, "simulation not found")
+		return
+	}
+
+	var body DecomposeRequest
+	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	children, decomposed := inst.Engine.TryDecompose(body.TicketID)
+
+	// toTicketStates converts model.Ticket slice to TicketState slice.
+	toTicketStates := func(tickets []model.Ticket) []TicketState {
+		result := make([]TicketState, len(tickets))
+		for i, t := range tickets {
+			result[i] = ToTicketState(t)
+		}
+		return result
+	}
+
+	state := ToState(inst.Engine.Sim(), inst.Tracker)
+	response := DecomposeResponse{
+		Decomposed: decomposed,
+		Children:   toTicketStates(children),
+		Simulation: state,
+		Links:      LinksFor(state),
+	}
+	writeJSON(w, http.StatusOK, response)
 }
 
 // HandleGetLessons returns contextual lessons for a simulation.

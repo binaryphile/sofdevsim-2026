@@ -5,42 +5,118 @@ import (
 	"fmt"
 
 	"github.com/binaryphile/fluentfp/option"
+	"github.com/binaryphile/fluentfp/slice"
+	"github.com/binaryphile/sofdevsim-2026/internal/metrics"
 	"github.com/binaryphile/sofdevsim-2026/internal/model"
 )
+
+// TicketState is the JSON-friendly representation of a ticket.
+type TicketState struct {
+	ID            string  `json:"id"`
+	Title         string  `json:"title"`
+	Size          float64 `json:"size"`
+	Understanding string  `json:"understanding"`
+	Progress      float64 `json:"progress,omitempty"`
+	AssignedTo    string  `json:"assignedTo,omitempty"`
+	Phase         string  `json:"phase,omitempty"`
+	ActualDays    float64 `json:"actualDays,omitempty"`
+}
+
+// ToTicketState converts model.Ticket to TicketState.
+func ToTicketState(t model.Ticket) TicketState {
+	progress := 0.0
+	if t.ActualDays > 0 {
+		progress = (t.ActualDays - t.RemainingEffort) / t.ActualDays * 100
+	}
+	return TicketState{
+		ID:            t.ID,
+		Title:         t.Title,
+		Size:          t.EstimatedDays,
+		Understanding: t.UnderstandingLevel.String(),
+		Progress:      progress,
+		AssignedTo:    "", // Set by caller for active tickets
+		Phase:         t.Phase.String(),
+		ActualDays:    t.ActualDays,
+	}
+}
+
+// DeveloperState is the JSON-friendly representation of a developer.
+type DeveloperState struct {
+	ID            string  `json:"id"`
+	Name          string  `json:"name"`
+	Velocity      float64 `json:"velocity"`
+	CurrentTicket string  `json:"currentTicket,omitempty"`
+	IsIdle        bool    `json:"isIdle"`
+}
+
+// ToDeveloperState converts model.Developer to DeveloperState.
+func ToDeveloperState(d model.Developer) DeveloperState {
+	return DeveloperState{
+		ID:            d.ID,
+		Name:          d.Name,
+		Velocity:      d.Velocity,
+		CurrentTicket: d.CurrentTicket,
+		IsIdle:        d.IsIdle(),
+	}
+}
 
 // SimulationState is the JSON-friendly representation of a simulation.
 // Uses option.Basic for optional Sprint (value semantics).
 type SimulationState struct {
 	ID                   string                     `json:"id"`
+	Seed                 int64                      `json:"seed"`
 	CurrentTick          int                        `json:"currentTick"`
 	CurrentSprintOption  option.Basic[model.Sprint] `json:"-"` // Custom marshaling
 	SprintNumber         int                        `json:"sprintNumber"`
+	SizingPolicy         string                     `json:"sizingPolicy"`
 	BacklogCount         int                        `json:"backlogCount"`
 	ActiveTicketCount    int                        `json:"activeTicketCount"`
 	CompletedTicketCount int                        `json:"completedTicketCount"`
+	TotalIncidents       int                        `json:"totalIncidents"`
+	Backlog              []TicketState              `json:"backlog"`
+	Developers           []DeveloperState           `json:"developers"`
+	ActiveTickets        []TicketState              `json:"activeTickets"`
+	CompletedTickets     []TicketState              `json:"completedTickets"`
+	Metrics              DORAResponse               `json:"metrics"`
 }
 
 // MarshalJSON implements custom JSON marshaling for SimulationState.
 // Converts option.Basic[Sprint] to sprintActive bool + sprint object.
 func (s SimulationState) MarshalJSON() ([]byte, error) {
 	type jsonState struct {
-		ID                   string        `json:"id"`
-		CurrentTick          int           `json:"currentTick"`
-		SprintActive         bool          `json:"sprintActive"`
-		Sprint               *model.Sprint `json:"sprint,omitempty"`
-		SprintNumber         int           `json:"sprintNumber"`
-		BacklogCount         int           `json:"backlogCount"`
-		ActiveTicketCount    int           `json:"activeTicketCount"`
-		CompletedTicketCount int           `json:"completedTicketCount"`
+		ID                   string           `json:"id"`
+		Seed                 int64            `json:"seed"`
+		CurrentTick          int              `json:"currentTick"`
+		SprintActive         bool             `json:"sprintActive"`
+		Sprint               *model.Sprint    `json:"sprint,omitempty"`
+		SprintNumber         int              `json:"sprintNumber"`
+		SizingPolicy         string           `json:"sizingPolicy"`
+		BacklogCount         int              `json:"backlogCount"`
+		ActiveTicketCount    int              `json:"activeTicketCount"`
+		CompletedTicketCount int              `json:"completedTicketCount"`
+		TotalIncidents       int              `json:"totalIncidents"`
+		Backlog              []TicketState    `json:"backlog"`
+		Developers           []DeveloperState `json:"developers"`
+		ActiveTickets        []TicketState    `json:"activeTickets"`
+		CompletedTickets     []TicketState    `json:"completedTickets"`
+		Metrics              DORAResponse     `json:"metrics"`
 	}
 
 	out := jsonState{
 		ID:                   s.ID,
+		Seed:                 s.Seed,
 		CurrentTick:          s.CurrentTick,
 		SprintNumber:         s.SprintNumber,
+		SizingPolicy:         s.SizingPolicy,
 		BacklogCount:         s.BacklogCount,
 		ActiveTicketCount:    s.ActiveTicketCount,
 		CompletedTicketCount: s.CompletedTicketCount,
+		TotalIncidents:       s.TotalIncidents,
+		Backlog:              s.Backlog,
+		Developers:           s.Developers,
+		ActiveTickets:        s.ActiveTickets,
+		CompletedTickets:     s.CompletedTickets,
+		Metrics:              s.Metrics,
 	}
 
 	if sprint, ok := s.CurrentSprintOption.Get(); ok {
@@ -57,16 +133,70 @@ type HALResponse struct {
 	Links map[string]string `json:"_links"`
 }
 
-// ToState converts model.Simulation to SimulationState.
-func ToState(sim model.Simulation) SimulationState {
+// ToState converts model.Simulation and tracker to SimulationState.
+// Tracker may be nil for simulations without metrics tracking.
+func ToState(sim model.Simulation, tracker metrics.Tracker) SimulationState {
+	// Convert backlog tickets
+	backlog := slice.MapTo[TicketState](sim.Backlog).To(ToTicketState)
+
+	// Convert developers
+	developers := slice.MapTo[DeveloperState](sim.Developers).To(ToDeveloperState)
+
+	// Convert active tickets with assigned developer info
+	activeTickets := make([]TicketState, len(sim.ActiveTickets))
+	for i, t := range sim.ActiveTickets {
+		ts := ToTicketState(t)
+		// Find assigned developer
+		for _, d := range sim.Developers {
+			if d.CurrentTicket == t.ID {
+				ts.AssignedTo = d.ID
+				break
+			}
+		}
+		activeTickets[i] = ts
+	}
+
+	// Convert completed tickets
+	completedTickets := slice.MapTo[TicketState](sim.CompletedTickets).To(ToTicketState)
+
+	// Compute metrics from tracker (safe even for zero tracker - returns zero metrics)
+	result := tracker.GetResult(sim.SizingPolicy, &sim)
+
+	// Convert DORA history for sparklines
+	var history []DORAHistoryPoint
+	for _, h := range tracker.DORA.History {
+		history = append(history, DORAHistoryPoint{
+			LeadTimeAvg:    h.LeadTimeAvg,
+			DeployFrequency: h.DeployFrequency,
+			MTTR:           h.MTTR,
+			ChangeFailRate: h.ChangeFailRate,
+		})
+	}
+
+	metricsState := DORAResponse{
+		LeadTimeAvgDays:   result.FinalMetrics.LeadTimeAvgDays(),
+		DeployFrequency:   result.FinalMetrics.DeployFrequency,
+		MTTRAvgDays:       result.FinalMetrics.MTTRAvgDays(),
+		ChangeFailRatePct: result.FinalMetrics.ChangeFailRatePct(),
+		History:           history,
+	}
+
 	return SimulationState{
 		ID:                   fmt.Sprintf("sim-%d", sim.Seed),
+		Seed:                 sim.Seed,
 		CurrentTick:          sim.CurrentTick,
 		CurrentSprintOption:  sim.CurrentSprintOption,
 		SprintNumber:         sim.SprintNumber,
+		SizingPolicy:         sim.SizingPolicy.String(),
 		BacklogCount:         len(sim.Backlog),
 		ActiveTicketCount:    len(sim.ActiveTickets),
 		CompletedTicketCount: len(sim.CompletedTickets),
+		TotalIncidents:       sim.TotalIncidents(),
+		Backlog:              backlog,
+		Developers:           developers,
+		ActiveTickets:        activeTickets,
+		CompletedTickets:     completedTickets,
+		Metrics:              metricsState,
 	}
 }
 
@@ -98,10 +228,19 @@ type PolicyResult struct {
 
 // DORAResponse is the JSON-friendly DORA metrics.
 type DORAResponse struct {
-	LeadTimeAvgDays   float64 `json:"leadTimeAvgDays"`
-	DeployFrequency   float64 `json:"deployFrequency"`
-	MTTRAvgDays       float64 `json:"mttrAvgDays"`
-	ChangeFailRatePct float64 `json:"changeFailRatePct"`
+	LeadTimeAvgDays   float64           `json:"leadTimeAvgDays"`
+	DeployFrequency   float64           `json:"deployFrequency"`
+	MTTRAvgDays       float64           `json:"mttrAvgDays"`
+	ChangeFailRatePct float64           `json:"changeFailRatePct"`
+	History           []DORAHistoryPoint `json:"history,omitempty"`
+}
+
+// DORAHistoryPoint is a single point in DORA metrics history.
+type DORAHistoryPoint struct {
+	LeadTimeAvg    float64 `json:"leadTimeAvg"`
+	DeployFrequency float64 `json:"deployFrequency"`
+	MTTR           float64 `json:"mttr"`
+	ChangeFailRate float64 `json:"changeFailRate"`
 }
 
 // MetricWinners shows which policy won each metric.

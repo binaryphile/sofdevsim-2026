@@ -23,38 +23,67 @@ func (a *App) planningView() string {
 }
 
 func (a *App) backlogTable() string {
-	sim := a.engine.Sim()
 	header := HeaderStyle.Render(fmt.Sprintf("%-8s %-30s %6s %12s %10s",
 		"ID", "Title", "Est", "Understanding", "Phase"))
 
 	var rows []string
-	for i, ticket := range sim.Backlog {
-		style := TableRowStyle
-		if i == a.selected {
-			style = TableSelectedStyle
-		}
+	var backlogLen int
 
-		ticketTitle := ticket.Title
-		if len(ticketTitle) > 28 {
-			ticketTitle = ticketTitle[:28] + ".."
-		}
+	if a.client != nil {
+		// Client mode: use HTTP state
+		backlogLen = len(a.state.Backlog)
+		for i, ticket := range a.state.Backlog {
+			style := TableRowStyle
+			if i == a.selected {
+				style = TableSelectedStyle
+			}
 
-		row := style.Render(fmt.Sprintf("%-8s %-30s %5.1fd %-12s %-10s",
-			ticket.ID,
-			ticketTitle,
-			ticket.EstimatedDays,
-			ticket.UnderstandingLevel,
-			ticket.Phase,
-		))
-		rows = append(rows, row)
+			ticketTitle := ticket.Title
+			if len(ticketTitle) > 28 {
+				ticketTitle = ticketTitle[:28] + ".."
+			}
+
+			row := style.Render(fmt.Sprintf("%-8s %-30s %5.1fd %-12s %-10s",
+				ticket.ID,
+				ticketTitle,
+				ticket.Size,
+				ticket.Understanding,
+				ticket.Phase,
+			))
+			rows = append(rows, row)
+		}
+	} else {
+		// Engine mode: use local simulation
+		sim := a.engine.Sim()
+		backlogLen = len(sim.Backlog)
+		for i, ticket := range sim.Backlog {
+			style := TableRowStyle
+			if i == a.selected {
+				style = TableSelectedStyle
+			}
+
+			ticketTitle := ticket.Title
+			if len(ticketTitle) > 28 {
+				ticketTitle = ticketTitle[:28] + ".."
+			}
+
+			row := style.Render(fmt.Sprintf("%-8s %-30s %5.1fd %-12s %-10s",
+				ticket.ID,
+				ticketTitle,
+				ticket.EstimatedDays,
+				ticket.UnderstandingLevel,
+				ticket.Phase,
+			))
+			rows = append(rows, row)
+		}
 	}
 
 	// Clamp selected
-	if a.selected >= len(sim.Backlog) && len(sim.Backlog) > 0 {
-		a.selected = len(sim.Backlog) - 1
+	if a.selected >= backlogLen && backlogLen > 0 {
+		a.selected = backlogLen - 1
 	}
 
-	title := TitleStyle.Render(fmt.Sprintf("Backlog (%d tickets)", len(sim.Backlog)))
+	title := TitleStyle.Render(fmt.Sprintf("Backlog (%d tickets)", backlogLen))
 	content := strings.Join(rows, "\n")
 	if len(rows) == 0 {
 		content = MutedStyle.Render("No tickets in backlog")
@@ -64,19 +93,34 @@ func (a *App) backlogTable() string {
 }
 
 func (a *App) developersPanel() string {
-	sim := a.engine.Sim()
 	title := TitleStyle.Render("Team")
 
 	var rows []string
-	for _, dev := range sim.Developers {
-		status := ternary.If[string](dev.IsIdle()).Then(GreenStyle.Render("[idle]")).Else(YellowStyle.Render("[busy]"))
-		assignment := ""
-		if !dev.IsIdle() {
-			assignment = MutedStyle.Render(" → " + dev.CurrentTicket)
-		}
+	if a.client != nil {
+		// Client mode: use HTTP state
+		for _, dev := range a.state.Developers {
+			status := ternary.If[string](dev.IsIdle).Then(GreenStyle.Render("[idle]")).Else(YellowStyle.Render("[busy]"))
+			assignment := ""
+			if !dev.IsIdle {
+				assignment = MutedStyle.Render(" → " + dev.CurrentTicket)
+			}
 
-		row := fmt.Sprintf("%s (v:%.1f) %s%s", dev.Name, dev.Velocity, status, assignment)
-		rows = append(rows, row)
+			row := fmt.Sprintf("%s (v:%.1f) %s%s", dev.Name, dev.Velocity, status, assignment)
+			rows = append(rows, row)
+		}
+	} else {
+		// Engine mode: use local simulation
+		sim := a.engine.Sim()
+		for _, dev := range sim.Developers {
+			status := ternary.If[string](dev.IsIdle()).Then(GreenStyle.Render("[idle]")).Else(YellowStyle.Render("[busy]"))
+			assignment := ""
+			if !dev.IsIdle() {
+				assignment = MutedStyle.Render(" → " + dev.CurrentTicket)
+			}
+
+			row := fmt.Sprintf("%s (v:%.1f) %s%s", dev.Name, dev.Velocity, status, assignment)
+			rows = append(rows, row)
+		}
 	}
 
 	return lipgloss.JoinVertical(lipgloss.Left, title, strings.Join(rows, "\n"))

@@ -21,9 +21,11 @@ func NewRouter(registry SimRegistry) http.Handler {
 	mux.HandleFunc("GET /simulations", registry.HandleListSimulations)
 	mux.HandleFunc("POST /simulations", registry.HandleCreateSimulation)
 	mux.HandleFunc("GET /simulations/{id}", registry.HandleGetSimulation)
+	mux.HandleFunc("PATCH /simulations/{id}", registry.HandleUpdateSimulation)
 	mux.HandleFunc("POST /simulations/{id}/sprints", registry.HandleStartSprint)
 	mux.HandleFunc("POST /simulations/{id}/tick", registry.HandleTick)
 	mux.HandleFunc("POST /simulations/{id}/assignments", registry.HandleAssignTicket)
+	mux.HandleFunc("POST /simulations/{id}/decompose", registry.HandleDecompose)
 	mux.HandleFunc("GET /simulations/{id}/lessons", registry.HandleGetLessons)
 
 	// Comparison endpoint
