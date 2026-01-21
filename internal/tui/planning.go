@@ -29,7 +29,7 @@ func (a *App) backlogTable() string {
 	var rows []string
 	var backlogLen int
 
-	if a.client != nil {
+	if _, isClient := a.mode.Get(); isClient {
 		// Client mode: use HTTP state
 		backlogLen = len(a.state.Backlog)
 		for i, ticket := range a.state.Backlog {
@@ -54,7 +54,8 @@ func (a *App) backlogTable() string {
 		}
 	} else {
 		// Engine mode: use local simulation
-		sim := a.engine.Sim()
+		eng, _ := a.mode.GetLeft()
+		sim := eng.Engine.Sim()
 		backlogLen = len(sim.Backlog)
 		for i, ticket := range sim.Backlog {
 			style := TableRowStyle
@@ -96,7 +97,7 @@ func (a *App) developersPanel() string {
 	title := TitleStyle.Render("Team")
 
 	var rows []string
-	if a.client != nil {
+	if _, isClient := a.mode.Get(); isClient {
 		// Client mode: use HTTP state
 		for _, dev := range a.state.Developers {
 			status := ternary.If[string](dev.IsIdle).Then(GreenStyle.Render("[idle]")).Else(YellowStyle.Render("[busy]"))
@@ -110,7 +111,8 @@ func (a *App) developersPanel() string {
 		}
 	} else {
 		// Engine mode: use local simulation
-		sim := a.engine.Sim()
+		eng, _ := a.mode.GetLeft()
+		sim := eng.Engine.Sim()
 		for _, dev := range sim.Developers {
 			status := ternary.If[string](dev.IsIdle()).Then(GreenStyle.Render("[idle]")).Else(YellowStyle.Render("[busy]"))
 			assignment := ""

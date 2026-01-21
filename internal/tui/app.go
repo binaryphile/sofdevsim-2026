@@ -6,16 +6,35 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/binaryphile/fluentfp/either"
 	"github.com/binaryphile/sofdevsim-2026/internal/engine"
-	"github.com/binaryphile/sofdevsim-2026/internal/registry"
 	"github.com/binaryphile/sofdevsim-2026/internal/events"
 	"github.com/binaryphile/sofdevsim-2026/internal/export"
 	"github.com/binaryphile/sofdevsim-2026/internal/metrics"
 	"github.com/binaryphile/sofdevsim-2026/internal/model"
 	"github.com/binaryphile/sofdevsim-2026/internal/persistence"
+	"github.com/binaryphile/sofdevsim-2026/internal/registry"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
+
+// ClientMode holds all HTTP client state.
+// Value type: stored by value in Either. Client itself is a value type
+// containing a shared *http.Client reference.
+type ClientMode struct {
+	Client Client
+	SimID  string
+}
+
+// EngineMode holds all local engine state.
+// Value type: stored by value in Either.
+type EngineMode struct {
+	Engine   *engine.Engine
+	Tracker  metrics.Tracker
+	Store    events.Store
+	EventSub <-chan events.Event
+	Registry registry.SimRegistry
+}
 
 // View represents the current screen
 type View int
@@ -29,20 +48,15 @@ const (
 
 // App is the main bubbletea model
 type App struct {
-	// HTTP client mode (Phase 8C) - used when client != nil
-	client   *Client          // HTTP client for API calls
-	simID    string           // current simulation ID
-	state    SimulationState  // current state from HTTP responses
-	inFlight bool             // true while HTTP request in progress (Phase 8D)
+	// Mode: Either EngineMode (Left) or ClientMode (Right)
+	// Replaces scattered nil checks with explicit sum type
+	mode either.Either[EngineMode, ClientMode]
 
-	// Legacy engine mode - used when engine != nil (comparison mode, standalone)
-	engine   *engine.Engine
-	tracker  metrics.Tracker
-	store    events.Store          // event store for event sourcing
-	registry registry.SimRegistry // optional shared registry (zero value = no registry)
-	eventSub <-chan events.Event // subscription channel for live updates
+	// State (shared, updated from either mode)
+	state    SimulationState // current state from HTTP or engine
+	inFlight bool            // true while HTTP request in progress (Phase 8D)
 
-	// UI state
+	// UI state (mode-independent)
 	currentView View
 	paused      bool
 	speed       int // ticks per update
@@ -137,12 +151,17 @@ func NewAppWithRegistry(seed int64, reg registry.SimRegistry) *App {
 	// Subscribe to event store for live updates
 	eventSub := store.Subscribe(simID)
 
+	// Create EngineMode (Left variant)
+	engineMode := EngineMode{
+		Engine:   eng,
+		Tracker:  tracker,
+		Store:    store,
+		EventSub: eventSub,
+		Registry: reg,
+	}
+
 	return &App{
-		engine:       eng,
-		tracker:      tracker,
-		store:        store,
-		registry:     reg,
-		eventSub:     eventSub,
+		mode:         either.Left[EngineMode, ClientMode](engineMode),
 		currentView:  ViewPlanning,
 		paused:       true,
 		speed:        1,
@@ -153,10 +172,16 @@ func NewAppWithRegistry(seed int64, reg registry.SimRegistry) *App {
 
 // NewAppWithClient creates a new App that uses HTTP client for all operations.
 // This is the Phase 8C constructor - TUI as pure HTTP client.
-func NewAppWithClient(client *Client, initialState SimulationState) *App {
+// Client is passed by value - it contains a shared *http.Client reference.
+func NewAppWithClient(client Client, initialState SimulationState) *App {
+	// Create ClientMode (Right variant)
+	clientMode := ClientMode{
+		Client: client,
+		SimID:  initialState.ID,
+	}
+
 	return &App{
-		client:       client,
-		simID:        initialState.ID,
+		mode:         either.Right[EngineMode](clientMode),
 		state:        initialState,
 		currentView:  ViewPlanning,
 		paused:       true,
@@ -172,13 +197,19 @@ func (a *App) Init() tea.Cmd {
 	return a.listenForEvents()
 }
 
-// listenForEvents returns a Cmd that waits for the next event from the subscription
+// listenForEvents returns a Cmd that waits for the next event from the subscription.
+// Only applicable in engine mode - client mode returns nil.
 func (a *App) listenForEvents() tea.Cmd {
+	eng, ok := a.mode.GetLeft()
+	if !ok {
+		return nil // Client mode has no event subscription
+	}
+	eventSub := eng.EventSub
 	return func() tea.Msg {
-		if a.eventSub == nil {
+		if eventSub == nil {
 			return nil
 		}
-		evt, ok := <-a.eventSub
+		evt, ok := <-eventSub
 		if !ok {
 			return nil // Channel closed
 		}
@@ -225,11 +256,13 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Received event from subscription - update display
 		// This enables live updates when API modifies the simulation
 		// Only applicable in engine mode (client mode doesn't use eventSub)
-		if a.client != nil {
-			return a, nil
+		eng, ok := a.mode.GetLeft()
+		if !ok {
+			return a, nil // Client mode - ignore
 		}
-		sim := a.engine.Sim()
-		a.tracker = a.tracker.Updated(&sim)
+		sim := eng.Engine.Sim()
+		eng.Tracker = eng.Tracker.Updated(&sim)
+		a.mode = either.Left[EngineMode, ClientMode](eng)
 		// Show status for significant events
 		switch events.Event(msg).EventType() {
 		case "SprintStarted":
@@ -250,16 +283,18 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tickMsg:
 		// Automatic tick timer - only applicable in engine mode
 		// Client mode uses HTTP calls instead
-		if a.client != nil {
+		eng, ok := a.mode.GetLeft()
+		if !ok {
 			return a, nil
 		}
 		if !a.paused && a.currentView == ViewExecution {
-			tickEvents := a.engine.Tick()
+			tickEvents := eng.Engine.Tick()
 			a.modelEvents = append(a.modelEvents, tickEvents...)
 
 			// Get current state from projection
-			sim := a.engine.Sim()
-			a.tracker = a.tracker.Updated(&sim)
+			sim := eng.Engine.Sim()
+			eng.Tracker = eng.Tracker.Updated(&sim)
+			a.mode = either.Left[EngineMode, ClientMode](eng)
 
 			// Check if sprint ended (SprintEnded event already cleared it in projection)
 			if _, sprintActive := sim.CurrentSprintOption.Get(); !sprintActive {
@@ -284,15 +319,16 @@ func (a *App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case " ":
-		// Client mode: trigger HTTP tick (blocked if in-flight)
-		if a.client != nil {
+		// Check mode for spacebar behavior
+		if _, isClient := a.mode.Get(); isClient {
+			// Client mode: trigger HTTP tick (blocked if in-flight)
 			if a.inFlight || a.paused || !a.state.SprintActive {
 				return a, nil // Blocked
 			}
 			a.inFlight = true
 			return a, a.doHTTPTick()
 		}
-		// Legacy engine mode: toggle pause
+		// Engine mode: toggle pause
 		a.paused = !a.paused
 		if !a.paused {
 			return a, a.tickCmd()
@@ -311,7 +347,7 @@ func (a *App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case "p":
 		// Cycle policy
-		if a.client != nil {
+		if _, isClient := a.mode.Get(); isClient {
 			// Client mode: HTTP call - cycle through policy names
 			policies := []string{"none", "dora-strict", "tameflow-cognitive"}
 			currentIdx := 0
@@ -324,25 +360,27 @@ func (a *App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			nextIdx := (currentIdx + 1) % len(policies)
 			return a, a.doHTTPSetPolicy(policies[nextIdx])
 		}
-		// Legacy engine mode
-		sim := a.engine.Sim()
+		// Engine mode
+		eng, _ := a.mode.GetLeft()
+		sim := eng.Engine.Sim()
 		newPolicy := (sim.SizingPolicy + 1) % 4
-		a.engine.SetPolicy(newPolicy)
+		eng.Engine.SetPolicy(newPolicy)
 		return a, nil
 
 	case "s":
 		// Start sprint (from planning view)
-		if a.client != nil {
+		if _, isClient := a.mode.Get(); isClient {
 			// Client mode: HTTP call
 			if a.currentView == ViewPlanning && !a.state.SprintActive {
 				return a, a.doHTTPStartSprint()
 			}
 			return a, nil
 		}
-		// Legacy engine mode
-		sim := a.engine.Sim()
+		// Engine mode
+		eng, _ := a.mode.GetLeft()
+		sim := eng.Engine.Sim()
 		if _, ok := sim.CurrentSprintOption.Get(); a.currentView == ViewPlanning && !ok {
-			a.engine.StartSprint()
+			eng.Engine.StartSprint()
 			a.currentView = ViewExecution
 			a.paused = false
 			return a, a.tickCmd()
@@ -351,7 +389,7 @@ func (a *App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case "a":
 		// Assign selected ticket to first idle developer
-		if a.client != nil {
+		if _, isClient := a.mode.Get(); isClient {
 			// Client mode: HTTP call
 			if a.currentView == ViewPlanning && a.selected < len(a.state.Backlog) {
 				ticket := a.state.Backlog[a.selected]
@@ -369,13 +407,14 @@ func (a *App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			return a, nil
 		}
-		// Legacy engine mode
-		sim := a.engine.Sim()
+		// Engine mode
+		eng, _ := a.mode.GetLeft()
+		sim := eng.Engine.Sim()
 		if a.currentView == ViewPlanning && a.selected < len(sim.Backlog) {
 			ticket := sim.Backlog[a.selected]
 			for _, dev := range sim.Developers {
 				if dev.IsIdle() {
-					a.engine.AssignTicket(ticket.ID, dev.ID)
+					eng.Engine.AssignTicket(ticket.ID, dev.ID)
 					break
 				}
 			}
@@ -384,7 +423,7 @@ func (a *App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case "d":
 		// Decompose selected ticket
-		if a.client != nil {
+		if _, isClient := a.mode.Get(); isClient {
 			// Client mode: HTTP call
 			if a.currentView == ViewPlanning && a.selected < len(a.state.Backlog) {
 				ticket := a.state.Backlog[a.selected]
@@ -392,11 +431,12 @@ func (a *App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			return a, nil
 		}
-		// Legacy engine mode
-		sim := a.engine.Sim()
+		// Engine mode
+		eng, _ := a.mode.GetLeft()
+		sim := eng.Engine.Sim()
 		if a.currentView == ViewPlanning && a.selected < len(sim.Backlog) {
 			ticket := sim.Backlog[a.selected]
-			a.engine.TryDecompose(ticket.ID)
+			eng.Engine.TryDecompose(ticket.ID)
 		}
 		return a, nil
 
@@ -414,7 +454,7 @@ func (a *App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case "c":
 		// Run comparison mode (requires engine mode for local simulation)
-		if a.client != nil {
+		if _, isClient := a.mode.Get(); isClient {
 			a.statusMessage = "Comparison requires local mode (run without --client)"
 			a.statusExpiry = time.Now().Add(3 * time.Second)
 			return a, nil
@@ -425,18 +465,19 @@ func (a *App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case "e":
 		// Export simulation data (requires engine mode for local data)
-		if a.client != nil {
+		eng, isEngine := a.mode.GetLeft()
+		if !isEngine {
 			a.statusMessage = "Export requires local mode (run without --client)"
 			a.statusExpiry = time.Now().Add(3 * time.Second)
 			return a, nil
 		}
-		sim := a.engine.Sim()
+		sim := eng.Engine.Sim()
 		if len(sim.CompletedTickets) == 0 {
 			a.statusMessage = "Nothing to export - no completed tickets"
 			a.statusExpiry = time.Now().Add(3 * time.Second)
 			return a, nil
 		}
-		exporter := export.New(&sim, a.tracker, a.comparisonResult)
+		exporter := export.New(&sim, eng.Tracker, a.comparisonResult)
 		result, err := exporter.Export()
 		if err != nil {
 			a.statusMessage = fmt.Sprintf("Export failed: %v", err)
@@ -449,15 +490,16 @@ func (a *App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case "ctrl+s":
 		// Save simulation state (requires engine mode for local state)
-		if a.client != nil {
+		eng, isEngine := a.mode.GetLeft()
+		if !isEngine {
 			a.statusMessage = "Save requires local mode (run without --client)"
 			a.statusExpiry = time.Now().Add(3 * time.Second)
 			return a, nil
 		}
-		sim := a.engine.Sim()
+		sim := eng.Engine.Sim()
 		saveName := fmt.Sprintf("sim-%d-%s", sim.Seed, time.Now().Format("150405"))
 		savePath := persistence.GenerateSavePath(persistence.DefaultSavesDir(), saveName)
-		err := persistence.Save(savePath, saveName, &sim, a.tracker)
+		err := persistence.Save(savePath, saveName, &sim, eng.Tracker)
 		if err != nil {
 			a.statusMessage = fmt.Sprintf("Save failed: %v", err)
 			a.statusExpiry = time.Now().Add(5 * time.Second)
@@ -469,7 +511,8 @@ func (a *App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case "ctrl+o":
 		// Load simulation state (requires engine mode for local state)
-		if a.client != nil {
+		currentEng, isEngine := a.mode.GetLeft()
+		if !isEngine {
 			a.statusMessage = "Load requires local mode (run without --client)"
 			a.statusExpiry = time.Now().Add(3 * time.Second)
 			return a, nil
@@ -494,25 +537,37 @@ func (a *App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			a.statusExpiry = time.Now().Add(5 * time.Second)
 			return a, nil
 		}
-		// Restore state
-		a.tracker = tracker
 		// Ensure simulation has ID for event sourcing
 		if sim.ID == "" {
 			sim.ID = fmt.Sprintf("sim-%d", sim.Seed)
 		}
-		// Re-register with shared registry if available, else use standalone store
-		if !a.registry.IsZero() {
-			a.store = a.registry.Store()
-			a.engine = a.registry.RegisterSimulation(sim, tracker)
+		// Rebuild EngineMode with loaded state
+		var newStore events.Store
+		var newEngine *engine.Engine
+		reg := currentEng.Registry
+
+		if !reg.IsZero() {
+			newStore = reg.Store()
+			newEngine = reg.RegisterSimulation(sim, tracker)
 			// RegisterSimulation already calls EmitLoadedState
 		} else {
-			a.store = events.NewMemoryStore()
-			a.engine = engine.NewEngineWithStore(sim.Seed, a.store)
+			newStore = events.NewMemoryStore()
+			newEngine = engine.NewEngineWithStore(sim.Seed, newStore)
 			// Emit events to populate projection from loaded state
-			a.engine.EmitLoadedState(*sim)
+			newEngine.EmitLoadedState(*sim)
 		}
+
 		// Re-subscribe to new simulation's events
-		a.eventSub = a.store.Subscribe(sim.ID)
+		eventSub := newStore.Subscribe(sim.ID)
+
+		// Update mode with new EngineMode
+		a.mode = either.Left[EngineMode, ClientMode](EngineMode{
+			Engine:   newEngine,
+			Tracker:  tracker,
+			Store:    newStore,
+			EventSub: eventSub,
+			Registry: reg,
+		})
 		a.paused = true
 		a.statusMessage = fmt.Sprintf("Loaded %s (Day %d)", filepath.Base(latest.Path), sim.CurrentTick)
 		a.statusExpiry = time.Now().Add(3 * time.Second)
@@ -599,7 +654,7 @@ func (a *App) runSprintWithAutoAssign(eng *engine.Engine, tracker metrics.Tracke
 		if dev.IsIdle() && len(state.Backlog) > 0 {
 			ticket := state.Backlog[0]
 			// Try decomposition first based on policy
-			if children, decomposed := eng.TryDecompose(ticket.ID); decomposed {
+			if children, decomposed := eng.TryDecompose(ticket.ID).Get(); decomposed {
 				// Assign first child
 				if len(children) > 0 {
 					eng.AssignTicket(children[0].ID, dev.ID)
@@ -624,7 +679,7 @@ func (a *App) runSprintWithAutoAssign(eng *engine.Engine, tracker metrics.Tracke
 			dev := state.Developers[i]
 			if dev.IsIdle() && len(state.Backlog) > 0 {
 				ticket := state.Backlog[0]
-				if children, decomposed := eng.TryDecompose(ticket.ID); decomposed {
+				if children, decomposed := eng.TryDecompose(ticket.ID).Get(); decomposed {
 					if len(children) > 0 {
 						eng.AssignTicket(children[0].ID, dev.ID)
 					}
@@ -646,9 +701,11 @@ func (a *App) tickCmd() tea.Cmd {
 }
 
 // doHTTPTick returns a Cmd that makes an HTTP tick request.
+// Only valid in client mode - caller must verify.
 func (a *App) doHTTPTick() tea.Cmd {
+	cli, _ := a.mode.Get() // Caller verified client mode
 	return func() tea.Msg {
-		resp, err := a.client.Tick(a.simID)
+		resp, err := cli.Client.Tick(cli.SimID)
 		if err != nil {
 			return httpResultMsg{operation: "tick", err: err}
 		}
@@ -657,9 +714,11 @@ func (a *App) doHTTPTick() tea.Cmd {
 }
 
 // doHTTPStartSprint returns a Cmd that makes an HTTP start sprint request.
+// Only valid in client mode - caller must verify.
 func (a *App) doHTTPStartSprint() tea.Cmd {
+	cli, _ := a.mode.Get() // Caller verified client mode
 	return func() tea.Msg {
-		resp, err := a.client.StartSprint(a.simID)
+		resp, err := cli.Client.StartSprint(cli.SimID)
 		if err != nil {
 			return httpResultMsg{operation: "sprint", err: err}
 		}
@@ -668,14 +727,16 @@ func (a *App) doHTTPStartSprint() tea.Cmd {
 }
 
 // doHTTPAssign returns a Cmd that makes an HTTP assign request.
+// Only valid in client mode - caller must verify.
 func (a *App) doHTTPAssign(ticketID, devID string) tea.Cmd {
+	cli, _ := a.mode.Get() // Caller verified client mode
 	return func() tea.Msg {
-		err := a.client.Assign(a.simID, ticketID, devID)
+		err := cli.Client.Assign(cli.SimID, ticketID, devID)
 		if err != nil {
 			return httpResultMsg{operation: "assign", err: err}
 		}
 		// Need to fetch updated state
-		resp, err := a.client.GetSimulation(a.simID)
+		resp, err := cli.Client.GetSimulation(cli.SimID)
 		if err != nil {
 			return httpResultMsg{operation: "assign", err: err}
 		}
@@ -684,9 +745,11 @@ func (a *App) doHTTPAssign(ticketID, devID string) tea.Cmd {
 }
 
 // doHTTPSetPolicy returns a Cmd that makes an HTTP set policy request.
+// Only valid in client mode - caller must verify.
 func (a *App) doHTTPSetPolicy(policy string) tea.Cmd {
+	cli, _ := a.mode.Get() // Caller verified client mode
 	return func() tea.Msg {
-		resp, err := a.client.SetPolicy(a.simID, policy)
+		resp, err := cli.Client.SetPolicy(cli.SimID, policy)
 		if err != nil {
 			return httpResultMsg{operation: "policy", err: err}
 		}
@@ -695,9 +758,11 @@ func (a *App) doHTTPSetPolicy(policy string) tea.Cmd {
 }
 
 // doHTTPDecompose returns a Cmd that makes an HTTP decompose request.
+// Only valid in client mode - caller must verify.
 func (a *App) doHTTPDecompose(ticketID string) tea.Cmd {
+	cli, _ := a.mode.Get() // Caller verified client mode
 	return func() tea.Msg {
-		resp, err := a.client.Decompose(a.simID, ticketID)
+		resp, err := cli.Client.Decompose(cli.SimID, ticketID)
 		if err != nil {
 			return httpResultMsg{operation: "decompose", err: err}
 		}
@@ -726,10 +791,11 @@ func (a *App) View() string {
 	// Compose with lessons panel when visible
 	if a.lessonState.Visible {
 		var hasActiveSprint bool
-		if a.client != nil {
+		if _, isClient := a.mode.Get(); isClient {
 			hasActiveSprint = a.state.SprintActive
 		} else {
-			sim := a.engine.Sim()
+			eng, _ := a.mode.GetLeft()
+			sim := eng.Engine.Sim()
 			_, hasActiveSprint = sim.CurrentSprintOption.Get()
 		}
 		lesson := SelectLesson(a.currentView, a.lessonState, hasActiveSprint, a.comparisonResult != nil)
@@ -754,6 +820,15 @@ func (a *App) View() string {
 	return lipgloss.JoinVertical(lipgloss.Left, header, content, help)
 }
 
+// headerState holds values extracted from either mode for header rendering.
+type headerState struct {
+	policy         string
+	currentTick    int
+	backlogCount   int
+	completedCount int
+	seed           int64
+}
+
 func (a *App) headerView() string {
 	viewNames := []string{"Planning", "Execution", "Metrics", "Comparison"}
 	tabs := ""
@@ -765,35 +840,36 @@ func (a *App) headerView() string {
 		tabs += style.Render(fmt.Sprintf(" %s ", name))
 	}
 
-	// Get values from state source (client mode vs engine mode)
-	var policy string
-	var currentTick, backlogCount, completedCount int
-	var seed int64
+	// Extract header state using Fold for exhaustive pattern matching
+	h := either.Fold(a.mode,
+		func(eng EngineMode) headerState {
+			sim := eng.Engine.Sim()
+			return headerState{
+				policy:         sim.SizingPolicy.String(),
+				currentTick:    sim.CurrentTick,
+				backlogCount:   len(sim.Backlog),
+				completedCount: len(sim.CompletedTickets),
+				seed:           sim.Seed,
+			}
+		},
+		func(_ ClientMode) headerState {
+			return headerState{
+				policy:         a.state.SizingPolicy,
+				currentTick:    a.state.CurrentTick,
+				backlogCount:   a.state.BacklogCount,
+				completedCount: a.state.CompletedTicketCount,
+				seed:           a.state.Seed,
+			}
+		},
+	)
 
-	if a.client != nil {
-		// Client mode: use HTTP state
-		policy = a.state.SizingPolicy
-		currentTick = a.state.CurrentTick
-		backlogCount = a.state.BacklogCount
-		completedCount = a.state.CompletedTicketCount
-		seed = a.state.Seed
-	} else {
-		// Engine mode: use local simulation
-		sim := a.engine.Sim()
-		policy = sim.SizingPolicy.String()
-		currentTick = sim.CurrentTick
-		backlogCount = len(sim.Backlog)
-		completedCount = len(sim.CompletedTickets)
-		seed = sim.Seed
-	}
-
-	policyStr := fmt.Sprintf("Policy: %s", policy)
+	policyStr := fmt.Sprintf("Policy: %s", h.policy)
 	status := "PAUSED"
 	if !a.paused {
 		status = "RUNNING"
 	}
 
-	right := MutedStyle.Render(fmt.Sprintf("%s | %s | Day %d | Backlog: %d | Done: %d | Seed %d", policyStr, status, currentTick, backlogCount, completedCount, seed))
+	right := MutedStyle.Render(fmt.Sprintf("%s | %s | Day %d | Backlog: %d | Done: %d | Seed %d", policyStr, status, h.currentTick, h.backlogCount, h.completedCount, h.seed))
 
 	return BoxStyle.Width(a.width - 2).Render(
 		lipgloss.JoinHorizontal(lipgloss.Top, tabs, "  ", right),

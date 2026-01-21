@@ -32,7 +32,7 @@ func (a *App) executionView() string {
 }
 
 func (a *App) sprintProgress() string {
-	if a.client != nil {
+	if _, isClient := a.mode.Get(); isClient {
 		// Client mode: use HTTP state
 		if !a.state.SprintActive || a.state.Sprint == nil {
 			return MutedStyle.Render("No active sprint")
@@ -60,7 +60,8 @@ func (a *App) sprintProgress() string {
 	}
 
 	// Engine mode: use local simulation
-	sim := a.engine.Sim()
+	eng, _ := a.mode.GetLeft()
+	sim := eng.Engine.Sim()
 	sprint, ok := sim.CurrentSprintOption.Get()
 	if !ok {
 		return MutedStyle.Render("No active sprint")
@@ -85,7 +86,7 @@ func (a *App) activeWorkPanel() string {
 
 	var rows []string
 
-	if a.client != nil {
+	if _, isClient := a.mode.Get(); isClient {
 		// Client mode: use HTTP state
 		for _, dev := range a.state.Developers {
 			if dev.IsIdle {
@@ -120,7 +121,8 @@ func (a *App) activeWorkPanel() string {
 		}
 	} else {
 		// Engine mode: use local simulation
-		sim := a.engine.Sim()
+		eng, _ := a.mode.GetLeft()
+		sim := eng.Engine.Sim()
 		for _, dev := range sim.Developers {
 			if dev.IsIdle() {
 				row := fmt.Sprintf("%-8s %s", dev.Name, MutedStyle.Render("[idle]"))
@@ -168,7 +170,7 @@ func (a *App) activeWorkPanel() string {
 func (a *App) feverPanel() string {
 	title := TitleStyle.Render("Fever Chart")
 
-	if a.client != nil {
+	if _, isClient := a.mode.Get(); isClient {
 		// Client mode: use HTTP state
 		if !a.state.SprintActive || a.state.Sprint == nil {
 			return lipgloss.JoinVertical(lipgloss.Left, title, MutedStyle.Render("No active sprint"))
@@ -199,7 +201,8 @@ func (a *App) feverPanel() string {
 	}
 
 	// Engine mode: use local simulation
-	sim := a.engine.Sim()
+	eng, _ := a.mode.GetLeft()
+	sim := eng.Engine.Sim()
 	sprint, ok := sim.CurrentSprintOption.Get()
 	if !ok {
 		return lipgloss.JoinVertical(lipgloss.Left, title, MutedStyle.Render("No active sprint"))

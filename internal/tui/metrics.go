@@ -29,7 +29,7 @@ func (a *App) doraPanel() string {
 	var leadTimeAvg, deployFreq, mttrAvg, cfrPct float64
 	var leadTimeSparkline, deployFreqSparkline, mttrSparkline, cfrSparkline string
 
-	if a.client != nil {
+	if _, isClient := a.mode.Get(); isClient {
 		// Client mode: use HTTP state with history for sparklines
 		leadTimeAvg = a.state.Metrics.LeadTimeAvgDays
 		deployFreq = a.state.Metrics.DeployFrequency
@@ -51,7 +51,8 @@ func (a *App) doraPanel() string {
 		cfrSparkline = a.sparkline(cfrs)
 	} else {
 		// Engine mode: use local tracker with sparklines
-		dora := a.tracker.DORA
+		eng, _ := a.mode.GetLeft()
+		dora := eng.Tracker.DORA
 
 		leadTimeAvg = dora.LeadTimeAvgDays()
 		deployFreq = dora.DeployFrequency
@@ -142,7 +143,7 @@ func (a *App) historyPanel() string {
 	var completedCount, totalIncidents int
 	var policy string
 
-	if a.client != nil {
+	if _, isClient := a.mode.Get(); isClient {
 		// Client mode: use HTTP state
 		completedCount = len(a.state.CompletedTickets)
 		totalIncidents = a.state.TotalIncidents
@@ -172,7 +173,8 @@ func (a *App) historyPanel() string {
 		}
 	} else {
 		// Engine mode: use local simulation
-		sim := a.engine.Sim()
+		eng, _ := a.mode.GetLeft()
+		sim := eng.Engine.Sim()
 		completedCount = len(sim.CompletedTickets)
 		totalIncidents = sim.TotalIncidents()
 		policy = sim.SizingPolicy.String()

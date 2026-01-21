@@ -12,14 +12,16 @@ import (
 
 // Client provides HTTP communication with the simulation API server.
 // Uses 5s timeout and X-Request-ID header for request deduplication.
+// Value type: contains *http.Client reference but doesn't mutate own fields.
 type Client struct {
 	baseURL    string
 	httpClient *http.Client
 }
 
 // NewClient creates a new HTTP client for the given base URL.
-func NewClient(baseURL string) *Client {
-	return &Client{
+// Returns value type - the *http.Client inside is shared across copies.
+func NewClient(baseURL string) Client {
+	return Client{
 		baseURL: baseURL,
 		httpClient: &http.Client{
 			Timeout: 5 * time.Second,
@@ -114,7 +116,7 @@ type CreateSimulationResponse struct {
 }
 
 // CreateSimulation creates a new simulation via HTTP API.
-func (c *Client) CreateSimulation(seed int64, policy string) (*CreateSimulationResponse, error) {
+func (c Client) CreateSimulation(seed int64, policy string) (*CreateSimulationResponse, error) {
 	body := CreateSimulationRequest{Seed: seed, Policy: policy}
 	jsonBody, err := json.Marshal(body)
 	if err != nil {
@@ -152,7 +154,7 @@ type TickResponse struct {
 }
 
 // Tick advances the simulation by one tick.
-func (c *Client) Tick(simID string) (*TickResponse, error) {
+func (c Client) Tick(simID string) (*TickResponse, error) {
 	req, err := http.NewRequest("POST", c.baseURL+"/simulations/"+simID+"/tick", nil)
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
@@ -183,7 +185,7 @@ type AssignRequest struct {
 }
 
 // Assign assigns a ticket to a developer.
-func (c *Client) Assign(simID, ticketID, devID string) error {
+func (c Client) Assign(simID, ticketID, devID string) error {
 	body := AssignRequest{TicketID: ticketID, DeveloperID: devID}
 	jsonBody, err := json.Marshal(body)
 	if err != nil {
@@ -210,7 +212,7 @@ func (c *Client) Assign(simID, ticketID, devID string) error {
 }
 
 // StartSprint starts a new sprint for the simulation.
-func (c *Client) StartSprint(simID string) (*HALResponse, error) {
+func (c Client) StartSprint(simID string) (*HALResponse, error) {
 	req, err := http.NewRequest("POST", c.baseURL+"/simulations/"+simID+"/sprints", nil)
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
@@ -235,7 +237,7 @@ func (c *Client) StartSprint(simID string) (*HALResponse, error) {
 }
 
 // GetSimulation fetches the current state of a simulation.
-func (c *Client) GetSimulation(simID string) (*HALResponse, error) {
+func (c Client) GetSimulation(simID string) (*HALResponse, error) {
 	req, err := http.NewRequest("GET", c.baseURL+"/simulations/"+simID, nil)
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
@@ -264,7 +266,7 @@ type UpdateSimulationRequest struct {
 }
 
 // SetPolicy updates the sizing policy for a simulation.
-func (c *Client) SetPolicy(simID string, policy string) (*HALResponse, error) {
+func (c Client) SetPolicy(simID string, policy string) (*HALResponse, error) {
 	body := UpdateSimulationRequest{Policy: policy}
 	jsonBody, err := json.Marshal(body)
 	if err != nil {
@@ -309,7 +311,7 @@ type DecomposeResponse struct {
 }
 
 // Decompose attempts to decompose a ticket into smaller tasks.
-func (c *Client) Decompose(simID, ticketID string) (*DecomposeResponse, error) {
+func (c Client) Decompose(simID, ticketID string) (*DecomposeResponse, error) {
 	body := DecomposeRequest{TicketID: ticketID}
 	jsonBody, err := json.Marshal(body)
 	if err != nil {

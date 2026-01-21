@@ -75,49 +75,92 @@ func TestEngine_FullSimulationRun(t *testing.T) {
 	}
 }
 
-// Integration test: decomposition works end-to-end
-func TestEngine_DecompositionIntegration(t *testing.T) {
-	sim := model.NewSimulation(model.PolicyDORAStrict, 12345)
-
-	// Large ticket that should be decomposed under DORA policy
-	sim.AddTicket(model.NewTicket("TKT-001", "Large feature", 10, model.MediumUnderstanding))
-
-	eng := engine.NewEngine(sim.Seed)
-	eng.EmitLoadedState(*sim) // Sync projection with sim state
-	children, decomposed := eng.TryDecompose("TKT-001")
-
-	if !decomposed {
-		t.Error("Expected ticket to be decomposed under DORA policy")
+// Integration test: decomposition with Either return type
+// Tests all three cases: not found, policy forbids, and success
+func TestEngine_TryDecompose_Either(t *testing.T) {
+	tests := []struct {
+		name       string
+		policy     model.SizingPolicy
+		ticketID   string
+		ticketSize float64
+		wantLeft   bool
+		wantReason string
+	}{
+		{
+			name:       "ticket not found returns Left",
+			policy:     model.PolicyDORAStrict,
+			ticketID:   "NONEXISTENT",
+			ticketSize: 10,
+			wantLeft:   true,
+			wantReason: "ticket not found",
+		},
+		{
+			name:       "policy forbids decomposition returns Left",
+			policy:     model.PolicyNone, // No decomposition policy
+			ticketID:   "TKT-001",
+			ticketSize: 10,
+			wantLeft:   true,
+			wantReason: "policy forbids decomposition",
+		},
+		{
+			name:       "successful decomposition returns Right",
+			policy:     model.PolicyDORAStrict, // Decomposes large tickets
+			ticketID:   "TKT-001",
+			ticketSize: 10, // Large enough to trigger decomposition
+			wantLeft:   false,
+		},
 	}
 
-	if len(children) < 2 {
-		t.Errorf("Expected 2+ children, got %d", len(children))
-	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sim := model.NewSimulation(tt.policy, 12345)
 
-	// Read from projection, not sim
-	state := eng.Sim()
+			// Only add ticket if we're testing with a real ticket
+			if tt.ticketID == "TKT-001" {
+				sim.AddTicket(model.NewTicket("TKT-001", "Large feature", tt.ticketSize, model.MediumUnderstanding))
+			}
 
-	// Original should be removed from backlog
-	for _, ticket := range state.Backlog {
-		if ticket.ID == "TKT-001" {
-			t.Error("Original ticket should be removed from backlog after decomposition")
-		}
-	}
+			eng := engine.NewEngine(sim.Seed)
+			eng.EmitLoadedState(*sim)
 
-	// Children should be in backlog (by ID, since ParentID not set by projection)
-	childIDs := make(map[string]bool)
-	for _, child := range children {
-		childIDs[child.ID] = true
-	}
-	childrenInBacklog := 0
-	for _, ticket := range state.Backlog {
-		if childIDs[ticket.ID] {
-			childrenInBacklog++
-		}
-	}
+			result := eng.TryDecompose(tt.ticketID)
 
-	if childrenInBacklog != len(children) {
-		t.Errorf("Expected %d children in backlog, found %d", len(children), childrenInBacklog)
+			if tt.wantLeft {
+				notDecomp, ok := result.GetLeft()
+				if !ok {
+					t.Errorf("Expected Left (NotDecomposable), got Right")
+					return
+				}
+				if notDecomp.Reason != tt.wantReason {
+					t.Errorf("Reason = %q, want %q", notDecomp.Reason, tt.wantReason)
+				}
+			} else {
+				children, ok := result.Get()
+				if !ok {
+					t.Errorf("Expected Right (children), got Left")
+					return
+				}
+				if len(children) < 2 {
+					t.Errorf("Expected 2+ children, got %d", len(children))
+				}
+
+				// Verify children are in backlog
+				state := eng.Sim()
+				childIDs := make(map[string]bool)
+				for _, child := range children {
+					childIDs[child.ID] = true
+				}
+				childrenInBacklog := 0
+				for _, ticket := range state.Backlog {
+					if childIDs[ticket.ID] {
+						childrenInBacklog++
+					}
+				}
+				if childrenInBacklog != len(children) {
+					t.Errorf("Expected %d children in backlog, found %d", len(children), childrenInBacklog)
+				}
+			}
+		})
 	}
 }
 

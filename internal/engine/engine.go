@@ -4,10 +4,17 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/binaryphile/fluentfp/either"
 	"github.com/binaryphile/fluentfp/slice"
 	"github.com/binaryphile/sofdevsim-2026/internal/events"
 	"github.com/binaryphile/sofdevsim-2026/internal/model"
 )
+
+// NotDecomposable explains why decomposition didn't happen.
+// Value type: no pointers, use value semantics.
+type NotDecomposable struct {
+	Reason string
+}
 
 // Engine runs the simulation tick loop.
 // Pointer receiver: mutates proj field.
@@ -320,17 +327,18 @@ func (e *Engine) AssignTicket(ticketID, devID string) error {
 	return nil
 }
 
-// TryDecompose applies sizing policy and decomposes if needed
-func (e *Engine) TryDecompose(ticketID string) ([]model.Ticket, bool) {
+// TryDecompose applies sizing policy and decomposes if needed.
+// Returns Either[NotDecomposable, []Ticket]: Left explains why not, Right has children.
+func (e *Engine) TryDecompose(ticketID string) either.Either[NotDecomposable, []model.Ticket] {
 	ticketIdx := e.state().FindBacklogTicketIndex(ticketID)
 	if ticketIdx == -1 {
-		return nil, false
+		return either.Left[NotDecomposable, []model.Ticket](NotDecomposable{Reason: "ticket not found"})
 	}
 
 	ticket := e.state().Backlog[ticketIdx]
 
 	if !e.policies.ShouldDecompose(ticket, e.state().SizingPolicy) {
-		return nil, false
+		return either.Left[NotDecomposable, []model.Ticket](NotDecomposable{Reason: "policy forbids decomposition"})
 	}
 
 	children := e.policies.Decompose(ticket)
@@ -361,7 +369,7 @@ func (e *Engine) TryDecompose(ticketID string) ([]model.Ticket, bool) {
 		}
 	}
 
-	return result, true
+	return either.Right[NotDecomposable](result)
 }
 
 // AddDeveloper adds a developer and emits DeveloperAdded event.

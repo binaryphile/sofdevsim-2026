@@ -195,12 +195,12 @@ func TestClient_Idempotency(t *testing.T) {
 func TestClient_ErrorHandling(t *testing.T) {
 	tests := []struct {
 		name    string
-		fn      func(*Client) error
+		fn      func(Client) error
 		wantErr bool
 	}{
 		{
 			name: "tick without sprint returns error",
-			fn: func(c *Client) error {
+			fn: func(c Client) error {
 				resp, _ := c.CreateSimulation(42, "")
 				_, err := c.Tick(resp.Simulation.ID)
 				return err
@@ -209,7 +209,7 @@ func TestClient_ErrorHandling(t *testing.T) {
 		},
 		{
 			name: "tick nonexistent simulation returns error",
-			fn: func(c *Client) error {
+			fn: func(c Client) error {
 				_, err := c.Tick("nonexistent")
 				return err
 			},

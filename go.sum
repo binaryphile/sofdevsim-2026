@@ -2,10 +2,8 @@ github.com/NimbleMarkets/ntcharts v0.3.1 h1:EH4O80RMy5rqDmZM7aWjTbCSuRDDJ5fXOv/q
 github.com/NimbleMarkets/ntcharts v0.3.1/go.mod h1:zVeRqYkh2n59YPe1bflaSL4O2aD2ZemNmrbdEqZ70hk=
 github.com/aymanbagabas/go-osc52/v2 v2.0.1 h1:HwpRHbFMcZLEVr42D4p7XBqjyuxQH5SMiErDT4WkJ2k=
 github.com/aymanbagabas/go-osc52/v2 v2.0.1/go.mod h1:uYgXzlJ7ZpABp8OJ+exZzJJhRNQ2ASbcXHWsFqH8hp8=
-github.com/binaryphile/fluentfp v0.6.0 h1:a+K746kItpVPoPlQ6GfQfvK6xKIEH5wTzHjcerTBXGk=
-github.com/binaryphile/fluentfp v0.6.0/go.mod h1:vPlnsRESNRr67jS4EWGwMI8Gn/o50x35dGQjN/xWqcw=
-github.com/binaryphile/fluentfp v0.7.0 h1:LgrvNs0oVLAXJlwbFP30HGoEsAlCBaDLUbpfhTuucrc=
-github.com/binaryphile/fluentfp v0.7.0/go.mod h1:vPlnsRESNRr67jS4EWGwMI8Gn/o50x35dGQjN/xWqcw=
+github.com/binaryphile/fluentfp v0.8.1 h1:KnxVEy53m5VQwCanbvCE5zvNQSoFHOyaWYLqlbvsmbI=
+github.com/binaryphile/fluentfp v0.8.1/go.mod h1:vPlnsRESNRr67jS4EWGwMI8Gn/o50x35dGQjN/xWqcw=
 github.com/charmbracelet/bubbles v0.20.0 h1:jSZu6qD8cRQ6k9OMfR1WlM+ruM8fkPWkHvQWD9LIutE=
 github.com/charmbracelet/bubbles v0.20.0/go.mod h1:39slydyswPy+uVOHZ5x/GjwVAFkCsV8IIVy+4MhzwwU=
 github.com/charmbracelet/bubbletea v1.3.10 h1:otUDHWMMzQSB0Pkc87rm691KZ3SWa4KUlvF9nRvCICw=

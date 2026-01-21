@@ -15,8 +15,10 @@ func TestNewAppWithSeed_Reproducibility(t *testing.T) {
 	app1 := NewAppWithSeed(42)
 	app2 := NewAppWithSeed(42)
 
-	sim1 := app1.engine.Sim()
-	sim2 := app2.engine.Sim()
+	eng1, _ := app1.mode.GetLeft()
+	eng2, _ := app2.mode.GetLeft()
+	sim1 := eng1.Engine.Sim()
+	sim2 := eng2.Engine.Sim()
 
 	if sim1.Backlog[0].ID != sim2.Backlog[0].ID {
 		t.Errorf("Seed 42 should produce identical backlogs, got %s and %s",
@@ -35,8 +37,10 @@ func TestNewAppWithSeed_ZeroUsesRandomSeed(t *testing.T) {
 	time.Sleep(time.Nanosecond) // Ensure different time
 	app2 := NewAppWithSeed(0)
 
-	sim1 := app1.engine.Sim()
-	sim2 := app2.engine.Sim()
+	eng1, _ := app1.mode.GetLeft()
+	eng2, _ := app2.mode.GetLeft()
+	sim1 := eng1.Engine.Sim()
+	sim2 := eng2.Engine.Sim()
 
 	// Different seeds should (almost always) produce different backlogs
 	// This is probabilistic but failure is astronomically unlikely
@@ -48,12 +52,13 @@ func TestNewAppWithSeed_ZeroUsesRandomSeed(t *testing.T) {
 // TestSprintEndsWhenDurationReached verifies sprint is cleared after end day.
 func TestSprintEndsWhenDurationReached(t *testing.T) {
 	app := NewAppWithSeed(42)
-	app.engine.StartSprint() // Use engine to emit events
+	eng, _ := app.mode.GetLeft()
+	eng.Engine.StartSprint() // Use engine to emit events
 	app.paused = false              // Enable tick processing
 	app.currentView = ViewExecution // Required for tick processing
 
 	// Get sprint end day from engine projection
-	sim := app.engine.Sim()
+	sim := eng.Engine.Sim()
 	sprint, ok := sim.CurrentSprintOption.Get()
 	if !ok {
 		t.Fatal("Expected sprint to be started")
@@ -65,7 +70,8 @@ func TestSprintEndsWhenDurationReached(t *testing.T) {
 	}
 
 	// Sprint should be cleared in projection
-	sim = app.engine.Sim()
+	eng, _ = app.mode.GetLeft()
+	sim = eng.Engine.Sim()
 	if _, ok := sim.CurrentSprintOption.Get(); ok {
 		t.Error("Sprint should be cleared after end day reached")
 	}
@@ -78,15 +84,16 @@ func TestSprintEndsWhenDurationReached(t *testing.T) {
 func TestNewAppWithRegistry_SubscribesToEvents(t *testing.T) {
 	reg := registry.NewSimRegistry()
 	app := NewAppWithRegistry(42, reg)
+	eng, _ := app.mode.GetLeft()
 
 	// TUI should have a subscription channel
-	if app.eventSub == nil {
-		t.Fatal("Expected eventSub channel to be set")
+	if eng.EventSub == nil {
+		t.Fatal("Expected EventSub channel to be set")
 	}
 
 	// TUI should be registered in the shared registry
 	// (accessible via API)
-	sim := app.engine.Sim()
+	sim := eng.Engine.Sim()
 	evts := reg.Store().Replay(sim.ID)
 	if len(evts) == 0 {
 		t.Error("Expected SimulationCreated event in shared store")
@@ -96,9 +103,10 @@ func TestNewAppWithRegistry_SubscribesToEvents(t *testing.T) {
 // TestNewAppWithSeed_ProjectionHasInitialState verifies projection has devs and tickets.
 func TestNewAppWithSeed_ProjectionHasInitialState(t *testing.T) {
 	app := NewAppWithSeed(42)
+	eng, _ := app.mode.GetLeft()
 
 	// Projection should have the developers
-	sim := app.engine.Sim()
+	sim := eng.Engine.Sim()
 	if len(sim.Developers) != 3 {
 		t.Errorf("Projection should have 3 developers, got %d", len(sim.Developers))
 	}
@@ -118,14 +126,15 @@ func TestNewAppWithSeed_ProjectionHasInitialState(t *testing.T) {
 func TestTUI_ReceivesExternalEvents(t *testing.T) {
 	reg := registry.NewSimRegistry()
 	app := NewAppWithRegistry(42, reg)
+	eng, _ := app.mode.GetLeft()
 
 	// Simulate API starting a sprint (external to TUI)
 	// This goes through the same engine, which emits to shared store
-	app.engine.StartSprint()
+	eng.Engine.StartSprint()
 
 	// TUI should receive the event via subscription
 	select {
-	case evt := <-app.eventSub:
+	case evt := <-eng.EventSub:
 		if evt.EventType() != "SprintStarted" {
 			t.Errorf("Expected SprintStarted event, got %s", evt.EventType())
 		}
@@ -220,8 +229,8 @@ func TestApp_DisablesWhileInFlight(t *testing.T) {
 	}
 }
 
-// TestApp_HasClientField verifies app has client field instead of engine.
-func TestApp_HasClientField(t *testing.T) {
+// TestApp_HasClientMode verifies app is in client mode when created with NewAppWithClient.
+func TestApp_HasClientMode(t *testing.T) {
 	reg := api.NewSimRegistry()
 	srv := httptest.NewServer(api.NewRouter(reg))
 	defer srv.Close()
@@ -234,9 +243,15 @@ func TestApp_HasClientField(t *testing.T) {
 
 	app := NewAppWithClient(client, createResp.Simulation)
 
-	// App should have client field
-	if app.client == nil {
-		t.Error("Expected app.client to be set")
+	// App should be in client mode (Right variant)
+	cli, isClient := app.mode.Get()
+	if !isClient {
+		t.Error("Expected app to be in client mode")
+	}
+
+	// App should have client in mode (check internal httpClient is set)
+	if cli.Client.httpClient == nil {
+		t.Error("Expected cli.Client.httpClient to be non-nil")
 	}
 
 	// App should have state field (SimulationState from HTTP)
@@ -244,8 +259,8 @@ func TestApp_HasClientField(t *testing.T) {
 		t.Error("Expected app.state.ID to be set")
 	}
 
-	// App should have simID field
-	if app.simID == "" {
-		t.Error("Expected app.simID to be set")
+	// App should have simID in mode
+	if cli.SimID == "" {
+		t.Error("Expected cli.SimID to be non-empty")
 	}
 }

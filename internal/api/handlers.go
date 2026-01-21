@@ -485,7 +485,7 @@ func (r SimRegistry) HandleDecompose(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	children, decomposed := inst.Engine.TryDecompose(body.TicketID)
+	result := inst.Engine.TryDecompose(body.TicketID)
 
 	// toTicketStates converts model.Ticket slice to TicketState slice.
 	toTicketStates := func(tickets []model.Ticket) []TicketState {
@@ -496,6 +496,7 @@ func (r SimRegistry) HandleDecompose(w http.ResponseWriter, req *http.Request) {
 		return result
 	}
 
+	children, decomposed := result.Get()
 	state := ToState(inst.Engine.Sim(), inst.Tracker)
 	response := DecomposeResponse{
 		Decomposed: decomposed,

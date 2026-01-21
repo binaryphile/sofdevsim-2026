@@ -166,6 +166,107 @@ For optional values, prefer `option.Basic[T]` over `*T`:
 **Use pointers for:** `sync.Mutex` fields, interface requirements, external handles, or profiled hot paths >10MB.
 **Use options for:** "This value may not exist" semantics.
 
+### either Package
+
+Either represents a value that is one of two possible types (Left or Right). Convention: Left = failure/alternative, Right = success/primary.
+
+```go
+import "github.com/binaryphile/fluentfp/either"
+
+// Creating Either values
+either.Left[L, R](l L) Either[L, R]   // Create Left variant
+either.Right[L, R](r R) Either[L, R]  // Create Right variant
+
+// Accessing values (comma-ok pattern)
+.Get() (R, bool)                      // Get Right value
+.GetLeft() (L, bool)                  // Get Left value
+.IsLeft() bool                        // Check if Left
+.IsRight() bool                       // Check if Right
+.MustGet() R                          // Right value or panic
+.MustGetLeft() L                      // Left value or panic
+
+// Defaults
+.GetOrElse(default R) R               // Right value or default
+.LeftOrElse(default L) L              // Left value or default
+.GetOrCall(fn func() R) R             // Right value or lazy default
+.LeftOrCall(fn func() L) L            // Left value or lazy default
+
+// Transforming
+either.Fold(e, leftFn, rightFn) T     // Exhaustive pattern match
+either.Map(e, fn func(R) R2) Either[L, R2]    // Transform Right (type-changing)
+either.MapLeft(e, fn func(L) L2) Either[L2, R] // Transform Left (type-changing)
+.Map(fn func(R) R) Either[L, R]       // Transform Right (same type)
+
+// Side effects
+.Call(fn func(R))                     // Execute fn if Right
+.CallLeft(fn func(L))                 // Execute fn if Left
+```
+
+### either Patterns
+
+**Mutually exclusive modes** - when a struct can be in one of two states:
+
+```go
+// BAD: Two nullable fields with scattered nil checks
+type App struct {
+    client *Client        // nil when engine mode
+    engine *engine.Engine // nil when client mode
+}
+if a.client != nil { /* client mode */ }
+
+// GOOD: Explicit Either with grouped mode state
+type ClientMode struct {
+    Client *Client
+    SimID  string
+}
+
+type EngineMode struct {
+    Engine  *engine.Engine
+    Tracker metrics.Tracker
+}
+
+type App struct {
+    mode either.Either[EngineMode, ClientMode]
+}
+
+// Access with Fold for exhaustive handling
+simID := either.Fold(a.mode,
+    func(eng EngineMode) string { return eng.Engine.Sim().ID },
+    func(cli ClientMode) string { return cli.SimID },
+)
+```
+
+**Operation that can fail with reason** - when you need more than just success/failure:
+
+```go
+// BAD: Boolean gives no context on why
+func (e *Engine) TryDecompose(id string) ([]Ticket, bool)
+
+// GOOD: Either provides failure reason
+type NotDecomposable struct {
+    Reason string // "not found", "policy forbids", etc.
+}
+
+func (e *Engine) TryDecompose(id string) either.Either[NotDecomposable, []Ticket]
+
+// Caller can handle with context
+result := engine.TryDecompose("TKT-001")
+if tickets, ok := result.Get(); ok {
+    // Use tickets
+} else if notDecomp, ok := result.GetLeft(); ok {
+    log.Printf("Cannot decompose: %s", notDecomp.Reason)
+}
+```
+
+### Either vs Option
+
+| Pattern | Use | Example |
+|---------|-----|---------|
+| `option.Basic[T]` | Value may be absent | Database nullable field |
+| `either.Either[L, R]` | One of two distinct states | Mode A or Mode B |
+
+Option is for "maybe nothing." Either is for "definitely something, but which one?"
+
 ### must Package
 
 ```go
@@ -508,12 +609,28 @@ func (d *Developer) Assign(id string) {
 
 The `With*` pattern makes mutation explicit at call sites. The trade-off is slightly more verbose call sites (`dev = dev.WithTicket(...)` vs `dev.WithTicket(...)`), but the explicitness aids comprehension.
 
-**When pointers still make sense:**
+**When structs REQUIRE pointer semantics:**
 
-- **`sync.Mutex` fields** - Must not be copied.
+- **`sync.Mutex` fields** - Must not be copied after first use. This is the primary case.
+- **Other sync primitives** - `sync.WaitGroup`, `sync.Cond`, `sync.Once`, etc.
+
+**When pointers are a choice, not a requirement:**
+
 - **Interface satisfaction** - When an interface requires pointer receivers.
-- **External handles** - Database connections, network handles.
 - **Profiled hot paths >10MB** - Only after benchmarking proves copying is expensive.
+
+**Containing pointers doesn't require pointer semantics:** A struct containing `*http.Client` or `*rand.Rand` can still use value receivers. When the struct is copied, both copies share the same underlying pointer. Example:
+```go
+// Client is a value type - copying shares the *http.Client
+type Client struct {
+    baseURL    string
+    httpClient *http.Client  // shared across copies
+}
+
+func (c Client) Get(url string) (*Response, error) {
+    return c.httpClient.Get(c.baseURL + url)  // uses shared client
+}
+```
 
 **Slices don't require pointers:** Slices are already reference types - copying a struct with a slice copies only the 24-byte header (pointer + len + cap), NOT the underlying array. Benchmarks show slice-of-values is 24x faster than slice-of-pointers due to heap allocation overhead.
 
