@@ -17972,3 +17972,415 @@ Added idempotency to Projection.Apply. Duplicate events (same EventID) now retur
 
 **Why it matters:**
 Prevents state corruption from duplicate event processing. Critical for persistence (loading saved state twice won't corrupt). Foundation for ES compliance (§15 Idempotency).
+
+---
+
+## Approved Contract: 2026-01-21
+
+# Phase 6C Contract: Event Versioning
+
+**Created:** 2026-01-21
+
+## Step 1 Checklist
+- [x] 1a: Presented understanding
+- [x] 1b: Asked clarifying questions
+- [x] 1b-answer: Received answers (upcasts in Replay+Subscribe, broader philosophy in docs)
+- [x] 1c: Contract created (this file)
+- [x] 1d: Approval received
+- [x] 1e: Plan + contract archived
+
+## Objective
+
+Add event versioning infrastructure with upcasting for schema evolution. Document both the implementation and the broader philosophy.
+
+## Success Criteria
+
+- [ ] Upcaster is immutable value type (no Register method, value receiver)
+- [ ] `DefaultUpcaster.Apply(evt)` returns unchanged when no transform registered
+- [ ] `MemoryStore` accepts optional `Upcaster` (defaults to `DefaultUpcaster`)
+- [ ] `Store.Replay` applies upcasts before returning events
+- [ ] `Store.Subscribe` applies upcasts to live events
+- [ ] CLAUDE.md documents versioning strategy + philosophy
+- [ ] All tests pass
+
+## Approach (TDD Order)
+
+**Cycle 1: Upcaster scaffold (RED → GREEN)**
+1. RED: Write TestUpcaster_Apply_NoTransform
+   - Create event, apply to DefaultUpcaster
+   - Assert returned event unchanged (same EventID)
+   - Test fails: Upcaster type doesn't exist
+2. GREEN: Create `internal/events/upcasting.go` with minimal implementation
+   ```go
+   type Upcaster struct {
+       transforms map[string]func(Event) Event
+   }
+
+   var DefaultUpcaster = newUpcaster()
+
+   func newUpcaster() Upcaster {
+       return Upcaster{
+           transforms: map[string]func(Event) Event{},
+       }
+   }
+
+   // Minimal: just pass through (no transform lookup yet)
+   func (u Upcaster) Apply(evt Event) Event {
+       return evt
+   }
+   ```
+3. Verify test passes
+
+**Cycle 2: Transform invocation (RED → GREEN)**
+1. RED: Write TestUpcaster_Apply_WithTransform
+   - Create custom Upcaster with transform that modifies event
+   - Apply event, assert transformation occurred
+   - Test fails: Apply doesn't look up transforms yet
+2. GREEN: Add transform lookup to Apply
+   ```go
+   func (u Upcaster) Apply(evt Event) Event {
+       if fn, ok := u.transforms[evt.EventType()]; ok {
+           return fn(evt)
+       }
+       return evt
+   }
+   ```
+3. Verify test passes
+
+**Cycle 3: Injectable Upcaster in Store (RED → GREEN)**
+1. RED: Write TestMemoryStore_Replay_AppliesUpcasts
+   - Create MemoryStore with custom Upcaster that marks events
+   - Store event, replay, verify upcast applied
+   - Test fails: MemoryStore doesn't accept Upcaster
+2. GREEN: Add `upcaster Upcaster` field to MemoryStore
+   - `NewMemoryStore()` uses `DefaultUpcaster`
+   - `NewMemoryStoreWithUpcaster(u Upcaster)` for testing
+   - Replay uses fluentfp per Go Dev Guide §9:
+     ```go
+     return slice.From(m.events[simID]).Convert(m.upcaster.Apply)
+     ```
+3. Verify test passes
+
+**Cycle 4: Subscribe applies upcasts (RED → GREEN)**
+1. RED: Write TestMemoryStore_Subscribe_AppliesUpcasts
+   - Create store with custom Upcaster
+   - Subscribe, append event, verify upcast applied to received event
+   - Test fails: Subscribe doesn't apply upcasts
+2. GREEN: Update notification loop to apply `m.upcaster.Apply(e)`
+3. Verify test passes
+
+**Cycle 5: Benchmark (Go Dev Guide §8)**
+1. Add BenchmarkUpcaster_Apply_NoTransform
+   - Measure baseline: Apply with no matching transform
+2. Add BenchmarkUpcaster_Apply_WithTransform
+   - Measure overhead: Apply with transform lookup + invocation
+3. Target: < 100ns/op for pass-through (map lookup only)
+
+**Cycle 6: Documentation**
+Add to CLAUDE.md:
+- Event versioning philosophy (why no version numbers in events)
+- **All strategies from ES guide §11:**
+  - Upcasting (our approach): Transform old events on read
+  - Versioned types: `TicketAssignedV1`, `TicketAssignedV2` (explicit, type proliferation)
+  - Weak schema: JSON with optional fields (flexible, runtime errors)
+  - Copy-transform: Migrate entire store (clean slate, downtime)
+- Rule of thumb: Add fields freely (with defaults), rename/remove needs upcast
+- **Trade-off of typed vs raw storage:**
+  - Our approach: gob-encoded typed events → upcast `Event` → `Event`
+  - ES guide approach: JSON/bytes → upcast `RawEvent` → `Event`
+  - Implication: Old event types must remain in codebase (acceptable for simulation)
+- Upcast registry location and pattern
+- Example upcast function
+- **Future work:** Event metadata (correlation ID, causation ID per §11)
+
+## Design Decisions
+
+**Typed vs Raw Events (ES Guide §11 alignment):** The ES guide shows upcasting from `RawEvent` (bytes/JSON) to typed `Event`. Our implementation upcasts typed `Event` → `Event` because:
+- We use gob serialization (typed, not raw bytes)
+- Simulation has no production data requiring migration
+- Old event types remain in codebase (acceptable for bounded scope)
+- Trade-off documented in CLAUDE.md for future reference
+
+**Testability:** MemoryStore accepts optional Upcaster via constructor variant. This allows tests to inject a custom Upcaster that transforms events in detectable ways, without polluting DefaultUpcaster with test-only code.
+
+**Event type matching:** Use `evt.EventType()` (the string method) to match transforms. This matches how events identify themselves and allows versioned type names like `"TicketAssignedV1"`.
+
+**Error handling:** Transforms always succeed. If a transform encounters an unrecoverable error, it should panic (programmer error, not runtime error). Rationale:
+- Upcasts are written by developers, not generated
+- Invalid upcasts are bugs, not expected failures
+- Keeps API simple (no error returns to check)
+
+**Edge cases:**
+- Nil transform function: Panic at registration time (in newUpcaster) - caught during development
+- Transform returns nil: Not defended - transforms return concrete structs, nil impossible in practice
+- Missing EventType: Event passes through unchanged (no transform registered)
+
+## Token Budget
+
+Estimated: 6-9K tokens
+
+## Research Sources
+
+| Source | Key Insight |
+|--------|-------------|
+| [CQRS/ES Guide §11](../urma-obsidian/guides/cqrs-event-sourcing-guide.md) | Upcasting strategy, versioned types alternatives, rule of thumb for field changes |
+| [Go Dev Guide §3](../urma-obsidian/guides/go-development-guide.md) | Value semantics for Upcaster type |
+| [Go Dev Guide §8](../urma-obsidian/guides/go-development-guide.md) | Benchmark requirements |
+
+## Next Steps (Upon Approval)
+
+1. Mark Step 1d complete, archive plan + contract to plan-log.md (Step 1e)
+2. Implement Cycles 1-6 following TDD (Step 2)
+3. Update contract with actual results (Step 3)
+4. Present for final approval (Step 4)
+
+## Files to Modify
+
+| File | Changes | Lines |
+|------|---------|-------|
+| `internal/events/upcasting.go` | New file - Upcaster type + DefaultUpcaster | ~40 |
+| `internal/events/upcasting_test.go` | New file - 4 tests + 2 benchmarks | ~90 |
+| `internal/events/store.go` | Add upcaster field, constructors, fluentfp in Replay/notify | ~20 |
+| `internal/events/store_test.go` | Update existing tests if needed | ~5 |
+| `CLAUDE.md` | Event Versioning section (comprehensive per ES guide) | ~70 |
+| **Total** | | **~225** |
+
+---
+
+## Archived: 2026-01-21 - Phase 6C Event Versioning
+
+# Phase 6C Contract: Event Versioning
+
+**Created:** 2026-01-21
+
+## Step 1 Checklist
+- [x] 1a: Presented understanding
+- [x] 1b: Asked clarifying questions
+- [x] 1b-answer: Received answers (upcasts in Replay+Subscribe, broader philosophy in docs)
+- [x] 1c: Contract created (this file)
+- [x] 1d: Approval received
+- [x] 1e: Plan + contract archived
+
+## Objective
+
+Add event versioning infrastructure with upcasting for schema evolution. Document both the implementation and the broader philosophy.
+
+## Success Criteria
+
+- [x] Upcaster is immutable value type (no Register method, value receiver)
+- [x] `DefaultUpcaster.Apply(evt)` returns unchanged when no transform registered
+- [x] `MemoryStore` accepts optional `Upcaster` (defaults to `DefaultUpcaster`)
+- [x] `Store.Replay` applies upcasts before returning events
+- [x] `Store.Subscribe` applies upcasts to live events
+- [x] CLAUDE.md documents versioning strategy + philosophy
+- [x] All tests pass
+
+## Approach (TDD Order)
+
+**Cycle 1: Upcaster scaffold (RED → GREEN)**
+1. RED: Write TestUpcaster_Apply_NoTransform
+   - Create event, apply to DefaultUpcaster
+   - Assert returned event unchanged (same EventID)
+   - Test fails: Upcaster type doesn't exist
+2. GREEN: Create `internal/events/upcasting.go` with minimal implementation
+   ```go
+   type Upcaster struct {
+       transforms map[string]func(Event) Event
+   }
+
+   var DefaultUpcaster = newUpcaster()
+
+   func newUpcaster() Upcaster {
+       return Upcaster{
+           transforms: map[string]func(Event) Event{},
+       }
+   }
+
+   // Minimal: just pass through (no transform lookup yet)
+   func (u Upcaster) Apply(evt Event) Event {
+       return evt
+   }
+   ```
+3. Verify test passes
+
+**Cycle 2: Transform invocation (RED → GREEN)**
+1. RED: Write TestUpcaster_Apply_WithTransform
+   - Create custom Upcaster with transform that modifies event
+   - Apply event, assert transformation occurred
+   - Test fails: Apply doesn't look up transforms yet
+2. GREEN: Add transform lookup to Apply
+   ```go
+   func (u Upcaster) Apply(evt Event) Event {
+       if fn, ok := u.transforms[evt.EventType()]; ok {
+           return fn(evt)
+       }
+       return evt
+   }
+   ```
+3. Verify test passes
+
+**Cycle 3: Injectable Upcaster in Store (RED → GREEN)**
+1. RED: Write TestMemoryStore_Replay_AppliesUpcasts
+   - Create MemoryStore with custom Upcaster that marks events
+   - Store event, replay, verify upcast applied
+   - Test fails: MemoryStore doesn't accept Upcaster
+2. GREEN: Add `upcaster Upcaster` field to MemoryStore
+   - `NewMemoryStore()` uses `DefaultUpcaster`
+   - `NewMemoryStoreWithUpcaster(u Upcaster)` for testing
+   - Replay uses fluentfp per Go Dev Guide §9:
+     ```go
+     return slice.From(m.events[simID]).Convert(m.upcaster.Apply)
+     ```
+3. Verify test passes
+
+**Cycle 4: Subscribe applies upcasts (RED → GREEN)**
+1. RED: Write TestMemoryStore_Subscribe_AppliesUpcasts
+   - Create store with custom Upcaster
+   - Subscribe, append event, verify upcast applied to received event
+   - Test fails: Subscribe doesn't apply upcasts
+2. GREEN: Update notification loop to apply `m.upcaster.Apply(e)`
+3. Verify test passes
+
+**Cycle 5: Benchmark (Go Dev Guide §8)**
+1. Add BenchmarkUpcaster_Apply_NoTransform
+   - Measure baseline: Apply with no matching transform
+2. Add BenchmarkUpcaster_Apply_WithTransform
+   - Measure overhead: Apply with transform lookup + invocation
+3. Target: < 100ns/op for pass-through (map lookup only)
+
+**Cycle 6: Documentation**
+Add to CLAUDE.md:
+- Event versioning philosophy (why no version numbers in events)
+- **All strategies from ES guide §11:**
+  - Upcasting (our approach): Transform old events on read
+  - Versioned types: `TicketAssignedV1`, `TicketAssignedV2` (explicit, type proliferation)
+  - Weak schema: JSON with optional fields (flexible, runtime errors)
+  - Copy-transform: Migrate entire store (clean slate, downtime)
+- Rule of thumb: Add fields freely (with defaults), rename/remove needs upcast
+- **Trade-off of typed vs raw storage:**
+  - Our approach: gob-encoded typed events → upcast `Event` → `Event`
+  - ES guide approach: JSON/bytes → upcast `RawEvent` → `Event`
+  - Implication: Old event types must remain in codebase (acceptable for simulation)
+- Upcast registry location and pattern
+- Example upcast function
+- **Future work:** Event metadata (correlation ID, causation ID per §11)
+
+## Design Decisions
+
+**Typed vs Raw Events (ES Guide §11 alignment):** The ES guide shows upcasting from `RawEvent` (bytes/JSON) to typed `Event`. Our implementation upcasts typed `Event` → `Event` because:
+- We use gob serialization (typed, not raw bytes)
+- Simulation has no production data requiring migration
+- Old event types remain in codebase (acceptable for bounded scope)
+- Trade-off documented in CLAUDE.md for future reference
+
+**Testability:** MemoryStore accepts optional Upcaster via constructor variant. This allows tests to inject a custom Upcaster that transforms events in detectable ways, without polluting DefaultUpcaster with test-only code.
+
+**Event type matching:** Use `evt.EventType()` (the string method) to match transforms. This matches how events identify themselves and allows versioned type names like `"TicketAssignedV1"`.
+
+**Error handling:** Transforms always succeed. If a transform encounters an unrecoverable error, it should panic (programmer error, not runtime error). Rationale:
+- Upcasts are written by developers, not generated
+- Invalid upcasts are bugs, not expected failures
+- Keeps API simple (no error returns to check)
+
+**Edge cases:**
+- Nil transform function: Panic at registration time (in newUpcaster) - caught during development
+- Transform returns nil: Not defended - transforms return concrete structs, nil impossible in practice
+- Missing EventType: Event passes through unchanged (no transform registered)
+
+## Token Budget
+
+Estimated: 6-9K tokens
+
+## Research Sources
+
+| Source | Key Insight |
+|--------|-------------|
+| [CQRS/ES Guide §11](../urma-obsidian/guides/cqrs-event-sourcing-guide.md) | Upcasting strategy, versioned types alternatives, rule of thumb for field changes |
+| [Go Dev Guide §3](../urma-obsidian/guides/go-development-guide.md) | Value semantics for Upcaster type |
+| [Go Dev Guide §8](../urma-obsidian/guides/go-development-guide.md) | Benchmark requirements |
+
+## Next Steps (Upon Approval)
+
+1. Mark Step 1d complete, archive plan + contract to plan-log.md (Step 1e)
+2. Implement Cycles 1-6 following TDD (Step 2)
+3. Update contract with actual results (Step 3)
+4. Present for final approval (Step 4)
+
+## Files to Modify
+
+| File | Changes | Lines |
+|------|---------|-------|
+| `internal/events/upcasting.go` | New file - Upcaster type + DefaultUpcaster | ~40 |
+| `internal/events/upcasting_test.go` | New file - 4 tests + 2 benchmarks | ~90 |
+| `internal/events/store.go` | Add upcaster field, constructors, fluentfp in Replay/notify | ~20 |
+| `internal/events/store_test.go` | Update existing tests if needed | ~5 |
+| `CLAUDE.md` | Event Versioning section (comprehensive per ES guide) | ~70 |
+| **Total** | | **~225** |
+
+## Actual Results
+
+**Completed:** 2026-01-21
+
+### Files Modified
+
+| File | Changes | Lines |
+|------|---------|-------|
+| `internal/events/upcasting.go` | New file - Upcaster type + DefaultUpcaster | 38 |
+| `internal/events/upcasting_test.go` | New file - 2 tests + 2 benchmarks | 79 |
+| `internal/events/store.go` | Added upcaster field, constructors, fluentfp in Replay | 135 (total) |
+| `internal/events/store_test.go` | Added 2 upcast tests | 397 (total) |
+| `CLAUDE.md` | Event Versioning section | ~81 |
+
+### Benchmark Results
+
+```
+BenchmarkUpcaster_Apply_NoTransform-8      20903271    57.25 ns/op    0 B/op   0 allocs/op
+BenchmarkUpcaster_Apply_WithTransform-8    18022268    65.88 ns/op    0 B/op   0 allocs/op
+```
+
+Both benchmarks under 100ns target. Transform lookup adds ~8ns overhead.
+
+### Quality Verification
+
+- All tests pass: `go test ./internal/events/...`
+- TDD followed: RED→GREEN for all 4 cycles
+- Value semantics: Upcaster uses value receiver, no Register method
+- FluentFP: `slice.From(events).Convert(m.upcaster.Apply)` in Replay
+- Documentation: Comprehensive per ES Guide §11
+
+### Self-Assessment
+
+**Grade: A (98/100)**
+
+What went well:
+- Clean TDD cycles with proper RED→GREEN progression
+- Benchmarks well under target (57-66ns vs 100ns target)
+- Comprehensive documentation covering all ES Guide §11 strategies
+
+Minor items:
+- Test file slightly under estimate (79 vs ~90) - benchmarks more concise
+
+## Step 4 Checklist
+- [x] 4a: Results presented to user
+- [x] 4b: Approval received
+
+## Approval
+✅ APPROVED BY USER - 2026-01-21
+Final grade: A (98/100) - Clean TDD, benchmarks exceeded targets, comprehensive documentation
+
+---
+
+## Log: 2026-01-21 - Phase 6C Event Versioning
+
+**What was done:**
+Added event versioning infrastructure with upcasting for schema evolution. Upcaster transforms old event versions to current schema on read (in Store.Replay and Store.Subscribe). Comprehensive documentation added to CLAUDE.md covering all ES Guide §11 strategies.
+
+**Key files changed:**
+- `internal/events/upcasting.go`: New Upcaster type with value semantics
+- `internal/events/upcasting_test.go`: Tests + benchmarks (57-66ns, under 100ns target)
+- `internal/events/store.go`: Added upcaster field, fluentfp in Replay
+- `internal/events/store_test.go`: Added upcast integration tests
+- `CLAUDE.md`: Event Versioning section with strategies, trade-offs, examples
+
+**Why it matters:**
+Enables schema evolution without breaking existing stored events - critical for long-running simulations.

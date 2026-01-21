@@ -885,3 +885,85 @@ saves, err := persistence.ListSaves(dir)
 // Generate save path with sanitized name
 path := persistence.GenerateSavePath(dir, name)
 ```
+
+## Event Versioning
+
+Events are immutable once stored. Schema evolution requires careful handling since old events remain in the store forever.
+
+### Philosophy
+
+We use **upcasting**: transform old event versions to current schema on read. This approach:
+- Keeps storage simple (no version numbers embedded in events)
+- Centralizes evolution logic in one place
+- Applies transformations lazily (on Replay/Subscribe, not on store migration)
+
+### Schema Evolution Strategies (ES Guide §11)
+
+| Strategy | Description | Trade-off |
+|----------|-------------|-----------|
+| **Upcasting** (our approach) | Transform old events on read | Simple storage, centralized logic |
+| **Versioned types** | `TicketAssignedV1`, `TicketAssignedV2` | Explicit, but type proliferation |
+| **Weak schema** | JSON with optional fields | Flexible, but runtime errors |
+| **Copy-transform** | Migrate entire store | Clean slate, but requires downtime |
+
+### Rule of Thumb
+
+- **Add fields freely**: Old events decode with zero values (use defaults in code)
+- **Rename/remove fields**: Requires upcast function to transform old → new
+
+### Typed vs Raw Storage
+
+Our implementation uses **typed events** (gob-encoded Go structs), not raw bytes:
+
+| Aspect | Our Approach | ES Guide Approach |
+|--------|--------------|-------------------|
+| Storage | gob-encoded typed events | JSON/bytes |
+| Upcast input | `Event` interface | `RawEvent` (bytes) |
+| Upcast output | `Event` interface | Typed `Event` |
+| Implication | Old event types must remain in codebase | Can delete old type definitions |
+
+For simulation scope, keeping old types is acceptable. Production systems with decades of events might prefer raw storage.
+
+### Upcast Registry
+
+Transforms are registered in `internal/events/upcasting.go`:
+
+```go
+func newUpcaster() Upcaster {
+    return Upcaster{
+        transforms: map[string]func(Event) Event{
+            // Add transforms here as schema evolves:
+            // "TicketAssignedV1": upcastTicketAssignedV1ToV2,
+        },
+    }
+}
+```
+
+### Example Upcast Function
+
+```go
+// upcastTicketAssignedV1ToV2 transforms old assignment events.
+// V1 had Developer string field, V2 has DeveloperID + DeveloperName.
+func upcastTicketAssignedV1ToV2(evt Event) Event {
+    v1 := evt.(TicketAssignedV1)
+    return TicketAssignedV2{
+        baseEvent:     v1.baseEvent,
+        TicketID:      v1.TicketID,
+        DeveloperID:   v1.Developer,           // Map old field
+        DeveloperName: "[migrated]",           // Default for missing data
+    }
+}
+```
+
+### Where Upcasts Apply
+
+- **Store.Replay**: Returns upcasted events for projection rebuild
+- **Store.Subscribe**: Delivers upcasted events to live subscribers
+
+Raw events remain unchanged in storage—upcasting is read-side only.
+
+### Future Work
+
+Per ES guide §11, consider adding event metadata:
+- **Correlation ID**: Links events across bounded contexts
+- **Causation ID**: Tracks event chains (event A caused event B)

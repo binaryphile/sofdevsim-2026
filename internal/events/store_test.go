@@ -333,3 +333,65 @@ func contains(s, substr string) bool {
 
 // cmp is used in other tests - reference it here to avoid unused import
 var _ = cmp.Diff
+
+func TestMemoryStore_Replay_AppliesUpcasts(t *testing.T) {
+	// Create a transform that marks events as "upcasted" by changing the name
+	// markUpcasted appends "-upcasted" to testEvent name.
+	markUpcasted := func(evt Event) Event {
+		te := evt.(testEvent)
+		te.name = te.name + "-upcasted"
+		return te
+	}
+
+	upcaster := NewUpcasterWithTransforms(map[string]func(Event) Event{
+		"OriginalEvent": markUpcasted,
+	})
+
+	store := NewMemoryStoreWithUpcaster(upcaster)
+	defer store.Close()
+
+	// Append original event
+	store.Append("sim-1", 0, testEvent{simID: "sim-1", name: "OriginalEvent"})
+
+	// Replay should apply upcast
+	events := store.Replay("sim-1")
+
+	if len(events) != 1 {
+		t.Fatalf("Replay() returned %d events, want 1", len(events))
+	}
+	if events[0].EventType() != "OriginalEvent-upcasted" {
+		t.Errorf("Upcast not applied: got %s, want OriginalEvent-upcasted", events[0].EventType())
+	}
+}
+
+func TestMemoryStore_Subscribe_AppliesUpcasts(t *testing.T) {
+	// Create a transform that marks events as "upcasted" by changing the name
+	// markUpcasted appends "-upcasted" to testEvent name.
+	markUpcasted := func(evt Event) Event {
+		te := evt.(testEvent)
+		te.name = te.name + "-upcasted"
+		return te
+	}
+
+	upcaster := NewUpcasterWithTransforms(map[string]func(Event) Event{
+		"LiveEvent": markUpcasted,
+	})
+
+	store := NewMemoryStoreWithUpcaster(upcaster)
+	defer store.Close()
+
+	ch := store.Subscribe("sim-1")
+
+	// Append event after subscribing
+	store.Append("sim-1", 0, testEvent{simID: "sim-1", name: "LiveEvent"})
+
+	// Should receive upcasted event
+	select {
+	case received := <-ch:
+		if received.EventType() != "LiveEvent-upcasted" {
+			t.Errorf("Upcast not applied to subscription: got %s, want LiveEvent-upcasted", received.EventType())
+		}
+	case <-time.After(100 * time.Millisecond):
+		t.Error("timed out waiting for event")
+	}
+}

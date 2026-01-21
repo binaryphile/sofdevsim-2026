@@ -3,6 +3,8 @@ package events
 import (
 	"fmt"
 	"sync"
+
+	"github.com/binaryphile/fluentfp/slice"
 )
 
 // Store defines the interface for event storage and subscription.
@@ -21,13 +23,25 @@ type MemoryStore struct {
 	mu          sync.RWMutex
 	events      map[string][]Event
 	subscribers map[string][]chan Event
+	upcaster    Upcaster
 }
 
-// NewMemoryStore creates a new in-memory event store.
+// NewMemoryStore creates a new in-memory event store with DefaultUpcaster.
 func NewMemoryStore() *MemoryStore {
 	return &MemoryStore{
 		events:      make(map[string][]Event),
 		subscribers: make(map[string][]chan Event),
+		upcaster:    DefaultUpcaster,
+	}
+}
+
+// NewMemoryStoreWithUpcaster creates a new in-memory event store with a custom Upcaster.
+// Used for testing - allows injection of transforms.
+func NewMemoryStoreWithUpcaster(upcaster Upcaster) *MemoryStore {
+	return &MemoryStore{
+		events:      make(map[string][]Event),
+		subscribers: make(map[string][]chan Event),
+		upcaster:    upcaster,
 	}
 }
 
@@ -45,11 +59,12 @@ func (m *MemoryStore) Append(simID string, expectedVersion int, events ...Event)
 
 	m.events[simID] = append(m.events[simID], events...)
 
-	// Notify subscribers
+	// Notify subscribers with upcasts applied
 	for _, ch := range m.subscribers[simID] {
 		for _, e := range events {
+			upcasted := m.upcaster.Apply(e)
 			select {
-			case ch <- e:
+			case ch <- upcasted:
 			default:
 				// Non-blocking send - subscriber slow
 			}
@@ -59,7 +74,7 @@ func (m *MemoryStore) Append(simID string, expectedVersion int, events ...Event)
 	return nil
 }
 
-// Replay returns all events for a simulation.
+// Replay returns all events for a simulation with upcasts applied.
 // Returns a copy to prevent external modification.
 func (m *MemoryStore) Replay(simID string) []Event {
 	m.mu.RLock()
@@ -70,10 +85,8 @@ func (m *MemoryStore) Replay(simID string) []Event {
 		return nil
 	}
 
-	// Return a copy
-	result := make([]Event, len(original))
-	copy(result, original)
-	return result
+	// Apply upcasts and return copy (per Go Dev Guide §9)
+	return slice.From(original).Convert(m.upcaster.Apply)
 }
 
 // Subscribe returns a channel that receives new events for a simulation.
