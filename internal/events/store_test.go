@@ -76,7 +76,7 @@ func TestMemoryStore_AppendAndReplay(t *testing.T) {
 			defer store.Close()
 
 			if len(tt.events) > 0 {
-				err := store.Append(tt.simID, tt.events...)
+				err := store.Append(tt.simID, 0, tt.events...)
 				if err != nil {
 					t.Fatalf("Append() error = %v", err)
 				}
@@ -102,10 +102,10 @@ func TestMemoryStore_IsolatesSimulations(t *testing.T) {
 	store := NewMemoryStore()
 	defer store.Close()
 
-	// Append to two different simulations
-	store.Append("sim-1", testEvent{simID: "sim-1", name: "Event1"})
-	store.Append("sim-2", testEvent{simID: "sim-2", name: "Event2"})
-	store.Append("sim-1", testEvent{simID: "sim-1", name: "Event3"})
+	// Append to two different simulations (tracking versions independently)
+	store.Append("sim-1", 0, testEvent{simID: "sim-1", name: "Event1"})
+	store.Append("sim-2", 0, testEvent{simID: "sim-2", name: "Event2"})
+	store.Append("sim-1", 1, testEvent{simID: "sim-1", name: "Event3"})
 
 	// Replay should be isolated
 	sim1Events := store.Replay("sim-1")
@@ -127,7 +127,7 @@ func TestMemoryStore_Subscribe(t *testing.T) {
 
 	// Append events after subscribing
 	event := testEvent{simID: "sim-1", name: "NewEvent"}
-	store.Append("sim-1", event)
+	store.Append("sim-1", 0, event)
 
 	// Should receive event on channel
 	select {
@@ -147,7 +147,7 @@ func TestMemoryStore_SubscribeDoesNotReceiveOtherSimulations(t *testing.T) {
 	ch := store.Subscribe("sim-1")
 
 	// Append to different simulation
-	store.Append("sim-2", testEvent{simID: "sim-2", name: "OtherEvent"})
+	store.Append("sim-2", 0, testEvent{simID: "sim-2", name: "OtherEvent"})
 
 	// Should NOT receive event
 	select {
@@ -166,7 +166,7 @@ func TestMemoryStore_Unsubscribe(t *testing.T) {
 	store.Unsubscribe("sim-1", ch)
 
 	// Append after unsubscribe
-	store.Append("sim-1", testEvent{simID: "sim-1", name: "Event"})
+	store.Append("sim-1", 0, testEvent{simID: "sim-1", name: "Event"})
 
 	// Channel should be closed
 	select {
@@ -183,7 +183,7 @@ func TestMemoryStore_ReplayReturnsCopy(t *testing.T) {
 	store := NewMemoryStore()
 	defer store.Close()
 
-	store.Append("sim-1", testEvent{simID: "sim-1", name: "Event1"})
+	store.Append("sim-1", 0, testEvent{simID: "sim-1", name: "Event1"})
 
 	// Get replay and modify it
 	events1 := store.Replay("sim-1")
@@ -205,12 +205,130 @@ func TestMemoryStore_EventCount(t *testing.T) {
 		t.Errorf("EventCount() = %d for empty store, want 0", got)
 	}
 
-	store.Append("sim-1", testEvent{simID: "sim-1", name: "E1"})
-	store.Append("sim-1", testEvent{simID: "sim-1", name: "E2"})
+	store.Append("sim-1", 0, testEvent{simID: "sim-1", name: "E1"})
+	store.Append("sim-1", 1, testEvent{simID: "sim-1", name: "E2"})
 
 	if got := store.EventCount("sim-1"); got != 2 {
 		t.Errorf("EventCount() = %d, want 2", got)
 	}
+}
+
+// TestMemoryStore_Append_VersionConflicts tests optimistic concurrency control
+// using table-driven tests for all version conflict scenarios.
+func TestMemoryStore_Append_VersionConflicts(t *testing.T) {
+	tests := []struct {
+		name            string
+		setup           func(*MemoryStore)
+		simID           string
+		expectedVersion int
+		events          []Event
+		wantErr         bool
+		errContains     string
+		wantCount       int // expected event count after append (if no error)
+	}{
+		{
+			name:            "empty store accepts version 0",
+			setup:           func(s *MemoryStore) {},
+			simID:           "sim-1",
+			expectedVersion: 0,
+			events:          []Event{testEvent{simID: "sim-1", name: "E1"}},
+			wantErr:         false,
+			wantCount:       1,
+		},
+		{
+			name:            "empty store rejects version 1",
+			setup:           func(s *MemoryStore) {},
+			simID:           "sim-1",
+			expectedVersion: 1,
+			events:          []Event{testEvent{simID: "sim-1", name: "E1"}},
+			wantErr:         true,
+			errContains:     "expected version 1",
+		},
+		{
+			name: "after one event accepts version 1",
+			setup: func(s *MemoryStore) {
+				s.Append("sim-1", 0, testEvent{simID: "sim-1", name: "E0"})
+			},
+			simID:           "sim-1",
+			expectedVersion: 1,
+			events:          []Event{testEvent{simID: "sim-1", name: "E1"}},
+			wantErr:         false,
+			wantCount:       2,
+		},
+		{
+			name: "after one event rejects version 0 (conflict)",
+			setup: func(s *MemoryStore) {
+				s.Append("sim-1", 0, testEvent{simID: "sim-1", name: "E0"})
+			},
+			simID:           "sim-1",
+			expectedVersion: 0,
+			events:          []Event{testEvent{simID: "sim-1", name: "E1"}},
+			wantErr:         true,
+			errContains:     "got 1",
+		},
+		{
+			name: "multiple events increment version correctly",
+			setup: func(s *MemoryStore) {
+				s.Append("sim-1", 0,
+					testEvent{simID: "sim-1", name: "E1"},
+					testEvent{simID: "sim-1", name: "E2"},
+					testEvent{simID: "sim-1", name: "E3"},
+				)
+			},
+			simID:           "sim-1",
+			expectedVersion: 3,
+			events:          []Event{testEvent{simID: "sim-1", name: "E4"}},
+			wantErr:         false,
+			wantCount:       4,
+		},
+		{
+			name: "error message includes both versions",
+			setup: func(s *MemoryStore) {
+				s.Append("sim-1", 0, testEvent{simID: "sim-1", name: "E0"})
+			},
+			simID:           "sim-1",
+			expectedVersion: 5,
+			events:          []Event{testEvent{simID: "sim-1", name: "E1"}},
+			wantErr:         true,
+			errContains:     "expected version 5",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			store := NewMemoryStore()
+			defer store.Close()
+
+			tt.setup(store)
+
+			err := store.Append(tt.simID, tt.expectedVersion, tt.events...)
+
+			if tt.wantErr {
+				if err == nil {
+					t.Error("expected error, got nil")
+				} else if tt.errContains != "" && !contains(err.Error(), tt.errContains) {
+					t.Errorf("error should contain %q, got: %s", tt.errContains, err.Error())
+				}
+			} else {
+				if err != nil {
+					t.Errorf("unexpected error: %v", err)
+				}
+				if got := store.EventCount(tt.simID); got != tt.wantCount {
+					t.Errorf("EventCount() = %d, want %d", got, tt.wantCount)
+				}
+			}
+		})
+	}
+}
+
+// contains checks if s contains substr (simple helper to avoid strings import).
+func contains(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
 }
 
 // cmp is used in other tests - reference it here to avoid unused import

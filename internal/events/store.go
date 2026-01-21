@@ -1,10 +1,13 @@
 package events
 
-import "sync"
+import (
+	"fmt"
+	"sync"
+)
 
 // Store defines the interface for event storage and subscription.
 type Store interface {
-	Append(simID string, events ...Event) error
+	Append(simID string, expectedVersion int, events ...Event) error
 	Replay(simID string) []Event
 	Subscribe(simID string) <-chan Event
 	Unsubscribe(simID string, ch <-chan Event)
@@ -29,9 +32,16 @@ func NewMemoryStore() *MemoryStore {
 }
 
 // Append adds events to a simulation's event stream.
-func (m *MemoryStore) Append(simID string, events ...Event) error {
+// Uses optimistic concurrency: fails if expectedVersion doesn't match current version.
+func (m *MemoryStore) Append(simID string, expectedVersion int, events ...Event) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
+	// Optimistic concurrency check
+	currentVersion := len(m.events[simID])
+	if expectedVersion != currentVersion {
+		return fmt.Errorf("concurrency conflict: expected version %d, got %d", expectedVersion, currentVersion)
+	}
 
 	m.events[simID] = append(m.events[simID], events...)
 

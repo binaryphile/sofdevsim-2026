@@ -79,18 +79,26 @@ func (e *Engine) state() model.Simulation {
 
 // emit sends an event to the store if configured, attaching trace context if set.
 // Also applies the event to the projection to keep derived state in sync.
+// Panics on store concurrency conflict (indicates bug in single-user simulation).
 func (e *Engine) emit(evt events.Event) {
 	// Apply trace context if set
 	if !e.trace.IsEmpty() {
 		evt = e.applyTrace(evt)
 	}
 
+	// Capture version BEFORE applying (for optimistic concurrency)
+	expectedVersion := e.proj.Version()
+
 	// Always update projection (whether or not store is configured)
 	e.proj = e.proj.Apply(evt)
 
 	// Only append to store if configured
 	if e.store != nil {
-		e.store.Append(e.state().ID, evt)
+		if err := e.store.Append(e.state().ID, expectedVersion, evt); err != nil {
+			// Concurrency conflict - projection and store are now inconsistent
+			// For single-user simulation, this indicates a bug (shouldn't happen)
+			panic(fmt.Sprintf("event store concurrency conflict: %v", err))
+		}
 	}
 }
 

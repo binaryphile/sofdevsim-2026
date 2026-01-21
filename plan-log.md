@@ -17072,3 +17072,827 @@ Removed `sim *model.Simulation` field from Engine struct, making projection the 
 
 **Why it matters:**
 Completes event sourcing migration. Engine now has single source of truth (projection), eliminating state synchronization bugs and enabling proper event replay.
+
+---
+
+## Approved Plan: 2026-01-21 - ES Compliance Improvements
+
+# Plan: ES Compliance Improvements (Full Implementation)
+
+## Context
+
+Phase 5B complete. ES guide assessment: B+ (88/100). Three gaps identified:
+1. **§11 Optimistic Concurrency** - Store.Append doesn't check version
+2. **§15 Idempotency** - Projection doesn't detect duplicate events
+3. **§11 Event Versioning** - No upcasting strategy
+
+---
+
+## Tandem Protocol Compliance
+
+### Contract Template (per phase)
+
+Each phase creates its own contract file at Step 1c:
+
+```markdown
+# Phase 6X Contract
+
+**Created:** [date]
+
+## Step 1 Checklist
+- [ ] 1a: Presented understanding
+- [ ] 1b: Asked clarifying questions
+- [ ] 1b-answer: Received answers
+- [ ] 1c: Contract created (this file)
+- [ ] 1d: Approval received
+- [ ] 1e: Plan + contract archived
+
+## Objective
+[From plan]
+
+## Success Criteria
+[Copied from plan's phase-specific criteria]
+
+## Approach
+[Implementation steps from plan]
+
+## Token Budget
+[From plan estimates]
+```
+
+### Archiving Flow
+
+After each phase approval:
+1. Step 5a: Mark contract APPROVED
+2. Step 5b: Append contract to `plan-log.md`, delete contract file
+3. Step 5c: Commit deliverable + updated plan-log.md
+4. Step 5d: Create next phase contract (return to Step 1)
+
+### TodoWrite Telescoping
+
+**Phase 6A start (blow out steps):**
+```
+[ ] Phase 6A, Step 1: Plan validation       ← in_progress
+[ ] Phase 6A, Step 2: Complete deliverable
+[ ] Phase 6A, Step 3: Update contract
+[ ] Phase 6A, Step 4: Present and await
+[ ] Phase 6A, Step 5: Post-approval
+[ ] Phase 6B (pending)
+[ ] Phase 6C (pending)
+```
+
+**After Phase 6A complete (telescope):**
+```
+[x] Phase 6A: Optimistic Concurrency
+[ ] Phase 6B, Step 1: Plan validation       ← in_progress
+[ ] Phase 6B, Step 2: Complete deliverable
+...
+[ ] Phase 6C (pending)
+```
+
+---
+
+## Phase 6A: Optimistic Concurrency
+
+**Contract:** `phase-6A-contract.md`
+
+### Problem
+
+Current Store.Append has no version check:
+```go
+// store.go:7
+Append(simID string, events ...Event) error  // No expectedVersion
+```
+
+If two processes append concurrently, events could interleave incorrectly.
+
+### Solution
+
+Add `expectedVersion` parameter to enforce ordering:
+
+```go
+// New signature
+Append(simID string, expectedVersion int, events ...Event) error
+```
+
+### Implementation
+
+**Step 1: Update Store interface** (`internal/events/store.go:7`)
+```go
+type Store interface {
+    Append(simID string, expectedVersion int, events ...Event) error
+    // ... rest unchanged
+}
+```
+
+**Step 2: Update MemoryStore.Append** (`internal/events/store.go:32-50`)
+```go
+func (m *MemoryStore) Append(simID string, expectedVersion int, events ...Event) error {
+    m.mu.Lock()
+    defer m.mu.Unlock()
+
+    // Optimistic concurrency check
+    currentVersion := len(m.events[simID])
+    if expectedVersion != currentVersion {
+        return fmt.Errorf("concurrency conflict: expected version %d, got %d", expectedVersion, currentVersion)
+    }
+
+    m.events[simID] = append(m.events[simID], events...)
+    // ... notify subscribers unchanged
+    return nil
+}
+```
+
+**Step 3: Update Engine.emit** (`internal/engine/engine.go:82-95`)
+```go
+func (e *Engine) emit(evt events.Event) {
+    // Capture version BEFORE applying (for optimistic concurrency)
+    expectedVersion := e.proj.Version()
+
+    // Apply to projection
+    e.proj = e.proj.Apply(evt)
+
+    // Append with version check
+    if e.store != nil {
+        if err := e.store.Append(e.state().ID, expectedVersion, evt); err != nil {
+            // Concurrency conflict - projection and store are now inconsistent
+            // For single-user simulation, this indicates a bug (shouldn't happen)
+            // Log for debugging - in production would need recovery strategy
+            panic(fmt.Sprintf("event store concurrency conflict: %v", err))
+        }
+    }
+}
+```
+
+**Design note:** Using panic rather than silent failure because:
+- Single-user simulation should never have concurrent appends
+- If it happens, it's a bug we need to catch immediately
+- Silent failures would cause subtle state corruption
+
+**Production consideration (deferred):** For multi-user systems, would need:
+- Store-first pattern (append to store, then apply to projection)
+- Or: retry with re-read of current version
+- Or: compensating events to reconcile state
+Current design is appropriate for single-user simulation.
+
+**Step 4: Update tests** (`internal/events/store_test.go`)
+- Update all `store.Append(simID, events...)` calls to `store.Append(simID, version, events...)`
+- Add conflict test: `TestMemoryStore_Append_ConcurrencyConflict`
+
+**Step 5: Add conflict detection test** (`internal/engine/event_sourcing_test.go`)
+
+Per Go Development Guide §6 (Mocks = Design Smell): Test via public API, not internal store manipulation.
+
+```go
+func TestEngine_DetectsConcurrencyConflict(t *testing.T) {
+    // Test that Engine detects version mismatch through public behavior.
+    // We use a StoreWithConflict that returns an error on second append,
+    // simulating what would happen if another process appended first.
+    store := &StoreWithConflict{
+        MemoryStore:    NewMemoryStore(),
+        conflictOnCall: 2, // Second append will fail
+    }
+    eng := NewEngineWithStore(42, store)
+
+    // First emit succeeds
+    eng.EmitCreated("sim-1", 0, SimConfig{})
+
+    // Second emit should detect conflict and panic
+    defer func() {
+        if r := recover(); r == nil {
+            t.Error("Expected panic on concurrency conflict, got none")
+        }
+    }()
+
+    eng.EmitDeveloperAdded("sim-1", "dev-1", "Alice", 1.0)
+}
+
+// StoreWithConflict wraps MemoryStore to simulate concurrency conflict.
+// This is a test double at the external boundary (store interface).
+type StoreWithConflict struct {
+    *MemoryStore
+    conflictOnCall int
+    callCount      int
+}
+
+func (s *StoreWithConflict) Append(simID string, version int, events ...Event) error {
+    s.callCount++
+    if s.callCount == s.conflictOnCall {
+        return fmt.Errorf("concurrency conflict: simulated")
+    }
+    return s.MemoryStore.Append(simID, version, events...)
+}
+```
+
+**Design rationale:** This tests Engine's behavior when store returns conflict error, rather than manipulating internal store state directly. The StoreWithConflict is a test double at the external boundary (store interface), which is acceptable per §6.
+
+### Files to Modify
+
+| File | Changes |
+|------|---------|
+| `internal/events/store.go` | Interface + MemoryStore (~15 lines) |
+| `internal/engine/engine.go` | emit() version extraction + panic (~8 lines) |
+| `internal/events/store_test.go` | Update calls + add conflict test (~30 lines) |
+| `internal/engine/event_sourcing_test.go` | Conflict test + StoreWithConflict double (~35 lines) |
+
+---
+
+## Phase 6B: Idempotency
+
+**Contract:** `phase-6B-contract.md`
+
+### Problem
+
+Projection.Apply has no duplicate detection:
+```go
+// projection.go:25
+func (p Projection) Apply(evt Event) Projection {
+    // No check if evt.EventID() already processed
+```
+
+EmitLoadedState is particularly vulnerable - calling twice would corrupt state.
+
+### Solution
+
+Track processed event IDs in Projection:
+
+```go
+type Projection struct {
+    sim        model.Simulation
+    version    int
+    processed  map[string]bool  // NEW: track processed EventIDs
+}
+```
+
+### Implementation
+
+**Step 1: Add processed field** (`internal/events/projection.go:13-16`)
+```go
+type Projection struct {
+    sim       model.Simulation
+    version   int
+    processed map[string]bool  // Track processed event IDs for idempotency
+}
+```
+
+**Step 2: Initialize in NewProjection** (`internal/events/projection.go:19-21`)
+```go
+func NewProjection() Projection {
+    return Projection{
+        version:   0,
+        processed: make(map[string]bool),
+    }
+}
+```
+
+**Step 3: Check + record in Apply** (`internal/events/projection.go:25-31`)
+```go
+func (p Projection) Apply(evt Event) Projection {
+    // Idempotency check - return unchanged if already processed
+    // IMPORTANT: Version does NOT increment on duplicate (correct behavior)
+    eventID := evt.EventID()
+    if p.processed[eventID] {
+        return p  // Already processed, return unchanged (same version)
+    }
+
+    // Create new projection - copy processed map with pre-allocated capacity
+    next := Projection{
+        sim:       p.sim,
+        version:   p.version + 1,
+        processed: copyProcessedMap(p.processed),
+    }
+    next.processed[eventID] = true
+
+    // ... switch statement unchanged
+    return next
+}
+
+// copyProcessedMap creates a shallow copy for value semantics.
+// Uses maps.Clone (Go 1.21+) for clarity and correctness.
+func copyProcessedMap(m map[string]bool) map[string]bool {
+    result := maps.Clone(m)
+    if result == nil {
+        result = make(map[string]bool, 1)
+    }
+    return result
+}
+```
+
+**Version semantics:**
+- New event: version increments (p.version + 1)
+- Duplicate event: version unchanged (return p)
+- This ensures Store.EventCount == Projection.Version after all operations
+
+**Performance note:** Map copying is O(n) per event, O(n²) total. Acceptable for simulation scale (<50K events). If profiling shows issues, can optimize with:
+- Copy-on-write wrapper
+- Bloom filter for fast negative checks
+- Periodic compaction
+
+**Step 4: Add tests** (`internal/events/projection_test.go`)
+```go
+func TestProjection_Apply_Idempotent(t *testing.T) {
+    proj := NewProjection()
+    evt := NewSimulationCreated("sim-1", 0, SimConfig{})
+
+    proj1 := proj.Apply(evt)
+    proj2 := proj1.Apply(evt)  // Same event again
+
+    // Version should NOT increment on duplicate
+    if proj2.Version() != proj1.Version() {
+        t.Errorf("Version incremented on duplicate: got %d, want %d", proj2.Version(), proj1.Version())
+    }
+    // State should be identical
+    if proj2.State().ID != proj1.State().ID {
+        t.Errorf("State changed on duplicate apply")
+    }
+}
+
+func TestProjection_Apply_IdempotentComplex(t *testing.T) {
+    // Apply sequence of events
+    proj := NewProjection()
+    events := []Event{
+        NewSimulationCreated("sim-1", 0, SimConfig{Seed: 42}),
+        NewDeveloperAdded("sim-1", 0, "dev-1", "Alice", 1.0),
+        NewTicketCreated("sim-1", 0, "TKT-1", "Task", 3.0, model.HighUnderstanding),
+    }
+    for _, e := range events {
+        proj = proj.Apply(e)
+    }
+    stateAfterFirst := proj.State()
+    versionAfterFirst := proj.Version()
+
+    // Replay entire sequence - should be no-op
+    for _, e := range events {
+        proj = proj.Apply(e)
+    }
+
+    // State and version unchanged
+    if proj.Version() != versionAfterFirst {
+        t.Errorf("Version changed on replay: %d -> %d", versionAfterFirst, proj.Version())
+    }
+    if len(proj.State().Developers) != len(stateAfterFirst.Developers) {
+        t.Error("State changed on replay")
+    }
+}
+
+func TestProjection_VersionSyncWithStore(t *testing.T) {
+    store := NewMemoryStore()
+    proj := NewProjection()
+
+    // After each append+apply, versions must match
+    evt := NewSimulationCreated("sim-1", 0, SimConfig{})
+    store.Append("sim-1", proj.Version(), evt)
+    proj = proj.Apply(evt)
+
+    if store.EventCount("sim-1") != proj.Version() {
+        t.Errorf("Version mismatch: store=%d, proj=%d", store.EventCount("sim-1"), proj.Version())
+    }
+}
+```
+
+**Step 5: Add EmitLoadedState idempotency test** (`internal/engine/event_sourcing_test.go`)
+```go
+func TestEmitLoadedState_Idempotent(t *testing.T) {
+    sim := model.NewSimulation(model.PolicyDORAStrict, 42)
+    sim.AddDeveloper(model.NewDeveloper("dev-1", "Alice", 1.0))
+
+    eng := NewEngine(sim.Seed)
+    eng.EmitLoadedState(*sim)
+    state1 := eng.Sim()
+    version1 := eng.proj.Version()
+
+    // Call again - should be no-op due to idempotency
+    eng.EmitLoadedState(*sim)
+    state2 := eng.Sim()
+    version2 := eng.proj.Version()
+
+    // Version should NOT double
+    if version2 != version1 {
+        t.Errorf("EmitLoadedState not idempotent: version %d -> %d", version1, version2)
+    }
+    // Developer count should NOT double
+    if len(state2.Developers) != len(state1.Developers) {
+        t.Errorf("Developers doubled: %d -> %d", len(state1.Developers), len(state2.Developers))
+    }
+}
+```
+
+**Step 6: Add benchmark** (`internal/events/projection_test.go`)
+```go
+func BenchmarkProjection_Apply_WithIdempotency(b *testing.B) {
+    // Compare against existing BenchmarkProjection_ReplayFull (baseline)
+    // Target: < 2x slowdown from baseline
+    evts := generateTestEvents(100)
+
+    b.ResetTimer()
+    for i := 0; i < b.N; i++ {
+        proj := NewProjection()
+        for _, e := range evts {
+            proj = proj.Apply(e)
+        }
+    }
+}
+```
+
+**Benchmark comparison:** Run before and after to measure idempotency overhead:
+```bash
+# Before implementation (baseline)
+go test -bench=BenchmarkProjection_ReplayFull -benchmem ./internal/events/
+
+# After implementation
+go test -bench=BenchmarkProjection -benchmem ./internal/events/
+```
+
+### Memory Consideration
+
+- ~500KB for 50K events (acceptable for simulation scale)
+- If memory becomes concern, can switch to bloom filter later
+
+### Files to Modify
+
+| File | Changes |
+|------|---------|
+| `internal/events/projection.go` | Struct field + Apply check + copyProcessedMap (~30 lines) |
+| `internal/events/projection_test.go` | Idempotency tests + version sync test + benchmark (~50 lines) |
+| `internal/engine/event_sourcing_test.go` | EmitLoadedState idempotency test (~20 lines) |
+
+---
+
+## Phase 6C: Event Versioning Documentation
+
+**Contract:** `phase-6C-contract.md`
+
+### Problem
+
+No documented strategy for evolving event schemas.
+
+### Solution
+
+Document upcasting approach in CLAUDE.md, add structural support in code.
+
+### Implementation
+
+**Step 1: Add versioning section to CLAUDE.md**
+
+```markdown
+## Event Versioning
+
+Events are immutable once stored. Schema evolution uses upcasting:
+
+### Adding Fields (Safe)
+Add with defaults. Old events decode with zero values.
+
+### Removing/Renaming Fields (Requires Upcasting)
+1. Create new event type: `TicketAssignedV2`
+2. Add upcast function in `internal/events/upcasting.go`
+3. Store.Load applies upcasts before returning events
+
+### Upcast Registry
+```go
+var upcasts = map[string]func(Event) Event{
+    "TicketAssigned": upcastTicketAssignedV1ToV2,
+}
+```
+```
+
+**Step 2: Create upcasting scaffold** (`internal/events/upcasting.go`)
+```go
+package events
+
+// Upcaster transforms old event versions to current schema.
+// Immutable after initialization - safe for concurrent use.
+type Upcaster struct {
+    transforms map[string]func(Event) Event
+}
+
+// DefaultUpcaster is the package-level upcaster with registered transforms.
+// Initialized once at startup, never mutated after.
+var DefaultUpcaster = newUpcaster()
+
+// newUpcaster creates an Upcaster with all registered transforms.
+// Add transforms here as schema evolves.
+func newUpcaster() Upcaster {
+    return Upcaster{
+        transforms: map[string]func(Event) Event{
+            // Example (add when needed):
+            // "TicketAssignedV1": upcastTicketAssignedV1ToV2,
+        },
+    }
+}
+
+// Apply transforms event if upcast exists, otherwise returns unchanged.
+// Value receiver - safe for concurrent use.
+func (u Upcaster) Apply(evt Event) Event {
+    if fn, ok := u.transforms[evt.EventType()]; ok {
+        return fn(evt)
+    }
+    return evt
+}
+```
+
+**Design note:** Using value type (not pointer) and no Register method:
+- Immutable after init - no test isolation issues
+- Add transforms directly in `newUpcaster()`
+- Thread-safe by construction
+
+**Go Development Guide §3 (Value Semantics):** Upcaster is a value type with value receiver, not pointer. This:
+- Eliminates nil receiver panic risk
+- Enables clean function composition
+- Makes immutability explicit at the type level
+
+**Step 3: Wire into Store.Replay** (`internal/events/store.go:52-67`)
+```go
+func (m *MemoryStore) Replay(simID string) []Event {
+    m.mu.RLock()
+    defer m.mu.RUnlock()
+
+    original := m.events[simID]
+    if original == nil {
+        return nil
+    }
+
+    // Apply upcasts to returned events
+    result := make([]Event, len(original))
+    for i, e := range original {
+        result[i] = DefaultUpcaster.Apply(e)
+    }
+    return result
+}
+```
+
+**Step 4: Add Upcaster tests** (`internal/events/upcasting_test.go`)
+```go
+func TestUpcaster_Apply_NoTransform(t *testing.T) {
+    evt := NewSimulationCreated("sim-1", 0, SimConfig{})
+
+    result := DefaultUpcaster.Apply(evt)
+
+    // Should return unchanged when no transform registered
+    if result.EventID() != evt.EventID() {
+        t.Errorf("Event changed when no transform: got %s, want %s", result.EventID(), evt.EventID())
+    }
+}
+
+func TestUpcaster_Apply_WithTransform(t *testing.T) {
+    // Create custom upcaster with mock transform for testing
+    transformed := false
+    testUpcaster := Upcaster{
+        transforms: map[string]func(Event) Event{
+            "SimulationCreated": func(e Event) Event {
+                transformed = true
+                return e  // Return same event, just track call
+            },
+        },
+    }
+
+    evt := NewSimulationCreated("sim-1", 0, SimConfig{})
+    testUpcaster.Apply(evt)
+
+    if !transformed {
+        t.Error("Transform was not called")
+    }
+}
+
+func TestDefaultUpcaster_IsImmutable(t *testing.T) {
+    // Verify DefaultUpcaster has no public mutation methods
+    // (compile-time guarantee via value type + no Register method)
+    _ = DefaultUpcaster  // Just verify it exists and is usable
+}
+```
+
+### Files to Modify
+
+| File | Changes |
+|------|---------|
+| `CLAUDE.md` | Event Versioning section (~30 lines doc) |
+| `internal/events/upcasting.go` | New file (~35 lines) |
+| `internal/events/store.go` | Replay applies upcasts (~5 lines) |
+| `internal/events/upcasting_test.go` | New file (~45 lines) |
+
+---
+
+## Execution Order
+
+| Phase | Description | Test Checkpoint |
+|-------|-------------|-----------------|
+| 6A | Optimistic concurrency | `go test ./internal/events/...` |
+| 6B | Idempotency | `go test ./internal/events/...` |
+| 6C | Event versioning | `go test ./internal/events/...` |
+| Final | Full suite | `go test ./...` |
+
+**Per-phase workflow:**
+1. Create contract (`phase-6X-contract.md`) at Step 1c
+2. Get approval at Step 1d
+3. Archive plan + contract to `plan-log.md` at Step 1e
+4. Implement (Step 2)
+5. Update contract with results (Step 3)
+6. Present and get approval (Step 4)
+7. Archive completed contract to `plan-log.md` (Step 5b)
+8. Commit deliverable + plan-log.md (Step 5c)
+9. Repeat for next phase
+
+---
+
+## Success Criteria
+
+- [ ] Store.Append takes expectedVersion parameter
+- [ ] MemoryStore rejects version conflicts (returns error)
+- [ ] Engine.emit panics on concurrency conflict (bug detection)
+- [ ] Projection.Apply detects duplicate events (returns unchanged)
+- [ ] Duplicate events do NOT increment version
+- [ ] Store.EventCount == Projection.Version invariant holds
+- [ ] EmitLoadedState is safe to call twice
+- [ ] BenchmarkProjection_Apply_WithIdempotency < 2x baseline
+- [ ] Upcaster is immutable value type (no test isolation issues)
+- [ ] CLAUDE.md documents versioning strategy
+- [ ] All tests pass
+
+---
+
+## Risk Assessment
+
+**Low risk** - Additive changes, no breaking behavior:
+- Optimistic concurrency: existing single-user flow unaffected
+- Idempotency: same-event-twice is currently undefined behavior
+- Versioning: scaffold only, no actual upcasts yet
+
+---
+
+## Estimated Effort
+
+| Phase | Lines Changed | Estimate |
+|-------|---------------|----------|
+| 6A: Concurrency | ~75 | 5-7K tokens |
+| 6B: Idempotency | ~100 | 6-9K tokens |
+| 6C: Versioning | ~120 | 5-8K tokens |
+| **Total** | ~295 | 16-24K tokens |
+
+---
+
+## Approved Contract: 2026-01-21 - Phase 6A
+
+# Phase 6A Contract: Optimistic Concurrency
+
+**Created:** 2026-01-21
+
+## Step 1 Checklist
+- [x] 1a: Presented understanding
+- [x] 1b: Asked clarifying questions
+- [x] 1b-answer: Received answers
+- [x] 1c: Contract created (this file)
+- [x] 1d: Approval received (plan approved)
+- [ ] 1e: Plan + contract archived
+
+## Objective
+
+Add optimistic concurrency control to Store.Append to prevent concurrent modifications from interleaving events incorrectly.
+
+## Success Criteria
+
+- [ ] Store.Append takes expectedVersion parameter
+- [ ] MemoryStore rejects version conflicts (returns error)
+- [ ] Engine.emit panics on concurrency conflict (bug detection)
+- [ ] All existing tests updated and passing
+- [ ] New conflict detection test added
+
+## Approach
+
+1. Update Store interface signature: `Append(simID string, expectedVersion int, events ...Event) error`
+2. Update MemoryStore.Append with version check
+3. Update Engine.emit to capture version and panic on conflict
+4. Update all test calls to include version parameter
+5. Add TestMemoryStore_Append_ConcurrencyConflict
+6. Add TestEngine_DetectsConcurrencyConflict with StoreWithConflict test double
+
+## Token Budget
+
+Estimated: 5-7K tokens
+
+## Files to Modify
+
+| File | Changes |
+|------|---------|
+| `internal/events/store.go` | Interface + MemoryStore (~15 lines) |
+| `internal/engine/engine.go` | emit() version extraction + panic (~8 lines) |
+| `internal/events/store_test.go` | Update calls + add conflict test (~30 lines) |
+| `internal/engine/event_sourcing_test.go` | Conflict test + StoreWithConflict double (~35 lines) |
+
+---
+
+## Archived: 2026-01-21
+
+# Phase 6A Contract: Optimistic Concurrency
+
+**Created:** 2026-01-21
+
+## Step 1 Checklist
+- [x] 1a: Presented understanding
+- [x] 1b: Asked clarifying questions
+- [x] 1b-answer: Received answers
+- [x] 1c: Contract created (this file)
+- [x] 1d: Approval received (plan approved)
+- [x] 1e: Plan + contract archived
+
+## Objective
+
+Add optimistic concurrency control to Store.Append to prevent concurrent modifications from interleaving events incorrectly.
+
+## Success Criteria
+
+- [x] Store.Append takes expectedVersion parameter
+- [x] MemoryStore rejects version conflicts (returns error)
+- [x] Engine.emit panics on concurrency conflict (bug detection)
+- [x] All existing tests updated and passing
+- [x] New conflict detection test added
+
+## Approach
+
+1. Update Store interface signature: `Append(simID string, expectedVersion int, events ...Event) error`
+2. Update MemoryStore.Append with version check
+3. Update Engine.emit to capture version and panic on conflict
+4. Update all test calls to include version parameter
+5. Add TestMemoryStore_Append_ConcurrencyConflict
+6. Add TestEngine_DetectsConcurrencyConflict with StoreWithConflict test double
+
+## Token Budget
+
+Estimated: 5-7K tokens
+
+## Files to Modify
+
+| File | Changes |
+|------|---------|
+| `internal/events/store.go` | Interface + MemoryStore (~15 lines) |
+| `internal/engine/engine.go` | emit() version extraction + panic (~8 lines) |
+| `internal/events/store_test.go` | Update calls + add conflict test (~30 lines) |
+| `internal/engine/event_sourcing_test.go` | Conflict test + StoreWithConflict double (~35 lines) |
+
+---
+
+## Actual Results
+
+**Completed:** 2026-01-21
+
+### Success Criteria Status
+- [x] Store.Append takes expectedVersion parameter - COMPLETE (`store.go:10`)
+- [x] MemoryStore rejects version conflicts (returns error) - COMPLETE (`store.go:40-43`)
+- [x] Engine.emit panics on concurrency conflict (bug detection) - COMPLETE (`engine.go:96-101`)
+- [x] All existing tests updated and passing - COMPLETE (9 tests updated)
+- [x] New conflict detection test added - COMPLETE (`store_test.go:216`, `event_sourcing_test.go:638`)
+
+### Files Changed
+
+| File | Lines Changed |
+|------|---------------|
+| `internal/events/store.go` | +10 (interface signature, version check) |
+| `internal/engine/engine.go` | +9 (version capture, panic on error) |
+| `internal/events/store_test.go` | +105 (version params, table-driven conflict tests) |
+| `internal/engine/event_sourcing_test.go` | +85 (2 conflict tests, documented test double) |
+
+### Test Results
+```
+go test ./... - ALL PASS
+
+Store tests:
+- TestMemoryStore_Append_VersionConflicts (6 table-driven cases): PASS
+
+Engine tests:
+- TestEngine_DetectsConcurrencyConflict: PASS
+- TestEngine_ConcurrencyConflictPanicMessage: PASS
+```
+
+### Self-Assessment
+Grade: A (95/100)
+
+What went well:
+- Comprehensive edge case coverage (empty store, multiple events, error messages)
+- Test double fully documented with godoc explaining §6 compliance
+- Panic message verified for debugging usefulness
+- Table-driven tests for version conflict scenarios (6 cases in one test)
+
+Deductions:
+- Initial implementation was done before test for Cycle 1 (-5)
+
+## Step 4 Checklist
+- [x] 4a: Results presented to user
+- [x] 4b: Approval received
+
+## Approval
+✅ APPROVED BY USER - 2026-01-21
+Final grade: A (95/100)
+
+---
+
+## Log: 2026-01-21 - Phase 6A Optimistic Concurrency
+
+**What was done:**
+Added optimistic concurrency control to the event store. Store.Append now requires an expectedVersion parameter and rejects appends when the version doesn't match. Engine.emit captures the current version before applying and panics if the store detects a conflict (indicating a bug in single-user simulation).
+
+**Key files changed:**
+- `internal/events/store.go`: Interface signature + version check in MemoryStore.Append
+- `internal/engine/engine.go`: emit() captures version, panics on store error
+- `internal/events/store_test.go`: Table-driven tests for 6 conflict scenarios
+- `internal/engine/event_sourcing_test.go`: Conflict detection tests + storeWithConflict test double
+
+**Why it matters:**
+Prevents event interleaving bugs and ensures projection version stays in sync with store version. Foundation for ES compliance (§11 Optimistic Concurrency).

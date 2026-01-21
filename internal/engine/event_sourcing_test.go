@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/binaryphile/sofdevsim-2026/internal/events"
@@ -633,4 +634,87 @@ func emitCreatedFromSim(eng *Engine, sim *model.Simulation) {
 		SprintLength: sim.SprintLength,
 		Seed:         sim.Seed,
 	})
+}
+
+// TestEngine_DetectsConcurrencyConflict verifies Engine panics when store returns conflict error.
+// Per Go Development Guide §6: Uses test double at external boundary (store interface).
+func TestEngine_DetectsConcurrencyConflict(t *testing.T) {
+	store := &storeWithConflict{
+		MemoryStore:    events.NewMemoryStore(),
+		conflictOnCall: 2, // Second append will fail
+	}
+	eng := NewEngineWithStore(42, store)
+
+	// First emit succeeds
+	eng.EmitCreated("sim-1", 0, events.SimConfig{})
+
+	// Second emit should detect conflict and panic
+	defer func() {
+		if r := recover(); r == nil {
+			t.Error("Expected panic on concurrency conflict, got none")
+		}
+	}()
+
+	eng.AddDeveloper("dev-1", "Alice", 1.0)
+}
+
+// TestEngine_ConcurrencyConflictPanicMessage verifies panic includes useful debugging info.
+func TestEngine_ConcurrencyConflictPanicMessage(t *testing.T) {
+	store := &storeWithConflict{
+		MemoryStore:    events.NewMemoryStore(),
+		conflictOnCall: 1, // First append will fail
+	}
+	eng := NewEngineWithStore(42, store)
+
+	defer func() {
+		r := recover()
+		if r == nil {
+			t.Fatal("Expected panic, got none")
+		}
+
+		panicMsg := fmt.Sprintf("%v", r)
+		if !containsSubstr(panicMsg, "concurrency conflict") {
+			t.Errorf("Panic message should mention 'concurrency conflict', got: %s", panicMsg)
+		}
+	}()
+
+	eng.EmitCreated("sim-1", 0, events.SimConfig{})
+}
+
+// containsSubstr checks if s contains substr.
+func containsSubstr(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
+}
+
+// storeWithConflict is a test double that wraps MemoryStore to simulate concurrency conflicts.
+//
+// This is acceptable per Go Development Guide §6 (Mocks = Design Smell) because:
+//   - It's at an external boundary (the Store interface)
+//   - It tests Engine's behavior when store fails, not internal implementation details
+//   - It simulates a real scenario: another process appending before us
+//
+// Usage:
+//
+//	store := &storeWithConflict{
+//	    MemoryStore:    events.NewMemoryStore(),
+//	    conflictOnCall: 2,  // Fail on second Append call
+//	}
+type storeWithConflict struct {
+	*events.MemoryStore
+	conflictOnCall int // Which call number should return an error (1-indexed)
+	callCount      int
+}
+
+// Append delegates to MemoryStore unless this is the conflictOnCall-th invocation.
+func (s *storeWithConflict) Append(simID string, version int, evts ...events.Event) error {
+	s.callCount++
+	if s.callCount == s.conflictOnCall {
+		return fmt.Errorf("concurrency conflict: simulated")
+	}
+	return s.MemoryStore.Append(simID, version, evts...)
 }
