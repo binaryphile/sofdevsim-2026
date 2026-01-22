@@ -19482,3 +19482,127 @@ Completed TUI-server decoupling. TUI now operates in two modes: client mode (all
 
 **Why it matters:**
 TUI is now a pure HTTP client when running with --client flag, enabling future multi-user or remote scenarios. Engine mode preserved for local-only features.
+
+---
+
+## Archived: 2026-01-21
+
+# Phase 3 Contract: Fix 5 Boundary Bugs in sofdevsim
+
+**Created:** 2026-01-21
+
+## Step 1 Checklist
+- [x] 1a: Presented understanding
+- [x] 1b: Asked clarifying questions
+- [x] 1b-answer: Received answers
+- [x] 1c: Contract created (this file)
+- [x] 1d: Approval received
+- [x] 1e: Plan + contract archived
+
+## Objective
+
+Fix 5 boundary bugs discovered during manual testing by applying patterns from Go Dev Guide Section 8 (Boundary Defense) and FP Guide (ACD separation).
+
+## Success Criteria
+- [x] `go test -race ./...` passes
+- [x] Duplicate seed returns 409 Conflict (not panic)
+- [x] POST without Content-Type returns 415 Unsupported Media Type
+- [x] POST with >1MB body returns 413 Request Entity Too Large
+- [x] Negative seed returns 400 Bad Request
+- [x] No races detected under concurrent load
+
+## Approach (per approved plan)
+
+1. **Bug 5** (mutex) - Prevents races during testing
+2. **Bug 1** (existence check) - Core business logic
+3. **Bug 4** (seed validation) - Pure calculation
+4. **Bug 2** (Content-Type) - Middleware
+5. **Bug 3** (body limit) - Middleware + decodeJSON helper
+6. **Run tests** - `go test -race ./...`
+
+## New Files
+- `internal/api/content_type.go` - RequireJSON middleware
+- `internal/api/body_limit.go` - LimitBody middleware
+- `internal/api/decode.go` - decodeJSON + sentinel errors
+- `internal/api/validate.go` - isValidSeed calculation
+- Tests for each
+
+## Token Budget
+Estimated: 30-50K tokens
+
+## Actual Results
+
+**Completed:** 2026-01-21
+
+### Files Created
+| File | Purpose | Lines |
+|------|---------|-------|
+| `internal/api/content_type.go` | RequireJSON middleware | 31 |
+| `internal/api/body_limit.go` | LimitBody middleware | 14 |
+| `internal/api/decode.go` | decodeJSON, sentinel errors, respondDecodeError | 35 |
+| `internal/api/validate.go` | isValidSeed pure calculation | 11 |
+| `internal/api/validate_test.go` | Unit tests for isValidSeed | 27 |
+| `internal/api/decode_test.go` | Unit tests for decodeJSON, respondDecodeError | 108 |
+| `internal/api/content_type_test.go` | Unit tests for RequireJSON middleware | 95 |
+| `internal/api/body_limit_test.go` | Unit tests for LimitBody middleware | 100 |
+
+### Files Modified
+| File | Changes |
+|------|---------|
+| `internal/registry/registry.go` | Added mutex, ErrAlreadyExists, double-check pattern, pointer receivers |
+| `internal/api/registry.go` | Embed pointer, re-export ErrAlreadyExists |
+| `internal/api/handlers.go` | Use decodeJSON/respondDecodeError, seed validation, 409 for duplicates |
+| `internal/api/server.go` | Wire middleware chain: LimitBody → RequireJSON → Dedup |
+| `internal/tui/app.go` | Accept `*registry.SimRegistry` instead of value |
+| `internal/tui/client.go` | Add Content-Type header to Tick and StartSprint |
+| `internal/tui/client_test.go` | Add Content-Type header to raw HTTP requests |
+| `internal/api/api_test.go` | Update test for 2-return CreateSimulation |
+| `cmd/sofdevsim/main.go` | Check for nil pointer instead of IsZero |
+
+### Bug Fix Verification
+1. **Bug 5 (Mutex)**: `go test -race ./...` passes - no race conditions
+2. **Bug 1 (Existence check)**: CreateSimulation returns ErrAlreadyExists → 409 Conflict
+3. **Bug 4 (Seed validation)**: isValidSeed returns error → 400 Bad Request
+4. **Bug 2 (Content-Type)**: RequireJSON middleware → 415 Unsupported Media Type
+5. **Bug 3 (Body limit)**: LimitBody(1<<20) + decodeJSON → 413 Request Entity Too Large
+
+### Test Results
+```
+$ go test -race ./...
+ok  	github.com/binaryphile/sofdevsim-2026/cmd/sofdevsim	1.021s
+ok  	github.com/binaryphile/sofdevsim-2026/internal/api	1.303s
+ok  	github.com/binaryphile/sofdevsim-2026/internal/tui	1.232s
+... all packages pass
+```
+
+### FP Guide Alignment
+- **Data**: `ErrAlreadyExists`, `ErrBodyTooLarge`, `ErrInvalidJSON` (sentinel errors)
+- **Calculations**: `decodeJSON`, `isValidSeed` (pure, testable without HTTP)
+- **Actions**: `respondDecodeError`, middleware, handlers (HTTP I/O)
+
+## Step 4 Checklist
+- [x] 4a: Results presented to user
+- [x] 4b: Approval received
+
+## Approval
+✅ APPROVED BY USER - 2026-01-21
+Final grade: A+ (100/100)
+
+---
+
+## Log: 2026-01-21 - Phase 3: Fix 5 Boundary Bugs
+
+**What was done:**
+Fixed 5 boundary bugs discovered during manual testing by applying patterns from Go Dev Guide Section 8 (Boundary Defense) and FP Guide (ACD separation). Added mutex to SimRegistry, existence check for duplicate seeds, seed validation, Content-Type validation middleware, and body size limiting.
+
+**Key files changed:**
+- `internal/registry/registry.go`: Added sync.RWMutex, ErrAlreadyExists, pointer receivers
+- `internal/api/content_type.go`: NEW - RequireJSON middleware
+- `internal/api/body_limit.go`: NEW - LimitBody middleware
+- `internal/api/decode.go`: NEW - decodeJSON pure calculation + sentinel errors
+- `internal/api/validate.go`: NEW - isValidSeed pure calculation
+- `internal/api/handlers.go`: Use new helpers, 409 for duplicates
+- `internal/api/server.go`: Wire middleware chain
+
+**Why it matters:**
+Prevents panics on duplicate seeds (409 Conflict), rejects malformed requests (415/413/400), and eliminates race conditions under concurrent load. Pure calculations are testable without HTTP mocking.

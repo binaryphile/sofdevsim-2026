@@ -1,8 +1,10 @@
 package registry
 
 import (
+	"errors"
 	"fmt"
 	"math/rand"
+	"sync"
 
 	"github.com/binaryphile/sofdevsim-2026/internal/engine"
 	"github.com/binaryphile/sofdevsim-2026/internal/events"
@@ -10,29 +12,36 @@ import (
 	"github.com/binaryphile/sofdevsim-2026/internal/model"
 )
 
+// ErrAlreadyExists is returned when attempting to create a duplicate simulation.
+var ErrAlreadyExists = errors.New("already exists")
+
 // SimRegistry manages simulation instances.
-// Value receiver: map/interface fields have reference semantics.
+// Pointer receiver required: contains sync.RWMutex (must not be copied).
 type SimRegistry struct {
+	mu        sync.RWMutex
 	instances map[string]SimInstance
 	store     events.Store // shared event store for all simulations
 }
 
 // NewSimRegistry creates an empty registry with an in-memory event store.
-func NewSimRegistry() SimRegistry {
-	return SimRegistry{
+func NewSimRegistry() *SimRegistry {
+	return &SimRegistry{
 		instances: make(map[string]SimInstance),
 		store:     events.NewMemoryStore(),
 	}
 }
 
 // Store returns the shared event store for subscriptions.
-func (r SimRegistry) Store() events.Store {
+// No lock needed: store field is immutable after construction.
+func (r *SimRegistry) Store() events.Store {
 	return r.store
 }
 
 // IsZero returns true if the registry is uninitialized (zero value).
 // Implements option.ZeroChecker for use with option.IfNotZero.
-func (r SimRegistry) IsZero() bool {
+func (r *SimRegistry) IsZero() bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	return r.instances == nil
 }
 
@@ -46,8 +55,18 @@ type SimInstance struct {
 }
 
 // CreateSimulation creates a new simulation with given seed and policy.
-func (r SimRegistry) CreateSimulation(seed int64, policy model.SizingPolicy) string {
+// Returns the simulation ID and nil error on success.
+// Returns ErrAlreadyExists if a simulation with the same seed already exists.
+func (r *SimRegistry) CreateSimulation(seed int64, policy model.SizingPolicy) (string, error) {
 	id := fmt.Sprintf("sim-%d", seed)
+
+	// Check existence under read lock first
+	r.mu.RLock()
+	_, exists := r.instances[id]
+	r.mu.RUnlock()
+	if exists {
+		return "", fmt.Errorf("simulation %s: %w", id, ErrAlreadyExists)
+	}
 
 	sim := model.NewSimulation(policy, seed)
 	sim.ID = id // Set ID for event sourcing
@@ -73,46 +92,62 @@ func (r SimRegistry) CreateSimulation(seed int64, policy model.SizingPolicy) str
 		eng.AddTicket(t)
 	}
 
+	// Write under lock
+	r.mu.Lock()
+	// Double-check after acquiring write lock (another goroutine may have created it)
+	if _, exists := r.instances[id]; exists {
+		r.mu.Unlock()
+		return "", fmt.Errorf("simulation %s: %w", id, ErrAlreadyExists)
+	}
 	r.instances[id] = SimInstance{
 		Sim:     sim,
 		Engine:  eng,
 		Tracker: metrics.NewTracker(),
 	}
+	r.mu.Unlock()
 
-	return id
+	return id, nil
 }
 
 // RegisterSimulation registers an existing simulation with the shared event store.
 // Returns the engine configured to emit to the shared store.
 // Use this to share simulations between TUI and API.
-func (r SimRegistry) RegisterSimulation(sim *model.Simulation, tracker metrics.Tracker) *engine.Engine {
+func (r *SimRegistry) RegisterSimulation(sim *model.Simulation, tracker metrics.Tracker) *engine.Engine {
 	eng := engine.NewEngineWithStore(sim.Seed, r.store)
 	eng.EmitLoadedState(*sim) // Syncs all sim state (developers, tickets) to projection
 
+	r.mu.Lock()
 	r.instances[sim.ID] = SimInstance{
 		Sim:     sim,
 		Engine:  eng,
 		Tracker: tracker,
 	}
+	r.mu.Unlock()
 
 	return eng
 }
 
 // GetInstance returns simulation instance using comma-ok pattern.
 // SimInstance contains pointers, so mutations via engine affect original.
-func (r SimRegistry) GetInstance(id string) (SimInstance, bool) {
+func (r *SimRegistry) GetInstance(id string) (SimInstance, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	inst, ok := r.instances[id]
 	return inst, ok
 }
 
 // SetInstance stores a simulation instance in the registry.
 // Used internally to update tracker state after operations.
-func (r SimRegistry) SetInstance(id string, inst SimInstance) {
+func (r *SimRegistry) SetInstance(id string, inst SimInstance) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	r.instances[id] = inst
 }
 
 // ListSimulations returns all active simulation IDs and their states.
-func (r SimRegistry) ListSimulations() []SimulationSummary {
+func (r *SimRegistry) ListSimulations() []SimulationSummary {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	result := make([]SimulationSummary, 0, len(r.instances))
 	for id, inst := range r.instances {
 		result = append(result, SimulationSummary{

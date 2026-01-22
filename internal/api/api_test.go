@@ -342,17 +342,19 @@ func TestAPI_GetLessons_NotFound(t *testing.T) {
 
 // TestSimRegistry_ValueSemantics verifies that SimRegistry works correctly with
 // value receivers. Maps are reference types, so mutations via value receiver
-// persist to the underlying data structure. This test guards against regression
-// if someone "fixes" the receivers to pointers thinking maps need them.
-func TestSimRegistry_ValueSemantics(t *testing.T) {
-	// Create registry as VALUE (not pointer)
+// TestSimRegistry_MutationPersists verifies that mutations to the registry
+// persist correctly. The registry uses pointer receivers (mutex requirement)
+// with an embedded pointer in the wrapper for proper sharing.
+func TestSimRegistry_MutationPersists(t *testing.T) {
 	registry := api.NewSimRegistry()
 
-	// Call method that mutates internal map (via value receiver)
-	id := registry.CreateSimulation(42, 0) // 0 = PolicyNone
+	// Call method that mutates internal map
+	id, err := registry.CreateSimulation(42, 0) // 0 = PolicyNone
+	if err != nil {
+		t.Fatalf("CreateSimulation() error = %v", err)
+	}
 
-	// Verify mutation persisted by querying through same value
-	// If value semantics were broken, this would return empty list
+	// Verify mutation persisted
 	sims := registry.ListSimulations()
 
 	if len(sims) != 1 {

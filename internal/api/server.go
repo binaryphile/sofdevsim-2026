@@ -31,7 +31,14 @@ func NewRouter(registry SimRegistry) http.Handler {
 	// Comparison endpoint
 	mux.HandleFunc("POST /comparisons", registry.HandleCompare)
 
-	// Wrap with deduplication middleware (5 min TTL for request ID caching)
+	// Middleware chain - request flows top to bottom:
+	//
+	//   Request → LimitBody → RequireJSON → Dedup → mux → Response
+	//
+	// Wrapping is inside-out: last wrap is first to execute.
 	dedup := NewDedupMiddleware(5 * time.Minute)
-	return dedup.Wrap(mux)
+	handler := dedup.Wrap(mux)           // 3. Dedup (innermost)
+	handler = RequireJSON(handler)       // 2. RequireJSON
+	handler = LimitBody(1 << 20)(handler) // 1. LimitBody (outermost, runs first)
+	return handler
 }

@@ -268,6 +268,7 @@ func TestClient_DedupMiddleware(t *testing.T) {
 	// Manually send duplicate request with same X-Request-ID to test dedup
 	// (Our Client generates unique IDs, so we need raw HTTP for this test)
 	req1, _ := http.NewRequest("POST", srv.URL+"/simulations/"+resp.Simulation.ID+"/sprints", nil)
+	req1.Header.Set("Content-Type", "application/json")
 	req1.Header.Set("X-Request-ID", "dedup-test-id")
 	resp1, err := http.DefaultClient.Do(req1)
 	if err != nil {
@@ -281,6 +282,7 @@ func TestClient_DedupMiddleware(t *testing.T) {
 
 	// Second request with same ID - should return cached 200, not 409 conflict
 	req2, _ := http.NewRequest("POST", srv.URL+"/simulations/"+resp.Simulation.ID+"/sprints", nil)
+	req2.Header.Set("Content-Type", "application/json")
 	req2.Header.Set("X-Request-ID", "dedup-test-id")
 	resp2, err := http.DefaultClient.Do(req2)
 	if err != nil {

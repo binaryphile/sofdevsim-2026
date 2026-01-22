@@ -33,7 +33,7 @@ type EngineMode struct {
 	Tracker  metrics.Tracker
 	Store    events.Store
 	EventSub <-chan events.Event
-	Registry registry.SimRegistry
+	Registry *registry.SimRegistry
 }
 
 // View represents the current screen
@@ -100,13 +100,13 @@ type httpResultMsg struct {
 // If seed is 0, uses current time for randomness.
 // Deprecated: Use NewAppWithRegistry for shared simulation access.
 func NewAppWithSeed(seed int64) *App {
-	return NewAppWithRegistry(seed, registry.SimRegistry{}) // zero value = standalone mode
+	return NewAppWithRegistry(seed, nil) // nil = standalone mode
 }
 
 // NewAppWithRegistry creates a new App that shares simulations via the registry.
-// If registry is zero value, creates a standalone app with its own event store.
+// If registry is nil, creates a standalone app with its own event store.
 // If seed is 0, uses current time for randomness.
-func NewAppWithRegistry(seed int64, reg registry.SimRegistry) *App {
+func NewAppWithRegistry(seed int64, reg *registry.SimRegistry) *App {
 	if seed == 0 {
 		seed = time.Now().UnixNano()
 	}
@@ -120,7 +120,7 @@ func NewAppWithRegistry(seed int64, reg registry.SimRegistry) *App {
 	var store events.Store
 	var eng *engine.Engine
 
-	if !reg.IsZero() {
+	if reg != nil {
 		// Use shared registry - simulation accessible by both TUI and API
 		store = reg.Store()
 		eng = reg.RegisterSimulation(sim, tracker)

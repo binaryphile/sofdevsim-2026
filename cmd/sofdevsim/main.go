@@ -64,7 +64,7 @@ func main() {
 		app = tui.NewAppWithClient(client, resp.Simulation)
 	} else {
 		// Local engine mode: direct registry access (supports export, save/load, comparison)
-		if registry.SimRegistry.IsZero() {
+		if registry.SimRegistry == nil {
 			// No server started, create standalone registry
 			registry = api.NewSimRegistry()
 		}

@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"time"
 
@@ -106,8 +107,14 @@ type CreateSimulationRequest struct {
 // Returns the initial state with links to start a sprint.
 func (r SimRegistry) HandleCreateSimulation(w http.ResponseWriter, req *http.Request) {
 	var body CreateSimulationRequest
-	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
+	if err := decodeJSON(req, &body); err != nil {
+		respondDecodeError(w, err)
+		return
+	}
+
+	// Validate seed (pure calculation)
+	if err := isValidSeed(body.Seed); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -125,7 +132,15 @@ func (r SimRegistry) HandleCreateSimulation(w http.ResponseWriter, req *http.Req
 		return
 	}
 
-	id := r.CreateSimulation(body.Seed, policy)
+	id, err := r.CreateSimulation(body.Seed, policy)
+	if err != nil {
+		if errors.Is(err, ErrAlreadyExists) {
+			writeError(w, http.StatusConflict, err.Error())
+			return
+		}
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 
 	inst, _ := r.GetInstance(id)
 	state := ToState(inst.Engine.Sim(), inst.Tracker)
@@ -236,8 +251,8 @@ func (r SimRegistry) HandleAssignTicket(w http.ResponseWriter, req *http.Request
 	}
 
 	var body AssignTicketRequest
-	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
+	if err := decodeJSON(req, &body); err != nil {
+		respondDecodeError(w, err)
 		return
 	}
 
@@ -270,8 +285,8 @@ func (r SimRegistry) HandleAssignTicket(w http.ResponseWriter, req *http.Request
 // Returns DORA metrics and per-metric winners.
 func (r SimRegistry) HandleCompare(w http.ResponseWriter, req *http.Request) {
 	var body CompareRequest
-	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
+	if err := decodeJSON(req, &body); err != nil {
+		respondDecodeError(w, err)
 		return
 	}
 
@@ -279,6 +294,11 @@ func (r SimRegistry) HandleCompare(w http.ResponseWriter, req *http.Request) {
 	seed := body.Seed
 	if seed == 0 {
 		seed = time.Now().UnixNano()
+	}
+	// Validate seed (pure calculation)
+	if err := isValidSeed(seed); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
 	}
 
 	sprints := body.Sprints
@@ -426,8 +446,8 @@ func (r SimRegistry) HandleUpdateSimulation(w http.ResponseWriter, req *http.Req
 	}
 
 	var body UpdateSimulationRequest
-	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
+	if err := decodeJSON(req, &body); err != nil {
+		respondDecodeError(w, err)
 		return
 	}
 
@@ -480,8 +500,8 @@ func (r SimRegistry) HandleDecompose(w http.ResponseWriter, req *http.Request) {
 	}
 
 	var body DecomposeRequest
-	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
+	if err := decodeJSON(req, &body); err != nil {
+		respondDecodeError(w, err)
 		return
 	}
 

@@ -159,6 +159,7 @@ func (c Client) Tick(simID string) (*TickResponse, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
 	}
+	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Request-ID", uuid.New().String())
 
 	resp, err := c.httpClient.Do(req)
@@ -217,6 +218,7 @@ func (c Client) StartSprint(simID string) (*HALResponse, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
 	}
+	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Request-ID", uuid.New().String())
 
 	resp, err := c.httpClient.Do(req)
