@@ -1,6 +1,7 @@
 package events
 
 import (
+	"sync"
 	"testing"
 	"time"
 
@@ -393,5 +394,75 @@ func TestMemoryStore_Subscribe_AppliesUpcasts(t *testing.T) {
 		}
 	case <-time.After(100 * time.Millisecond):
 		t.Error("timed out waiting for event")
+	}
+}
+
+// TestMemoryStore_ConcurrentAppend verifies that concurrent goroutines can
+// safely append events without data corruption or panics.
+// Per Khorikov: edge case test for concurrent access (regression protection).
+func TestMemoryStore_ConcurrentAppend(t *testing.T) {
+	store := NewMemoryStore()
+	defer store.Close()
+
+	simID := "stress-test"
+
+	// Initialize with first event (version 0 -> 1)
+	err := store.Append(simID, 0, testEvent{simID: simID, id: "init", name: "Init"})
+	if err != nil {
+		t.Fatalf("Initial append failed: %v", err)
+	}
+
+	// Launch goroutines that all try to append
+	const goroutines = 10
+	const attemptsPerGoroutine = 100
+
+	var wg sync.WaitGroup
+	var successCount, conflictCount int64
+	var mu sync.Mutex
+
+	for g := 0; g < goroutines; g++ {
+		wg.Add(1)
+		go func(goroutineID int) {
+			defer wg.Done()
+			for i := 0; i < attemptsPerGoroutine; i++ {
+				version := store.EventCount(simID)
+				evt := testEvent{
+					simID: simID,
+					id:    "", // Empty ID to bypass idempotency
+					name:  "Tick",
+				}
+				err := store.Append(simID, version, evt)
+
+				mu.Lock()
+				if err != nil {
+					conflictCount++
+				} else {
+					successCount++
+				}
+				mu.Unlock()
+			}
+		}(g)
+	}
+
+	wg.Wait()
+
+	// All attempts should either succeed or conflict (no panics, no data corruption)
+	totalAttempts := int64(goroutines * attemptsPerGoroutine)
+	if successCount+conflictCount != totalAttempts {
+		t.Errorf("Missing attempts: success=%d, conflict=%d, total=%d",
+			successCount, conflictCount, totalAttempts)
+	}
+
+	// Verify store is consistent
+	finalCount := store.EventCount(simID)
+	expectedCount := int(successCount) + 1 // +1 for initial event
+	if finalCount != expectedCount {
+		t.Errorf("EventCount = %d, want %d (successes + 1)", finalCount, expectedCount)
+	}
+
+	// Verify replay returns correct number of events
+	events := store.Replay(simID)
+	if len(events) != expectedCount {
+		t.Errorf("Replay returned %d events, want %d", len(events), expectedCount)
 	}
 }

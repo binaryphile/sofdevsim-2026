@@ -446,6 +446,40 @@ func generateTestEvents(n int) []events.Event {
 	return result
 }
 
+// TestProjection_ReplayManyEvents_Correctness verifies that replaying 1000+ events
+// produces correct final state. Benchmarks only test performance, not correctness.
+// Per Khorikov: edge case test for large event streams (regression protection).
+func TestProjection_ReplayManyEvents_Correctness(t *testing.T) {
+	evts := generateTestEvents(1000)
+
+	proj := events.NewProjection()
+	for _, e := range evts {
+		proj = proj.Apply(e)
+	}
+
+	state := proj.State()
+
+	// Verify final state matches expected
+	if state.ID != "sim-1" {
+		t.Errorf("ID = %q, want %q", state.ID, "sim-1")
+	}
+	if len(state.Developers) != 3 {
+		t.Errorf("Developers = %d, want 3", len(state.Developers))
+	}
+
+	// generateTestEvents: 4 setup events (Created + 3 DeveloperAdded), then Ticked from index 4 to 999
+	// Last Ticked event is NewTicked("sim-1", 999), so CurrentTick should be 999
+	expectedTick := 999
+	if state.CurrentTick != expectedTick {
+		t.Errorf("CurrentTick = %d, want %d", state.CurrentTick, expectedTick)
+	}
+
+	// Version should equal total events processed
+	if proj.Version() != 1000 {
+		t.Errorf("Version = %d, want 1000", proj.Version())
+	}
+}
+
 func TestProjection_Apply_IncidentStarted(t *testing.T) {
 	proj := events.NewProjection()
 	proj = proj.Apply(events.NewSimulationCreated("sim-1", 0, events.SimConfig{Seed: 42}))

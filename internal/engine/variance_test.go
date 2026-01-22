@@ -93,3 +93,28 @@ func TestVarianceModel_Reproducibility(t *testing.T) {
 		}
 	}
 }
+
+// Test edge case: seed=0 should still produce valid, reproducible results
+// Per Khorikov: edge case tests protect against regressions
+func TestVarianceModel_ZeroSeed(t *testing.T) {
+	vm1 := engine.NewVarianceModel(0)
+	vm2 := engine.NewVarianceModel(0)
+
+	ticket := model.NewTicket("TKT-001", "Test", 5, model.MediumUnderstanding)
+	ticket.Phase = model.PhaseImplement
+
+	for tick := 0; tick < 100; tick++ {
+		v1 := vm1.Calculate(ticket, tick)
+		v2 := vm2.Calculate(ticket, tick)
+
+		// seed=0 should still be reproducible
+		if v1 != v2 {
+			t.Errorf("tick %d: seed=0 not reproducible: %v != %v", tick, v1, v2)
+		}
+
+		// Variance should always be positive
+		if v1 <= 0 {
+			t.Errorf("tick %d: variance should be positive, got %v", tick, v1)
+		}
+	}
+}

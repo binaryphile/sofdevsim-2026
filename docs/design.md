@@ -34,18 +34,28 @@ Sizing policy affects:
 ```mermaid
 classDiagram
     class Simulation {
+        +string ID
         +int CurrentTick
-        +Sprint CurrentSprint
+        +int SprintNumber
+        +option.Basic~Sprint~ CurrentSprintOption
         +SizingPolicy SizingPolicy
+        +int64 Seed
+        +int SprintLength
+        +float64 BufferPct
         +Developer[] Developers
         +Ticket[] Backlog
         +Ticket[] ActiveTickets
         +Ticket[] CompletedTickets
         +Incident[] OpenIncidents
         +Incident[] ResolvedIncidents
-        +StartSprint()
-        +FindTicketByID(id) Ticket
+        +NewSimulation(policy, seed)$ *Simulation
+        +FindActiveTicketIndex(id) int
+        +FindBacklogTicketIndex(id) int
+        +FindDeveloperIndex(id) int
         +IdleDevelopers() Developer[]
+        +TotalOpenIncidents() int
+        +TotalIncidents() int
+        +TotalDeploys() int
     }
 
     class Ticket {
@@ -95,6 +105,8 @@ classDiagram
     Simulation "1" *-- "*" Incident
     Ticket "*" -- "0..1" Ticket : parent
 ```
+
+> **Note:** Simulation is a pure Data type with query methods only. Mutation happens via Engine, which emits events that update state through Projection. Index-based lookups return -1 if not found.
 
 ### Workflow Phases
 
@@ -200,9 +212,20 @@ flowchart TD
     subgraph api["internal/api/"]
         server["server.go - HTTP router"]
         handlers["handlers.go - Request handlers"]
-        registry["registry.go - SimRegistry"]
+        middleware["middleware - LimitBody, RequireJSON, Dedup"]
         hypermedia["hypermedia.go - LinksFor()"]
         resources["resources.go - SimulationState"]
+    end
+
+    subgraph registry_pkg["internal/registry/"]
+        registry["registry.go - SimRegistry + RWMutex"]
+    end
+
+    subgraph events_pkg["internal/events/"]
+        evt_types["types.go - Event definitions"]
+        evt_store["store.go - MemoryStore"]
+        evt_projection["projection.go - State rebuild"]
+        evt_upcasting["upcasting.go - Schema evolution"]
     end
 
     subgraph persistence["internal/persistence/"]
@@ -239,10 +262,15 @@ flowchart TD
     main --> server
     app --> engine_go
     app --> dora
-    server --> registry
+    app --> evt_store
+    server --> middleware
+    middleware --> handlers
+    handlers --> registry
     registry --> engine_go
     registry --> dora
+    registry --> evt_store
     engine_go --> simulation
+    engine_go --> evt_projection
     dora --> simulation
 ```
 
@@ -253,15 +281,22 @@ graph LR
     tui --> engine
     tui --> metrics
     tui --> persistence
+    tui --> events
+    tui --> registry
     api --> engine
     api --> metrics
+    api --> events
+    api --> registry
     engine --> model
+    engine --> events
     metrics --> model
     persistence --> model
     persistence --> metrics
+    registry --> events
+    events --> model
 ```
 
-**Dependency Rule:** Packages only depend downward. Model has no dependencies.
+**Dependency Rule:** Packages only depend downward. Model has no dependencies. Events is a central hub connecting TUI, API, Engine, and Registry.
 
 ### TUI Header Bar
 
@@ -364,19 +399,25 @@ Contextual teaching that adapts to current view and simulation state. Press 'h' 
 
 ```mermaid
 flowchart TD
-    A[Advance CurrentTick] --> B[For each ActiveTicket]
-    B --> C[Calculate effort<br/>developer.Velocity × variance]
-    C --> D[Add to PhaseEffortSpent]
+    A[Emit Ticked event] --> B[For each Developer with ticket]
+    B --> C[Calculate effort with variance]
+    C --> D[Emit WorkProgressed event]
     D --> E{Phase complete?}
     E -->|No| B
     E -->|Yes| F{Last phase?}
-    F -->|No| G[Transition to next phase]
+    F -->|No| G[Emit TicketPhaseChanged]
     G --> B
-    F -->|Yes| H[Move to CompletedTickets<br/>Free developer]
+    F -->|Yes| H[Emit TicketCompleted]
     H --> I[Generate random events<br/>bugs, scope creep]
     I --> J[Check incident generation]
-    J --> K[Update metrics<br/>DORA, fever chart]
+    J --> K[Emit BufferConsumed]
+    K --> L[Track WIP]
+    L --> M{Sprint ended?}
+    M -->|Yes| N[Emit SprintEnded]
+    M -->|No| O[Done]
 ```
+
+> **Note:** All state changes happen through events. The Projection applies each event to rebuild simulation state.
 
 ### Phase Transition Logic
 
@@ -565,6 +606,8 @@ The API follows REST with hypermedia (HATEOAS). Each response includes `_links` 
 | POST | `/simulations/{id}/sprints` | Start sprint | `self`, `tick` |
 | POST | `/simulations/{id}/tick` | Advance one tick | `self`, `tick` or `start-sprint` |
 | POST | `/simulations/{id}/assignments` | Assign ticket to developer | `self`, `tick` |
+| POST | `/simulations/{id}/decompose` | Decompose ticket into children | `self` |
+| GET | `/simulations/{id}/lessons` | Get current lesson for teaching | `self`, `simulation` |
 | POST | `/comparisons` | Run policy comparison | `self` |
 
 ### Example Response (HAL+JSON style)
@@ -682,7 +725,7 @@ POST /comparisons
 
 **Note:** Response mirrors `metrics.ComparisonResult` struct. See `internal/metrics/comparison.go:8-26`.
 
-### Architecture: Value Semantics (No Mutex)
+### Architecture: Registry with Mutex Protection
 
 ```
 ┌─────────────────────────────────────────────────┐
@@ -696,7 +739,7 @@ POST /comparisons
 │         ▼                          ▼            │
 │  ┌─────────────┐          ┌─────────────────┐   │
 │  │ TUI's own   │          │  SimRegistry    │   │
-│  │ Simulation  │          │ map[id]SimInst  │   │
+│  │ Simulation  │          │ RWMutex + map   │   │
 │  └─────────────┘          └─────────────────┘   │
 │                                    │            │
 │                           ┌────────┴────────┐   │
@@ -708,29 +751,33 @@ POST /comparisons
 └─────────────────────────────────────────────────┘
 ```
 
-**Why no mutex?**
+**Concurrency model:**
 
-1. Each API simulation is independent (POST `/simulations` creates new instance)
-2. TUI doesn't share state with API (separate simulations)
-3. HTTP is request-per-goroutine (within handler, exclusive access)
-4. No concurrent access to same simulation = no mutex needed
+1. SimRegistry uses `sync.RWMutex` to protect the shared instances map
+2. Individual simulations don't share state (no nested mutexes needed)
+3. Read locks for lookups (`GetInstance`), write locks for registration
+4. Each simulation instance is independent once retrieved
 
 ### SimRegistry
 
 ```go
 // SimRegistry manages independent simulation instances
+// Pointer receiver required: contains sync.RWMutex (must not be copied)
 type SimRegistry struct {
-    instances map[string]*SimInstance
+    mu        sync.RWMutex
+    instances map[string]SimInstance
+    store     events.Store
 }
 
-// SimInstance owns its simulation - value semantics internally
+// SimInstance holds simulation state
 type SimInstance struct {
-    id      string
-    sim     model.Simulation  // Value, not pointer
-    engine  engine.Engine
-    tracker metrics.Tracker
+    Sim     *model.Simulation  // Pointer for registry storage
+    Engine  *engine.Engine
+    Tracker metrics.Tracker
 }
 ```
+
+> **Note:** `Engine.Sim()` returns a value copy of current state for safe read access.
 
 ### Startup Sequence
 
@@ -747,11 +794,15 @@ func LinksFor(state SimulationState) map[string]string {
     links := map[string]string{
         "self": "/simulations/" + state.ID,
     }
+
+    // Assign link available whenever backlog has tickets (UC11: sprint planning)
+    // Not gated on sprint state - allows planning before sprint starts
+    if state.BacklogCount > 0 {
+        links["assign"] = "/simulations/" + state.ID + "/assignments"
+    }
+
     if state.SprintActive {
         links["tick"] = "/simulations/" + state.ID + "/tick"
-        if state.BacklogCount > 0 {
-            links["assign"] = "/simulations/" + state.ID + "/assignments"
-        }
     } else {
         links["start-sprint"] = "/simulations/" + state.ID + "/sprints"
     }
@@ -759,7 +810,7 @@ func LinksFor(state SimulationState) map[string]string {
 }
 ```
 
-This pure function enables unit testing of link logic without HTTP.
+This pure function enables unit testing of link logic without HTTP. Key insight: `assign` is not nested under `SprintActive` because UC11 requires sprint planning before the sprint starts.
 
 ### Test Strategy (Khorikov Quadrants)
 
