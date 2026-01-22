@@ -237,7 +237,7 @@ func TestNextTraceID(t *testing.T) {
 }
 
 // TestAllEventTypes_WithTrace verifies WithTrace works on all event types.
-func TestAllEventTypes_WithTrace(t *testing.T) {
+func TestEvents_TraceContextWorksOnAllTypes(t *testing.T) {
 	tests := []struct {
 		name  string
 		event Event
@@ -268,7 +268,7 @@ func TestAllEventTypes_WithTrace(t *testing.T) {
 }
 
 // TestAllEventTypes_WithCausedBy verifies WithCausedBy works on all event types.
-func TestTraceContext_NewTraceContext(t *testing.T) {
+func TestTraceContext_RootHasGeneratedIDs(t *testing.T) {
 	tc := NewTraceContext()
 
 	if tc.TraceID == "" {
@@ -285,7 +285,7 @@ func TestTraceContext_NewTraceContext(t *testing.T) {
 	}
 }
 
-func TestTraceContext_NewChildSpan(t *testing.T) {
+func TestTraceContext_ChildMaintainsHierarchy(t *testing.T) {
 	parent := NewTraceContext()
 	child := parent.NewChildSpan()
 
@@ -305,7 +305,7 @@ func TestTraceContext_NewChildSpan(t *testing.T) {
 	}
 }
 
-func TestTraceContext_IsEmpty(t *testing.T) {
+func TestTraceContext_EmptyVsInitialized(t *testing.T) {
 	empty := TraceContext{}
 	if !empty.IsEmpty() {
 		t.Error("Zero TraceContext should be empty")
@@ -317,7 +317,7 @@ func TestTraceContext_IsEmpty(t *testing.T) {
 	}
 }
 
-func TestAllEventTypes_WithCausedBy(t *testing.T) {
+func TestEvents_CausedByWorksOnAllTypes(t *testing.T) {
 	tests := []struct {
 		name  string
 		event Event

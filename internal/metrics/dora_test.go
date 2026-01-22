@@ -9,7 +9,7 @@ import (
 )
 
 // Test DORA metrics calculation from simulation state
-func TestDORAMetrics_Update(t *testing.T) {
+func TestDORAMetrics_AggregatesTicketsAndIncidents(t *testing.T) {
 	sim := model.NewSimulation(model.PolicyNone, 12345)
 	sim.CurrentTick = 10
 

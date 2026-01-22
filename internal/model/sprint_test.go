@@ -7,7 +7,7 @@ import (
 )
 
 // Test domain logic: fever status transitions based on buffer consumption
-func TestSprint_UpdateFeverStatus(t *testing.T) {
+func TestSprint_BufferPressureAffectsFeverStatus(t *testing.T) {
 	tests := []struct {
 		name           string
 		bufferDays     float64
@@ -62,7 +62,7 @@ func TestSprint_UpdateFeverStatus(t *testing.T) {
 }
 
 // Test that ConsumeBuffer updates fever status atomically
-func TestSprint_ConsumeBuffer(t *testing.T) {
+func TestSprint_BufferConsumptionUpdatesFeverStatus(t *testing.T) {
 	sprint := model.NewSprint(1, 0, 10, 0.2) // 2 days buffer
 
 	// Start green

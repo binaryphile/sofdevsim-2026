@@ -8,7 +8,7 @@ import (
 )
 
 // Test fever chart updates from sprint state
-func TestFeverChart_Update(t *testing.T) {
+func TestFeverChart_SyncsWithSprintBuffer(t *testing.T) {
 	tests := []struct {
 		name           string
 		bufferDays     float64

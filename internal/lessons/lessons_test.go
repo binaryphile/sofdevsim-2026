@@ -81,7 +81,7 @@ func TestSelect(t *testing.T) {
 
 // TestState_WithSeen tests the value semantics of State.
 // Per Khorikov: Domain logic (state transitions) gets unit tests.
-func TestState_WithSeen(t *testing.T) {
+func TestLessonState_WithSeenDoesNotMutate(t *testing.T) {
 	t.Run("marks lesson as seen", func(t *testing.T) {
 		state := State{}
 		newState := state.WithSeen(Orientation)
