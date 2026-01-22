@@ -31,7 +31,7 @@ func createDir(path string) error {
 }
 
 // writeMetadata writes metadata.csv
-func (e *Exporter) writeMetadata(outputDir string) error {
+func (e Exporter) writeMetadata(outputDir string) error {
 	path := filepath.Join(outputDir, "metadata.csv")
 	file, err := os.Create(path)
 	if err != nil {
@@ -62,7 +62,7 @@ func (e *Exporter) writeMetadata(outputDir string) error {
 }
 
 // writeTickets writes tickets.csv and returns the count
-func (e *Exporter) writeTickets(outputDir string) (int, error) {
+func (e Exporter) writeTickets(outputDir string) (int, error) {
 	path := filepath.Join(outputDir, "tickets.csv")
 	file, err := os.Create(path)
 	if err != nil {
@@ -92,7 +92,7 @@ func (e *Exporter) writeTickets(outputDir string) (int, error) {
 }
 
 // writeSprints writes sprints.csv and returns the count
-func (e *Exporter) writeSprints(outputDir string) (int, error) {
+func (e Exporter) writeSprints(outputDir string) (int, error) {
 	path := filepath.Join(outputDir, "sprints.csv")
 	file, err := os.Create(path)
 	if err != nil {
@@ -131,7 +131,7 @@ func (e *Exporter) writeSprints(outputDir string) (int, error) {
 }
 
 // writeIncidents writes incidents.csv and returns the count
-func (e *Exporter) writeIncidents(outputDir string) (int, error) {
+func (e Exporter) writeIncidents(outputDir string) (int, error) {
 	path := filepath.Join(outputDir, "incidents.csv")
 	file, err := os.Create(path)
 	if err != nil {
@@ -172,7 +172,7 @@ func (e *Exporter) writeIncidents(outputDir string) (int, error) {
 }
 
 // writeMetrics writes metrics.csv
-func (e *Exporter) writeMetrics(outputDir string) error {
+func (e Exporter) writeMetrics(outputDir string) error {
 	path := filepath.Join(outputDir, "metrics.csv")
 	file, err := os.Create(path)
 	if err != nil {
@@ -211,7 +211,7 @@ func (e *Exporter) writeMetrics(outputDir string) error {
 }
 
 // writeComparison writes comparison.csv
-func (e *Exporter) writeComparison(outputDir string) error {
+func (e Exporter) writeComparison(outputDir string) error {
 	if e.comparison == nil {
 		return nil
 	}

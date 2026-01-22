@@ -56,6 +56,9 @@ func discoverServer(port int) bool {
 }
 
 // EmbeddedServer manages an embedded API server instance.
+//
+// Pointer receiver: wraps *http.Server; Shutdown() requires the same instance
+// that called ListenAndServe() to properly close active connections.
 type EmbeddedServer struct {
 	server   *http.Server
 	registry api.SimRegistry

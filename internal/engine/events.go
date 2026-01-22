@@ -8,20 +8,22 @@ import (
 	"github.com/binaryphile/sofdevsim-2026/internal/model"
 )
 
-// EventGenerator creates random simulation events
+// EventGenerator creates random simulation events.
+//
+// Value receiver: only reads seed, creates fresh RNG per call (deterministic).
 type EventGenerator struct {
 	seed int64
 }
 
 // NewEventGenerator creates an event generator
-func NewEventGenerator(seed int64) *EventGenerator {
-	return &EventGenerator{seed: seed}
+func NewEventGenerator(seed int64) EventGenerator {
+	return EventGenerator{seed: seed}
 }
 
 // GenerateRandomEvents generates bugs, scope creep, and incident resolutions.
 // Returns ES events for state changes - caller emits them to update projection.
 // This is a pure function: reads state, returns events, no side effects.
-func (g *EventGenerator) GenerateRandomEvents(state model.Simulation) []events.Event {
+func (g EventGenerator) GenerateRandomEvents(state model.Simulation) []events.Event {
 	result := make([]events.Event, 0)
 	rng := rand.New(rand.NewSource(g.seed + int64(state.CurrentTick)))
 
@@ -74,7 +76,7 @@ func (g *EventGenerator) GenerateRandomEvents(state model.Simulation) []events.E
 // CheckForIncidents checks recently deployed tickets for production issues.
 // Returns ES events for new incidents - caller emits them to update projection.
 // This is a pure function: reads state, returns events, no side effects.
-func (g *EventGenerator) CheckForIncidents(state model.Simulation) []events.Event {
+func (g EventGenerator) CheckForIncidents(state model.Simulation) []events.Event {
 	result := make([]events.Event, 0)
 	rng := rand.New(rand.NewSource(g.seed + int64(state.CurrentTick)))
 

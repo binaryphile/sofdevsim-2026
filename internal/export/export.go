@@ -10,7 +10,9 @@ import (
 	"github.com/binaryphile/sofdevsim-2026/internal/model"
 )
 
-// Exporter handles CSV export of simulation data
+// Exporter handles CSV export of simulation data.
+//
+// Value receiver: only reads fields, no mutation.
 type Exporter struct {
 	sim        *model.Simulation
 	tracker    metrics.Tracker
@@ -42,8 +44,8 @@ func (r ExportResult) Summary() string {
 }
 
 // New creates an exporter for the given simulation
-func New(sim *model.Simulation, tracker metrics.Tracker, comparison *metrics.ComparisonResult) *Exporter {
-	return &Exporter{
+func New(sim *model.Simulation, tracker metrics.Tracker, comparison *metrics.ComparisonResult) Exporter {
+	return Exporter{
 		sim:        sim,
 		tracker:    tracker,
 		comparison: comparison,
@@ -51,14 +53,14 @@ func New(sim *model.Simulation, tracker metrics.Tracker, comparison *metrics.Com
 }
 
 // Export writes CSV files to a timestamped directory in the current working directory
-func (e *Exporter) Export() (ExportResult, error) {
+func (e Exporter) Export() (ExportResult, error) {
 	timestamp := time.Now().Format("20060102-150405")
 	dirName := fmt.Sprintf("sofdevsim-export-%s", timestamp)
 	return e.ExportTo(dirName)
 }
 
 // ExportTo writes CSV files to a subdirectory within the given base path
-func (e *Exporter) ExportTo(basePath string) (ExportResult, error) {
+func (e Exporter) ExportTo(basePath string) (ExportResult, error) {
 	timestamp := time.Now().Format("20060102-150405")
 	dirName := fmt.Sprintf("sofdevsim-export-%s", timestamp)
 	outputDir := filepath.Join(basePath, dirName)

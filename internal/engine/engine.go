@@ -16,12 +16,18 @@ type NotDecomposable struct {
 	Reason string
 }
 
-// Engine runs the simulation tick loop.
-// Pointer receiver: mutates proj field.
+// Engine orchestrates pure and impure operations for simulation execution.
+//
+// Architecture (per FP Guide ACD pattern):
+//   - Calculations: variance model, policy decisions (pure, deterministic)
+//   - Actions: event emission, store writes (side effects)
+//   - Data: Projection state (immutable, derived from events)
+//
+// Pointer receiver: mutates proj field during event application.
 type Engine struct {
 	proj     events.Projection   // Source of truth for event sourcing
 	variance VarianceModel       // Value type: pure calculation
-	evtGen   *EventGenerator     // Keep pointer: has *rand.Rand (stateful)
+	evtGen   EventGenerator      // deterministic event generation
 	policies PolicyEngine        // Value type: pure decision logic
 	store    events.Store        // optional event store for event sourcing
 	trace    events.TraceContext // current trace context for event correlation

@@ -19889,3 +19889,250 @@ Added 4 edge case tests for regression protection: seed=0 determinism, 1000+ eve
 
 **Why it matters:**
 Protects against regressions in edge cases: zero seed, large event streams, concurrent access, and boundary conditions.
+
+---
+
+## Approved Plan: 2026-01-22 - Phase 4 Backlog Items
+
+# Plan: Phase 4 - Backlog Items (Final Compliance Polish)
+
+## Context
+
+Phases 1-3 complete. Phase 4 addresses remaining backlog items from compliance report.
+
+**Current compliance score:** ~97/100
+**Target improvement:** +3-4 points (quick wins only)
+
+## Items (2 quick wins + 1 optional)
+
+### Item 1: Engine Orchestrator Documentation (+2 FP Guide)
+**File:** `internal/engine/engine.go:19-28`
+**Effort:** 15 min
+**Verified:** Lines 19-28 contain Engine struct
+
+Add ACD pattern explanation to Engine struct comment:
+```go
+// Engine orchestrates pure and impure operations for simulation execution.
+//
+// Architecture (per FP Guide ACD pattern):
+// - Calculations: variance model, policy decisions (pure, deterministic)
+// - Actions: event emission, store writes (side effects)
+// - Data: Projection state (immutable, derived from events)
+//
+// Pointer receiver: mutates proj field during event application.
+type Engine struct {
+```
+
+### Item 2: Pointer Receiver Fixes (+2 Go Guide)
+**Effort:** 30 min
+
+**Types that correctly use pointer receivers (add justification comments):**
+
+| Type | File | Line | Justification |
+|------|------|------|---------------|
+| `DedupMiddleware` | `api/dedup.go:13` | struct | Contains `sync.RWMutex` - Go requires no copy after first use |
+| `App` | `tui/app.go:50` | struct | Bubbletea framework requires pointer receivers |
+| `EmbeddedServer` | `tui/server.go:59` | struct | Must call `server.Shutdown()` on same instance |
+
+**Types that should be converted to value receivers:**
+
+| Type | File | Line | Why Value Works |
+|------|------|------|-----------------|
+| `Exporter` | `export/export.go:14` | struct + methods | Only reads fields, no mutation |
+| `EventGenerator` | `engine/events.go:12` | struct + methods | Only reads `seed`, creates fresh RNG per call |
+
+**Note:** `EventGenerator` conversion also requires updating `Engine.evtGen` field from `*EventGenerator` to `EventGenerator` at `engine/engine.go:24`.
+
+### Item 3: runComparison Decomposition (SKIP - diminishing returns)
+**Rationale:**
+- Function is 42 lines, well-commented
+- Already has helper `autoAssignForComparison`
+- Comments explain rationale ("Fixed scenario ensures fair comparison")
+- Extracting more would be over-engineering for +2 points
+
+### Item 4: Response Builder Extraction (SKIP - already factored)
+**Rationale:**
+- `ToState()` already exists at `resources.go:136-201`
+- Remaining pattern is just 2 lines: `HALResponse{State: state, Links: LinksFor(state)}`
+- Not worth another abstraction layer
+
+## Files to Modify
+
+| File | Change | Lines |
+|------|--------|-------|
+| `internal/engine/engine.go` | Add ACD orchestrator docs | 19-28 |
+| `internal/api/dedup.go` | Add pointer receiver justification | 13 |
+| `internal/tui/app.go` | Add pointer receiver justification | 50 |
+| `internal/tui/server.go` | Add pointer receiver justification | 59 |
+| `internal/export/export.go` | Convert to value receivers | 14, 54, 61 |
+| `internal/engine/events.go` | Convert to value receivers | 12, 17, 24 |
+
+## Success Criteria
+
+- [ ] Engine struct has ACD orchestrator documentation
+- [ ] 3 types with justified pointer receivers have comments
+- [ ] `Exporter` converted to value receivers
+- [ ] `EventGenerator` converted to value receivers
+- [ ] `go test ./...` passes
+- [ ] Constructor return types updated (`New*` functions)
+
+## Estimated Effort
+
+~45 minutes total
+
+---
+
+## Approved Contract: 2026-01-22
+
+# Phase 4 Contract - Backlog Items (Final Compliance Polish)
+
+**Created:** 2026-01-22
+
+## Step 1 Checklist
+- [x] 1a: Presented understanding
+- [x] 1b: Asked clarifying questions
+- [x] 1b-answer: Received answers
+- [x] 1c: Contract created (this file)
+- [x] 1d: Approval received
+- [ ] 1e: Plan + contract archived
+
+## Objective
+Address remaining backlog items from compliance report for final polish (+4 points).
+
+## Success Criteria
+- [ ] Engine struct has ACD orchestrator documentation
+- [ ] 3 types with justified pointer receivers have comments
+- [ ] `Exporter` converted to value receivers
+- [ ] `EventGenerator` converted to value receivers
+- [ ] `go test ./...` passes
+- [ ] Constructor return types updated (`New*` functions)
+
+## Approach
+
+### Item 1: Engine Orchestrator Documentation
+Add ACD pattern explanation to `internal/engine/engine.go:19-28`
+
+### Item 2: Pointer Receiver Fixes
+**Add justification comments:**
+- `DedupMiddleware` (api/dedup.go:13) - contains sync.RWMutex
+- `App` (tui/app.go:50) - Bubbletea framework requirement
+- `EmbeddedServer` (tui/server.go:59) - must call Shutdown() on same instance
+
+**Convert to value receivers:**
+- `Exporter` (export/export.go) - only reads fields
+- `EventGenerator` (engine/events.go) - only reads seed
+- Update `Engine.evtGen` field type accordingly
+
+## Token Budget
+Estimated: 15-20K tokens
+
+---
+
+## Archived: 2026-01-22
+
+# Phase 4 Contract - Backlog Items (Final Compliance Polish)
+
+**Created:** 2026-01-22
+
+## Step 1 Checklist
+- [x] 1a: Presented understanding
+- [x] 1b: Asked clarifying questions
+- [x] 1b-answer: Received answers
+- [x] 1c: Contract created (this file)
+- [x] 1d: Approval received
+- [x] 1e: Plan + contract archived
+
+## Objective
+Address remaining backlog items from compliance report for final polish (+4 points).
+
+## Success Criteria
+- [x] Engine struct has ACD orchestrator documentation
+- [x] 3 types with justified pointer receivers have comments
+- [x] `Exporter` converted to value receivers
+- [x] `EventGenerator` converted to value receivers
+- [x] `go test ./...` passes
+- [x] Constructor return types updated (`New*` functions)
+
+## Approach
+
+### Item 1: Engine Orchestrator Documentation
+Add ACD pattern explanation to `internal/engine/engine.go:19-28`
+
+### Item 2: Pointer Receiver Fixes
+**Add justification comments:**
+- `DedupMiddleware` (api/dedup.go:13) - contains sync.RWMutex
+- `App` (tui/app.go:50) - Bubbletea framework requirement
+- `EmbeddedServer` (tui/server.go:59) - must call Shutdown() on same instance
+
+**Convert to value receivers:**
+- `Exporter` (export/export.go) - only reads fields
+- `EventGenerator` (engine/events.go) - only reads seed
+- Update `Engine.evtGen` field type accordingly
+
+## Token Budget
+Estimated: 15-20K tokens
+
+## Actual Results
+
+**Completed:** 2026-01-22
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `internal/engine/engine.go:19-28` | Added ACD orchestrator documentation |
+| `internal/engine/engine.go:24` | Changed `evtGen *EventGenerator` → `evtGen EventGenerator` |
+| `internal/api/dedup.go:13` | Added pointer receiver justification (sync.RWMutex) |
+| `internal/tui/app.go:50` | Added pointer receiver justification (Bubbletea) |
+| `internal/tui/server.go:59` | Added pointer receiver justification (Shutdown) |
+| `internal/export/export.go:14,45,54,61` | Converted to value receivers |
+| `internal/export/writers.go:34,65,95,134,175,214` | Converted to value receivers |
+| `internal/engine/events.go:12,17,24,77` | Converted to value receivers |
+
+### Quality Verification
+- `go test ./...` - all 11 packages pass (0 failures)
+- No new warnings introduced
+- All callers of `export.New()` and `NewEventGenerator()` work unchanged
+
+### Self-Assessment
+Grade: A (97/100)
+
+What went well:
+- Clean conversion of 2 types to value receivers without breaking callers
+- Justification comments explain *why* not just *what*
+- Removed redundant field comment on Engine.evtGen
+
+Improvements made after first review:
+- DedupMiddleware: explains copying would cause data races
+- App: explains Bubbletea event loop mutation requirement
+- EmbeddedServer: explains Shutdown/ListenAndServe identity
+- Engine.evtGen: simplified to "deterministic event generation"
+
+Deductions:
+- Minor: Could have run compliance grading to verify score improvement (-3 points)
+
+## Step 4 Checklist
+- [x] 4a: Results presented to user
+- [x] 4b: Approval received
+
+## Approval
+✅ APPROVED BY USER - 2026-01-22
+Final grade: A (96/100)
+
+---
+
+## Log: 2026-01-22 - Phase 4 Backlog Items (Final Compliance Polish)
+
+**What was done:**
+Addressed remaining compliance backlog items: documented Engine as ACD orchestrator, added justification comments to 3 pointer-receiver types explaining *why* pointers are required, and converted 2 types (Exporter, EventGenerator) from pointer to value receivers since they only read fields.
+
+**Key files changed:**
+- `internal/engine/engine.go`: ACD pattern docs, EventGenerator field type change
+- `internal/engine/events.go`: EventGenerator converted to value receivers
+- `internal/export/export.go`, `writers.go`: Exporter converted to value receivers
+- `internal/api/dedup.go`: Pointer justification (sync.RWMutex)
+- `internal/tui/app.go`: Pointer justification (Bubbletea)
+- `internal/tui/server.go`: Pointer justification (http.Server identity)
+
+**Why it matters:**
+Completes compliance polish - pointer receivers now documented with consequences, value semantics applied where appropriate.

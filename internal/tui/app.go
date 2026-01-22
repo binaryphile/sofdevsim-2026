@@ -46,7 +46,10 @@ const (
 	ViewComparison
 )
 
-// App is the main bubbletea model
+// App is the main bubbletea model.
+//
+// Pointer receiver: Bubbletea's tea.Model interface returns Model from Update(),
+// but the framework expects mutations to persist across the event loop.
 type App struct {
 	// Mode: Either EngineMode (Left) or ClientMode (Right)
 	// Replaces scattered nil checks with explicit sum type

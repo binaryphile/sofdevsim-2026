@@ -10,6 +10,9 @@ import (
 // DedupMiddleware caches responses by X-Request-ID header.
 // Duplicate requests with same ID return cached response without re-execution.
 // Cache entries expire after TTL (default 5 minutes).
+//
+// Pointer receiver: contains sync.RWMutex which must not be copied after first use
+// (copying would create a new mutex, causing data races on the shared cache).
 type DedupMiddleware struct {
 	cache map[string]cachedResponse
 	mu    sync.RWMutex
