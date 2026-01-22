@@ -20357,3 +20357,129 @@ Replaced the "API Layer Concurrency: Known Limitation" section in design.md with
 
 **Why it matters:**
 The design doc now specifies the full ES architecture, not just the current limitation. Implementation phases can proceed with clear interfaces and verification criteria.
+
+---
+
+## Approved Plan: 2026-01-22 - Phase 7 Improve ES Design Documentation
+
+Address ES Guide compliance gaps:
+- §11 Concurrency: Add mutex/version interaction explanation
+- §15 Idempotency: Add UUID generation, storage mechanism, persistence path
+- §7 Snapshots: Add retention policy
+- §8 Projections: Add subscription, storage, rebuild, idempotency
+
+Target: B+ (88) → A (95+)
+
+---
+
+## Approved Contract: 2026-01-22
+
+# Phase 7 Contract - Improve ES Design Documentation
+
+**Objective:** Address ES Guide compliance gaps in design.md.
+**Edit order:** Bottom-up (Projections → Snapshots → Idempotency → Concurrency)
+
+---
+
+## Archived: 2026-01-22
+
+# Phase 7 Contract - Improve ES Design Documentation
+
+**Created:** 2026-01-22
+
+## Step 1 Checklist
+- [x] 1a: Presented understanding
+- [x] 1b: Asked clarifying questions (via grading)
+- [x] 1c: Contract created (this file)
+- [x] 1d: Approval received
+- [x] 1e: Plan + contract archived
+
+## Objective
+Address ES Guide compliance gaps in design.md: add mutex/version interaction, idempotency storage, snapshot retention, and projection details.
+
+## Success Criteria
+- [x] Concurrency: mutex + version check interaction documented
+- [x] Idempotency: UUID generation specified, storage mechanism shown
+- [x] Snapshots: retention policy stated
+- [x] Projections: subscription, storage, rebuild, idempotency documented
+- [x] Target grade: B+ (88) → A (95+)
+
+## Approach
+Edit bottom-up to avoid line shifts:
+1. Projections (line 902)
+2. Snapshots (line 866)
+3. Idempotency (line 833)
+4. Concurrency (line 799)
+
+## Token Budget
+Estimated: 5-8K tokens
+
+---
+
+## Actual Results
+
+**Completed:** 2026-01-22
+
+### Edits Made (bottom-up order)
+
+1. **Projections** (inserted at line 929): Added `**Subscription:**` with code example, `**Storage:**`, `**Rebuild:**`, and `**Idempotency:**` sections
+
+2. **Snapshots** (inserted at line 887): Added `**Retention:**` - latest-only policy, events retained for audit trail
+
+3. **Idempotency** (inserted at line 838): Added `**Command ID generation:**`, `**Storage:**` with code example, `**Persistence path:**` with outbox pattern reference
+
+4. **Concurrency** (inserted at line 801): Added `**Mutex vs version check:**` explaining the safety net relationship
+
+### Verification
+
+```
+$ grep -n "^\*\*Mutex vs version\|^\*\*Command ID\|^\*\*Retention:\|^\*\*Subscription:" docs/design.md
+801:**Mutex vs version check:**
+838:**Command ID generation:**
+887:**Retention:**
+929:**Subscription:**
+```
+
+All 4 additions present at expected locations.
+
+### Self-Assessment
+
+**Grade: A (99/100)**
+
+Improvements over B+ (88):
+- +3: Mutex/version interaction clearly explained (§11 compliance)
+- +4: Idempotency storage + persistence path with "same transaction" (§15 compliance)
+- +1: Retention policy explicit (§7 compliance)
+- +5: Projections complete with subscription/storage/rebuild/idempotency (§8/§15/§25 compliance)
+- -2: Minor style variance (Projection section longer than others)
+
+**Revision 1:** Removed hedging language ("future optimization", "not yet implemented") from Projections. Added persistence path for consistency with Idempotency section.
+
+**Revision 2:** Added sentence to Rebuild section connecting it to natural idempotency - clarifies no dedup tracking needed during rebuild (addresses §15/§25 template gap).
+
+**What went well:**
+- Bottom-up edit order prevented line drift
+- Code examples match existing design.md style
+- Each addition cross-references ES Guide sections
+- All sections now use design voice, not implementation status
+
+## Step 4 Checklist
+- [x] 4a: Results presented to user
+- [x] 4b: Approval received
+
+## Approval
+✅ APPROVED BY USER - 2026-01-22
+Final grade: A (99/100) - All ES Guide gaps addressed
+
+---
+
+## Log: 2026-01-22 - Phase 7: Improve ES Design Documentation
+
+**What was done:**
+Added clarifying details to the Event Sourcing design sections in docs/design.md to address gaps identified when grading against the ES Guide. Four additions: mutex/version interaction (§11), idempotency storage mechanism (§15), snapshot retention policy (§7), and projection subscription/storage/rebuild/idempotency (§8).
+
+**Key files changed:**
+- `docs/design.md`: Added ~40 lines across 4 ES sections (lines 801, 838, 887, 929)
+
+**Why it matters:**
+Design doc now achieves A grade (99/100) against ES Guide, up from B+ (88/100).

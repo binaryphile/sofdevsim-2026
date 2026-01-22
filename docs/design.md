@@ -798,6 +798,12 @@ This matches the domain model: a simulation tick is inherently sequential.
 Concurrent requests to the same simulation are serialized; requests to
 different simulations proceed in parallel.
 
+**Mutex vs version check:** The mutex serializes requests to the same simulation,
+eliminating races. The event store's version check remains as a safety net—if
+somehow two goroutines bypassed the mutex (bug), the version check would catch
+the conflict. In normal operation, version conflicts never occur because the
+mutex ensures sequential access.
+
 **Verified by:** `go test -race ./internal/api/ -run Concurrent` (must pass)
 
 **Regression gate:** `internal/api/stress_test.go` - currently fails, becomes passing test.
@@ -829,8 +835,23 @@ func (s *Store) Append(ctx context.Context, streamID string,
 }
 ```
 
-API handlers generate command IDs from request context (e.g., `X-Request-ID`
-header or generated UUID).
+**Command ID generation:** API handlers generate UUIDs for each command. If the
+client provides `X-Idempotency-Key` header, that value is used instead (enables
+client-controlled retries).
+
+**Storage:** Processed command IDs are stored in a map within the event store:
+
+```go
+type Store struct {
+    events     map[string][]Event      // streamID → events
+    versions   map[string]int64        // streamID → current version
+    processed  map[CommandID]struct{}  // deduplication set
+}
+```
+
+**Persistence path:** When adding persistent storage, command IDs are stored in
+the same transaction as events (outbox pattern per ES Guide §10). The dedup
+check becomes a database query: `SELECT 1 FROM events WHERE command_id = ?`.
 
 **Verified by:** Test that submitting identical Tick twice produces one event
 
@@ -862,6 +883,10 @@ func (s *Store) Load(ctx context.Context, streamID string) (*Simulation, error) 
 
 Snapshots are created every 100 events (configurable). Load time is
 O(events since snapshot), not O(total events).
+
+**Retention:** Keep only the latest snapshot per stream. Old snapshots are
+deleted when a new one is created. Events before the snapshot are retained
+(required for audit trail per ES Guide §23).
 
 **Verified by:** Benchmark showing 1000-event simulation loads in <10ms
 
@@ -900,6 +925,41 @@ func (p *SprintSummaryProjection) Apply(event Event) {
 
 Projections update synchronously on event append (acceptable for single-node).
 Query time is O(1).
+
+**Subscription:** Projections register with the event store and receive events
+via callback on Append:
+
+```go
+type Store struct {
+    // ...
+    projections []Projection
+}
+
+func (s *Store) Append(...) error {
+    // ... append events ...
+    for _, p := range s.projections {
+        for _, e := range events {
+            p.Apply(e)
+        }
+    }
+}
+```
+
+**Storage:** Projections live in memory alongside the event store.
+
+**Persistence path:** When adding persistent storage, projection state is
+serialized to disk after each update. On startup, load from disk instead of
+replaying events. This trades disk writes for faster restarts.
+
+**Rebuild:** On startup (or if projection state is corrupted/missing), replay
+events from the beginning. With simulation snapshots available, replay starts
+from the snapshot version instead. Natural idempotency (see below) means no
+deduplication tracking is needed during rebuild.
+
+**Idempotency:** Projection handlers are naturally idempotent—they compute
+derived state from events. Re-applying the same event produces the same result.
+The `Apply` method uses assignment, not accumulation, so duplicate delivery is
+safe.
 
 **Verified by:** Dashboard queries return in <1ms regardless of event count
 
