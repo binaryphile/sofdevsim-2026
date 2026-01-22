@@ -759,48 +759,165 @@ POST /comparisons
 3. Read locks for lookups (`GetInstance`), write locks for registration
 4. Engine mutations are NOT serialized - concurrent tick/assign calls can race
 
-### API Layer Concurrency: Known Limitation
+**ES Design Sections** (per `urma-obsidian/guides/cqrs-event-sourcing-guide.md`):
+- Concurrency Model (§11) - mutex serialization
+- Idempotency (§15) - command ID tracking
+- Snapshots (§7) - periodic state capture
+- Projections (§8) - pre-computed read models
+- Implementation Sequence - dependency order
 
-The current implementation has a race condition when multiple HTTP requests
-access the same simulation concurrently.
+### Concurrency Model (ES Guide §11)
 
-**What happens:**
-1. Request A calls `GetInstance("sim-1")` → gets `*SimInstance`
-2. Request B calls `GetInstance("sim-1")` → gets SAME `*SimInstance`
-3. Both call `inst.Engine.Tick()` concurrently → DATA RACE
-4. Event store detects conflict → PANIC (unhandled)
+> Reference: `urma-obsidian/guides/cqrs-event-sourcing-guide.md` §11
 
-**What the ES Guide prescribes (Section 11):**
-> "Optimistic concurrency: When appending, provide expected version.
-> If current version differs, another process modified the aggregate—
-> reject and retry."
+**Current state:** `SimInstance` is shared across concurrent HTTP requests without
+synchronization. The event store detects version conflicts but Engine panics instead
+of handling gracefully. Single-client usage (TUI) is safe; multi-client API access races.
+(See `internal/api/stress_test.go` for reproduction.)
 
-**Current state:**
-- Event store correctly detects conflicts via version checking ✓
-- Engine panics on conflict instead of handling gracefully ✗
-- No serialization of commands per simulation ✗
+**Design:** `SimInstance` serializes all Engine operations via mutex:
 
-**Fix options (in order of recommendation):**
+```go
+type SimInstance struct {
+    mu      sync.Mutex        // Serializes access to this simulation
+    Sim     *model.Simulation
+    Engine  *engine.Engine
+    Tracker metrics.Tracker
+}
 
-| Option | Change | Trade-off |
-|--------|--------|-----------|
-| **1. Per-simulation mutex** | Add `sync.Mutex` to `SimInstance` | Simple, serializes all requests to same sim |
-| **2. Retry on conflict** | Catch panic, retry with backoff | Complex, but allows concurrent reads |
-| **3. Rebuild per request** | Load from events each request | True ES pattern, expensive for hot paths |
+// All handler methods acquire lock before Engine access
+func (r *SimRegistry) handleTick(w http.ResponseWriter, req *http.Request) {
+    inst := r.GetInstance(simID)
+    inst.mu.Lock()
+    defer inst.mu.Unlock()
+    // ... Engine.Tick() ...
+}
+```
 
-**Recommended:** Option 1 for simplicity. The simulation is inherently single-threaded
-(one tick at a time makes domain sense), so serialization matches the domain model.
+This matches the domain model: a simulation tick is inherently sequential.
+Concurrent requests to the same simulation are serialized; requests to
+different simulations proceed in parallel.
 
-**For now:** This is a known limitation. Single-client usage (TUI or single API client)
-works correctly. Multi-client concurrent access to the same simulation will race.
+**Verified by:** `go test -race ./internal/api/ -run Concurrent` (must pass)
 
-**Why TUI is safe:** Bubbletea runs a single-threaded event loop. All simulation
-access happens sequentially within `Update()`. The race only affects HTTP API
-where the Go HTTP server spawns goroutines per request.
+**Regression gate:** `internal/api/stress_test.go` - currently fails, becomes passing test.
 
-**Reproduction:** `go test -race ./internal/api/ -run Concurrent`
-(See `internal/api/stress_test.go:16` for `TestAPI_ConcurrentTicks`,
-line 81 for `TestAPI_ConcurrentMixedOperations`)
+**Cleanup:** Remove `⚠ SHARED` annotation from architecture diagram (line 750) after implementation.
+
+**Size: S** (~1-2 hours)
+
+---
+
+### Idempotency (ES Guide §15)
+
+**Current state:** No duplicate detection. Same command executed twice produces
+duplicate events.
+
+**Design:** Commands carry a unique ID. The event store tracks processed command IDs
+and rejects duplicates:
+
+```go
+type CommandID string
+
+func (s *Store) Append(ctx context.Context, streamID string,
+    expectedVersion int64, commandID CommandID, events []Event) error {
+    if s.commandProcessed(commandID) {
+        return nil  // Idempotent: already processed
+    }
+    // ... append events ...
+    s.markCommandProcessed(commandID)
+}
+```
+
+API handlers generate command IDs from request context (e.g., `X-Request-ID`
+header or generated UUID).
+
+**Verified by:** Test that submitting identical Tick twice produces one event
+
+**Size: M** (~half day)
+
+---
+
+### Snapshots (ES Guide §7)
+
+**Current state:** Every load replays all events from the beginning. Long-running
+simulations get progressively slower.
+
+**Design:** The event store captures periodic snapshots to bound replay cost:
+
+```go
+type Snapshot struct {
+    StreamID  string
+    Version   int64   // Event count at snapshot time
+    State     []byte  // Serialized simulation state
+    CreatedAt time.Time
+}
+
+func (s *Store) Load(ctx context.Context, streamID string) (*Simulation, error) {
+    snapshot := s.loadLatestSnapshot(streamID)
+    events := s.loadEventsFrom(streamID, snapshot.Version)
+    return rebuildFrom(snapshot.State, events)
+}
+```
+
+Snapshots are created every 100 events (configurable). Load time is
+O(events since snapshot), not O(total events).
+
+**Verified by:** Benchmark showing 1000-event simulation loads in <10ms
+
+**Size: M** (~half day)
+
+---
+
+### Projections (ES Guide §8)
+
+**Current state:** Every query rebuilds state from events. No pre-computed views.
+
+**Design:** Pre-computed read models for dashboard queries:
+
+| Projection | Updated On | Query |
+|------------|------------|-------|
+| SprintSummary | TickCompleted, TicketMoved | Tickets by status, WIP count |
+| DeveloperLoad | TicketAssigned, TicketCompleted | Per-developer ticket counts |
+| FlowMetrics | SprintCompleted | Throughput, cycle time, lead time |
+
+```go
+type SprintSummaryProjection struct {
+    TicketsByStatus map[string]int
+    WIPCount        int
+    LastUpdated     time.Time
+}
+
+func (p *SprintSummaryProjection) Apply(event Event) {
+    switch e := event.(type) {
+    case TicketMoved:
+        p.TicketsByStatus[e.FromStatus]--
+        p.TicketsByStatus[e.ToStatus]++
+    // ...
+    }
+}
+```
+
+Projections update synchronously on event append (acceptable for single-node).
+Query time is O(1).
+
+**Verified by:** Dashboard queries return in <1ms regardless of event count
+
+**Size: L** (~1+ day)
+
+---
+
+### Implementation Sequence
+
+| Phase | ES Guide | Size | Dependency |
+|-------|----------|------|------------|
+| Concurrency | §11 | S | None (do first) |
+| Idempotency | §15 | M | Concurrency |
+| Snapshots | §7 | M | None |
+| Projections | §8 | L | None |
+
+Concurrency and Idempotency are correctness requirements.
+Snapshots and Projections are performance optimizations.
 
 ### SimRegistry
 

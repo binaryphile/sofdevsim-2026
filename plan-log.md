@@ -20293,3 +20293,67 @@ Updated docs/design.md to document the API layer concurrency limitation discover
 
 **Why it matters:**
 Honest documentation of known limitations is preferable to hiding them. Future work to implement Option 1 (per-simulation mutex) would restore full ES Guide compliance.
+
+---
+
+## Approved Plan: 2026-01-22 - Phase 6 Complete ES Design Documentation
+
+Replace "Known Limitation" section with full ES design covering:
+- Concurrency (§11) - mutex serialization
+- Idempotency (§15) - command ID tracking  
+- Snapshots (§7) - periodic state capture
+- Projections (§8) - pre-computed read models
+
+Each section has "Current state" + "Design" subsections.
+
+---
+
+## Approved Contract: 2026-01-22
+
+# Phase 6 Contract - Complete ES Design Documentation
+
+**Objective:** Replace Known Limitation section with complete ES design sections.
+
+**Success Criteria:**
+- 4 design sections with Current state + Design
+- ES Guide path, stress_test.go gate, diagram cleanup noted
+- Definitive interfaces, verification methods, T-shirt sizes
+- Implementation sequence table
+
+---
+
+## Archived: 2026-01-22
+
+# Phase 6 Contract - Complete ES Design Documentation
+
+**Completed:** 2026-01-22
+
+## Objective
+Replace the "Known Limitation" section in design.md with complete ES design sections.
+
+## Results
+Replaced 42-line "Known Limitation" with 160-line complete ES design:
+- Concurrency Model (§11) - mutex serialization
+- Idempotency (§15) - command ID tracking
+- Snapshots (§7) - periodic state capture
+- Projections (§8) - pre-computed read models
+- Implementation Sequence - dependency order
+
+Each section has "Current state" + "Design" + "Verified by" + "Size".
+
+## Approval
+✅ APPROVED BY USER - 2026-01-22
+Final grade: A (98/100)
+
+---
+
+## Log: 2026-01-22 - Phase 6 Complete ES Design Documentation
+
+**What was done:**
+Replaced the "API Layer Concurrency: Known Limitation" section in design.md with complete ES design documentation covering concurrency, idempotency, snapshots, and projections per the ES Guide.
+
+**Key files changed:**
+- `docs/design.md`: Replaced lines 762-803 with 5 new sections (Concurrency, Idempotency, Snapshots, Projections, Implementation Sequence) totaling ~160 lines
+
+**Why it matters:**
+The design doc now specifies the full ES architecture, not just the current limitation. Implementation phases can proceed with clear interfaces and verification criteria.
