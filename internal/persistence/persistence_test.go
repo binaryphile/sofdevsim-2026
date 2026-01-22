@@ -20,8 +20,8 @@ import (
 func TestSaveLoad_RoundTrip(t *testing.T) {
 	// Arrange: create a simulation with some state
 	sim := model.NewSimulation(model.PolicyDORAStrict, 12345)
-	sim.AddDeveloper(model.NewDeveloper("dev-001", "Alice", 1.0))
-	sim.AddTicket(model.NewTicket("TKT-001", "Test ticket", 5.0, model.HighUnderstanding))
+	sim.Developers = append(sim.Developers, model.NewDeveloper("dev-001", "Alice", 1.0))
+	sim.Backlog = append(sim.Backlog, model.NewTicket("TKT-001", "Test ticket", 5.0, model.HighUnderstanding))
 	sim.CurrentTick = 42
 
 	tracker := metrics.NewTracker()
@@ -147,11 +147,11 @@ func TestSave_CreatesFile(t *testing.T) {
 func TestLoad_RestoresState(t *testing.T) {
 	// Create simulation with meaningful state
 	sim := model.NewSimulation(model.PolicyTameFlowCognitive, 99999)
-	sim.AddDeveloper(model.NewDeveloper("dev-001", "Alice", 1.0))
-	sim.AddDeveloper(model.NewDeveloper("dev-002", "Bob", 0.8))
+	sim.Developers = append(sim.Developers, model.NewDeveloper("dev-001", "Alice", 1.0))
+	sim.Developers = append(sim.Developers, model.NewDeveloper("dev-002", "Bob", 0.8))
 
 	ticket := model.NewTicket("TKT-001", "Important feature", 8.0, model.LowUnderstanding)
-	sim.AddTicket(ticket)
+	sim.Backlog = append(sim.Backlog, ticket)
 
 	sim.CurrentTick = 100
 	sim.SprintNumber = 5

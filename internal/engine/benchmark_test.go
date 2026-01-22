@@ -12,7 +12,7 @@ func setupBenchmarkSimulation(numDevs, numTickets int) *model.Simulation {
 	sim := model.NewSimulation(model.PolicyDORAStrict, 12345)
 
 	for i := 0; i < numDevs; i++ {
-		sim.AddDeveloper(model.NewDeveloper(
+		sim.Developers = append(sim.Developers, model.NewDeveloper(
 			idFor("dev", i),
 			nameFor(i),
 			1.0,
@@ -21,7 +21,7 @@ func setupBenchmarkSimulation(numDevs, numTickets int) *model.Simulation {
 
 	for i := 0; i < numTickets; i++ {
 		understanding := model.UnderstandingLevel(i % 3) // Cycle through H/M/L
-		sim.AddTicket(model.NewTicket(
+		sim.Backlog = append(sim.Backlog, model.NewTicket(
 			idFor("TKT", i),
 			"Benchmark ticket",
 			float64(3+(i%5)), // 3-7 day estimates

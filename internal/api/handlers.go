@@ -3,10 +3,12 @@ package api
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"time"
 
 	"github.com/binaryphile/sofdevsim-2026/internal/engine"
+	"github.com/binaryphile/sofdevsim-2026/internal/events"
 	"github.com/binaryphile/sofdevsim-2026/internal/lessons"
 	"github.com/binaryphile/sofdevsim-2026/internal/metrics"
 	"github.com/binaryphile/sofdevsim-2026/internal/model"
@@ -327,26 +329,32 @@ func (r SimRegistry) HandleCompare(w http.ResponseWriter, req *http.Request) {
 // runComparison runs a single simulation with the given policy.
 func runComparison(policy model.SizingPolicy, seed int64, sprints int) metrics.SimulationResult {
 	sim := model.NewSimulation(policy, seed)
+	sim.ID = fmt.Sprintf("cmp-%d", seed)
+
+	eng := engine.NewEngine(sim.Seed)
+	eng.EmitCreated(sim.ID, sim.CurrentTick, events.SimConfig{
+		TeamSize:     3,
+		SprintLength: sim.SprintLength,
+		Seed:         sim.Seed,
+		Policy:       policy,
+	})
 
 	// Standard team setup (3 devs with varied velocities)
 	// Rationale: Fixed scenario ensures fair comparison - both policies
 	// face identical conditions. Varied velocities create realistic workload.
-	sim.AddDeveloper(model.NewDeveloper("dev-1", "Alice", 1.0))
-	sim.AddDeveloper(model.NewDeveloper("dev-2", "Bob", 0.8))
-	sim.AddDeveloper(model.NewDeveloper("dev-3", "Carol", 1.2))
+	eng.AddDeveloper("dev-1", "Alice", 1.0)
+	eng.AddDeveloper("dev-2", "Bob", 0.8)
+	eng.AddDeveloper("dev-3", "Carol", 1.2)
 
 	// Standard backlog (5 tickets covering policy decision points)
 	// - Small+clear: Neither policy decomposes
 	// - Large+unclear: Both policies decompose
 	// - Mixed cases: Policies diverge, showing differentiation
-	sim.AddTicket(model.NewTicket("TKT-001", "Small clear", 2, model.HighUnderstanding))
-	sim.AddTicket(model.NewTicket("TKT-002", "Medium clear", 4, model.HighUnderstanding))
-	sim.AddTicket(model.NewTicket("TKT-003", "Small unclear", 2, model.LowUnderstanding))
-	sim.AddTicket(model.NewTicket("TKT-004", "Large unclear", 8, model.LowUnderstanding))
-	sim.AddTicket(model.NewTicket("TKT-005", "Medium mixed", 5, model.MediumUnderstanding))
-
-	eng := engine.NewEngine(sim.Seed)
-	eng.EmitLoadedState(*sim)
+	eng.AddTicket(model.NewTicket("TKT-001", "Small clear", 2, model.HighUnderstanding))
+	eng.AddTicket(model.NewTicket("TKT-002", "Medium clear", 4, model.HighUnderstanding))
+	eng.AddTicket(model.NewTicket("TKT-003", "Small unclear", 2, model.LowUnderstanding))
+	eng.AddTicket(model.NewTicket("TKT-004", "Large unclear", 8, model.LowUnderstanding))
+	eng.AddTicket(model.NewTicket("TKT-005", "Medium mixed", 5, model.MediumUnderstanding))
 	tracker := metrics.NewTracker()
 
 	for i := 0; i < sprints; i++ {

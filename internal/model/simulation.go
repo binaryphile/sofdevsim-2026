@@ -54,23 +54,6 @@ func NewSimulation(policy SizingPolicy, seed int64) *Simulation {
 	}
 }
 
-// AddDeveloper adds a developer to the team
-func (s *Simulation) AddDeveloper(dev Developer) {
-	s.Developers = append(s.Developers, dev)
-}
-
-// AddTicket adds a ticket to the backlog
-func (s *Simulation) AddTicket(ticket Ticket) {
-	s.Backlog = append(s.Backlog, ticket)
-}
-
-// StartSprint begins a new sprint
-func (s *Simulation) StartSprint() {
-	s.SprintNumber++
-	sprint := NewSprint(s.SprintNumber, s.CurrentTick, s.SprintLength, s.BufferPct)
-	s.CurrentSprintOption = option.Of(sprint)
-}
-
 // FindActiveTicketIndex returns index of ticket in ActiveTickets, or -1 if not found
 func (s Simulation) FindActiveTicketIndex(id string) int {
 	for i := range s.ActiveTickets {

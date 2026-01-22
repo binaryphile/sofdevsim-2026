@@ -104,8 +104,8 @@ func TestIsWithinExpected(t *testing.T) {
 // Integration test: happy path - export creates all expected files with valid structure
 func TestExporter_Export_HappyPath(t *testing.T) {
 	sim := model.NewSimulation(model.PolicyDORAStrict, 12345)
-	sim.AddDeveloper(model.NewDeveloper("dev-1", "Alice", 1.0))
-	sim.StartSprint()
+	sim.Developers = append(sim.Developers, model.NewDeveloper("dev-1", "Alice", 1.0))
+	sim.SprintNumber = 1 // Direct state setup for test (StartSprint removed)
 
 	// Add completed ticket
 	ticket := model.NewTicket("TKT-001", "Test task", 2, model.HighUnderstanding)

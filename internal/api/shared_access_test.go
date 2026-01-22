@@ -14,7 +14,7 @@ func TestSharedAccess_TUISimulationAccessibleViaAPI(t *testing.T) {
 	// Simulate TUI creating a simulation via RegisterSimulation
 	sim := model.NewSimulation(model.PolicyDORAStrict, 42)
 	sim.ID = "sim-42"
-	sim.AddDeveloper(model.NewDeveloper("dev-1", "Alice", 1.0))
+	sim.Developers = append(sim.Developers, model.NewDeveloper("dev-1", "Alice", 1.0))
 	tracker := metrics.NewTracker()
 
 	eng := registry.RegisterSimulation(sim, tracker)
@@ -68,8 +68,8 @@ func TestSharedAccess_APIChangesVisibleToTUI(t *testing.T) {
 	// TUI registers simulation
 	sim := model.NewSimulation(model.PolicyDORAStrict, 42)
 	sim.ID = "sim-42"
-	sim.AddDeveloper(model.NewDeveloper("dev-1", "Alice", 1.0))
-	sim.AddTicket(model.NewTicket("TKT-001", "Test", 3, model.HighUnderstanding))
+	sim.Developers = append(sim.Developers, model.NewDeveloper("dev-1", "Alice", 1.0))
+	sim.Backlog = append(sim.Backlog, model.NewTicket("TKT-001", "Test", 3, model.HighUnderstanding))
 	tracker := metrics.NewTracker()
 
 	_ = registry.RegisterSimulation(sim, tracker)
@@ -104,7 +104,7 @@ func TestSharedAccess_BothCanSubscribe(t *testing.T) {
 	// TUI registers simulation
 	sim := model.NewSimulation(model.PolicyDORAStrict, 42)
 	sim.ID = "sim-42"
-	sim.AddDeveloper(model.NewDeveloper("dev-1", "Alice", 1.0))
+	sim.Developers = append(sim.Developers, model.NewDeveloper("dev-1", "Alice", 1.0))
 	tracker := metrics.NewTracker()
 
 	eng := registry.RegisterSimulation(sim, tracker)
@@ -146,9 +146,9 @@ func TestSharedAccess_SimulationCreatedHasCorrectTeamSize(t *testing.T) {
 	// TUI creates simulation with team BEFORE registering
 	sim := model.NewSimulation(model.PolicyDORAStrict, 42)
 	sim.ID = "sim-42"
-	sim.AddDeveloper(model.NewDeveloper("dev-1", "Alice", 1.0))
-	sim.AddDeveloper(model.NewDeveloper("dev-2", "Bob", 0.8))
-	sim.AddDeveloper(model.NewDeveloper("dev-3", "Carol", 1.2))
+	sim.Developers = append(sim.Developers, model.NewDeveloper("dev-1", "Alice", 1.0))
+	sim.Developers = append(sim.Developers, model.NewDeveloper("dev-2", "Bob", 0.8))
+	sim.Developers = append(sim.Developers, model.NewDeveloper("dev-3", "Carol", 1.2))
 	tracker := metrics.NewTracker()
 
 	_ = registry.RegisterSimulation(sim, tracker)

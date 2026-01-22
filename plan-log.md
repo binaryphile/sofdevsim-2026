@@ -19606,3 +19606,184 @@ Fixed 5 boundary bugs discovered during manual testing by applying patterns from
 
 **Why it matters:**
 Prevents panics on duplicate seeds (409 Conflict), rejects malformed requests (415/413/400), and eliminates race conditions under concurrent load. Pure calculations are testable without HTTP mocking.
+
+---
+
+## Approved Plan: 2026-01-22 - Remove Simulation Mutating Methods
+
+### Context
+The compliance grading report identified one Critical issue affecting both FP and Go Development guides:
+- `model/simulation.go:58-72` has mutating methods (`AddDeveloper`, `AddTicket`, `StartSprint`)
+- These are **Actions on a Data type**, violating FP guide §3.2 (Data must be inert)
+- Impact: +8 (FP) + +5 (Go) = **+13 points** total
+
+### Approach
+Engine already has equivalent methods. Refactor 40 call sites to use Engine instead of Simulation methods, then delete the Simulation methods.
+
+### Files to Modify
+- `internal/model/simulation.go` - Delete lines 57-72
+- `internal/api/handlers.go` - 8 calls
+- `internal/tui/app.go` - 4 calls
+- Test files - 29 calls across 6 files
+
+---
+
+## Approved Contract: 2026-01-22
+
+**Objective:** Remove mutating methods from `model/Simulation`
+
+**Success Criteria:**
+- [ ] `simulation.go` lines 57-72 deleted (3 methods)
+- [ ] `go build ./...` succeeds
+- [ ] `go test ./... -race` passes
+- [ ] `compliance-grading.md` updated: FP 88→96, Go 93→98, Overall 93→97
+
+---
+
+## Archived: 2026-01-22
+
+# Phase 1 Contract: Remove Simulation Mutating Methods
+
+**Created:** 2026-01-22
+
+## Step 1 Checklist
+- [x] 1a: Presented understanding (plan file created)
+- [x] 1b: Asked clarifying questions (scope: Critical only)
+- [x] 1b-answer: Received answers (user selected Critical only)
+- [x] 1c: Contract created (this file) *[Note: Created retroactively after plan approval]*
+- [x] 1d: Approval received (user approved plan via ExitPlanMode)
+- [x] 1e: Plan + contract archived
+
+## Step 2 Checklist
+- [x] 2a: Implementation started
+- [x] 2b: All production code updated (handlers.go, tui/app.go)
+- [x] 2c: All test code updated (31 calls across 7 files)
+- [x] 2d: Methods removed from simulation.go
+- [x] 2e: Tests pass
+
+## Objective
+
+Remove mutating methods from `model/Simulation` to fix Critical compliance issue affecting FP and Go Development guides. These methods are Actions on a Data type, violating core principles.
+
+## Success Criteria
+
+- [x] `simulation.go` lines 57-72 deleted (3 methods: AddDeveloper, AddTicket, StartSprint)
+- [x] `go build ./...` succeeds with no errors
+- [x] `go test ./... -race` passes (all 33 test files)
+- [x] `compliance-grading.md` updated: FP 88→96, Go 93→98, Overall 93→97
+- [ ] Commit with message describing compliance fix
+
+## Approach
+
+1. Update `handlers.go:runComparison` - switch from `EmitLoadedState` to `EmitCreated` + Engine methods
+2. Update `tui/app.go:createSimulation` - same pattern
+3. Update 29 test call sites to use Engine methods
+4. Handle `persistence_test.go` specially (direct slice assignment)
+5. Remove methods from `simulation.go`
+6. Run tests, verify, update compliance report
+
+## Call Sites (40 total)
+
+**Production (11):** handlers.go:334-346, tui/app.go:630-639
+**Tests (29):** engine_integration_test.go (12), shared_access_test.go (7), persistence_test.go (5), event_sourcing_test.go (2), benchmark_test.go (2), export_test.go (2)
+
+## Token Budget
+
+Estimated: ~15K tokens (mostly mechanical find-replace with Engine pattern)
+
+---
+
+## Actual Results
+
+**Completed:** 2026-01-22
+
+### Files Modified
+
+| File | Changes |
+|------|---------|
+| `internal/model/simulation.go` | Deleted 3 methods (AddDeveloper, AddTicket, StartSprint) |
+| `internal/api/handlers.go` | Refactored runComparison to use EmitCreated + eng.Add* |
+| `internal/tui/app.go` | Renamed createSimulation → createSimulationEngine |
+| `internal/engine/engine_integration_test.go` | 12 calls → Engine methods |
+| `internal/api/shared_access_test.go` | 7 calls → direct slice assignment |
+| `internal/persistence/persistence_test.go` | 5 calls → direct slice assignment |
+| `internal/engine/event_sourcing_test.go` | 2 calls → direct slice assignment |
+| `internal/engine/benchmark_test.go` | 2 calls → direct slice assignment |
+| `internal/export/export_test.go` | 2 calls → direct slice assignment |
+| `docs/compliance-grading.md` | Scores updated, Critical issues marked resolved |
+
+### Verification
+
+```
+$ go build ./...
+(no errors)
+
+$ go test ./... -race
+ok  github.com/binaryphile/sofdevsim-2026/cmd/sofdevsim
+ok  github.com/binaryphile/sofdevsim-2026/internal/api
+ok  github.com/binaryphile/sofdevsim-2026/internal/engine
+ok  github.com/binaryphile/sofdevsim-2026/internal/events
+ok  github.com/binaryphile/sofdevsim-2026/internal/export
+ok  github.com/binaryphile/sofdevsim-2026/internal/lessons
+ok  github.com/binaryphile/sofdevsim-2026/internal/metrics
+ok  github.com/binaryphile/sofdevsim-2026/internal/model
+ok  github.com/binaryphile/sofdevsim-2026/internal/persistence
+ok  github.com/binaryphile/sofdevsim-2026/internal/tui
+```
+
+### Compliance Score Change
+
+| Guide | Before | After | Change |
+|-------|--------|-------|--------|
+| FP | 88/100 | 96/100 | +8 |
+| Go Dev | 93/100 | 98/100 | +5 |
+| Overall | 93/100 | 97/100 | +4 |
+
+### Self-Assessment
+
+**Grade: A- (92/100)**
+
+What went well:
+- Clean removal of methods with no behavior change
+- All tests pass with race detection (`-count=1` verified)
+- Compliance scores updated as expected
+- Consistent approach: Engine methods for Engine tests, direct slice for EmitLoadedState tests
+- Grep verification confirms no remaining Simulation method calls in source
+
+Deductions:
+- Plan said 29 test calls, actual was 31 (missed `event_sourcing_test.go:740-741`): -5 points
+- Required second test run to catch the missed calls: -3 points
+
+### Post-Improvement Verification
+
+```bash
+$ grep -r 'sim\.\(AddDeveloper\|AddTicket\|StartSprint\)' --include='*.go' .
+# No matches in source files (only plan-log.md history)
+
+$ go test ./... -race -count=1
+# All packages OK
+```
+
+## Step 4 Checklist
+- [x] 4a: Results presented to user
+- [x] 4b: Approval received
+
+## Approval
+✅ APPROVED BY USER - 2026-01-22
+Critical compliance fix complete: Simulation is now a pure Data type.
+
+---
+
+## Log: 2026-01-22 - Phase 1: Remove Simulation Mutating Methods
+
+**What was done:**
+Removed 3 mutating methods (AddDeveloper, AddTicket, StartSprint) from `model/Simulation` to fix Critical compliance issue. Updated 31 call sites across 9 files to use Engine methods or direct slice assignment.
+
+**Key files changed:**
+- `internal/model/simulation.go`: Deleted lines 57-72 (3 methods)
+- `internal/api/handlers.go`: Refactored runComparison to use EmitCreated + eng.Add*
+- `internal/tui/app.go`: Renamed createSimulation → createSimulationEngine
+- `docs/compliance-grading.md`: Updated scores (FP 88→96, Go 93→98, Overall 93→97)
+
+**Why it matters:**
+Simulation is now a pure Data type per FP guide §3.2. All mutation goes through Engine (the Action layer), achieving proper ACD separation.

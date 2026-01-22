@@ -595,15 +595,11 @@ func (a *App) runComparison() {
 	a.comparisonSeed = seed
 
 	// Run simulation with DORA-Strict policy
-	simA := a.createSimulation(model.PolicyDORAStrict, seed)
-	engA := engine.NewEngine(simA.Seed)
-	engA.EmitLoadedState(*simA)
+	engA := a.createSimulationEngine(model.PolicyDORAStrict, seed)
 	trackerA := metrics.NewTracker()
 
 	// Run simulation with TameFlow-Cognitive policy
-	simB := a.createSimulation(model.PolicyTameFlowCognitive, seed)
-	engB := engine.NewEngine(simB.Seed)
-	engB.EmitLoadedState(*simB)
+	engB := a.createSimulationEngine(model.PolicyTameFlowCognitive, seed)
 	trackerB := metrics.NewTracker()
 
 	// Run 3 sprints each
@@ -622,24 +618,33 @@ func (a *App) runComparison() {
 	a.comparisonResult = &comparison
 }
 
-// createSimulation creates a fresh simulation with identical setup
-func (a *App) createSimulation(policy model.SizingPolicy, seed int64) *model.Simulation {
+// createSimulationEngine creates a fresh engine with identical setup
+func (a *App) createSimulationEngine(policy model.SizingPolicy, seed int64) *engine.Engine {
 	sim := model.NewSimulation(policy, seed)
+	sim.ID = fmt.Sprintf("cmp-%d-%s", seed, policy)
+
+	eng := engine.NewEngine(sim.Seed)
+	eng.EmitCreated(sim.ID, sim.CurrentTick, events.SimConfig{
+		TeamSize:     3,
+		SprintLength: sim.SprintLength,
+		Seed:         sim.Seed,
+		Policy:       policy,
+	})
 
 	// Same team
-	sim.AddDeveloper(model.NewDeveloper("dev-1", "Alice", 1.0))
-	sim.AddDeveloper(model.NewDeveloper("dev-2", "Bob", 0.8))
-	sim.AddDeveloper(model.NewDeveloper("dev-3", "Carol", 1.2))
+	eng.AddDeveloper("dev-1", "Alice", 1.0)
+	eng.AddDeveloper("dev-2", "Bob", 0.8)
+	eng.AddDeveloper("dev-3", "Carol", 1.2)
 
 	// Same backlog (using same seed)
 	gen := engine.Scenarios["mixed"] // Use mixed for more interesting comparison
 	rng := rand.New(rand.NewSource(seed))
 	tickets := gen.Generate(rng, 15)
 	for _, t := range tickets {
-		sim.AddTicket(t)
+		eng.AddTicket(t)
 	}
 
-	return sim
+	return eng
 }
 
 // runSprintWithAutoAssign runs a sprint with automatic ticket assignment

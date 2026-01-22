@@ -737,8 +737,8 @@ func TestEmitLoadedState_Idempotent(t *testing.T) {
 	}))
 
 	sim := model.NewSimulation(model.PolicyDORAStrict, 42)
-	sim.AddDeveloper(model.NewDeveloper("dev-1", "Alice", 1.0))
-	sim.AddDeveloper(model.NewDeveloper("dev-2", "Bob", 0.8))
+	sim.Developers = append(sim.Developers, model.NewDeveloper("dev-1", "Alice", 1.0))
+	sim.Developers = append(sim.Developers, model.NewDeveloper("dev-2", "Bob", 0.8))
 
 	eng := NewEngine(sim.Seed)
 

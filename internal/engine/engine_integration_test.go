@@ -21,18 +21,24 @@ func TestEngine_FullSimulationRun(t *testing.T) {
 	for _, policy := range policies {
 		t.Run(policy.String(), func(t *testing.T) {
 			sim := model.NewSimulation(policy, 12345)
-
-			// Add developers
-			sim.AddDeveloper(model.NewDeveloper("dev-1", "Alice", 1.0))
-			sim.AddDeveloper(model.NewDeveloper("dev-2", "Bob", 0.8))
-
-			// Add tickets
-			sim.AddTicket(model.NewTicket("TKT-001", "Small task", 2, model.HighUnderstanding))
-			sim.AddTicket(model.NewTicket("TKT-002", "Medium task", 5, model.MediumUnderstanding))
-			sim.AddTicket(model.NewTicket("TKT-003", "Large task", 8, model.LowUnderstanding))
+			sim.ID = "test-full-run"
 
 			eng := engine.NewEngine(sim.Seed)
-			eng.EmitLoadedState(*sim) // Sync projection with sim state
+			eng.EmitCreated(sim.ID, sim.CurrentTick, events.SimConfig{
+				TeamSize:     2,
+				SprintLength: sim.SprintLength,
+				Seed:         sim.Seed,
+				Policy:       policy,
+			})
+
+			// Add developers
+			eng.AddDeveloper("dev-1", "Alice", 1.0)
+			eng.AddDeveloper("dev-2", "Bob", 0.8)
+
+			// Add tickets
+			eng.AddTicket(model.NewTicket("TKT-001", "Small task", 2, model.HighUnderstanding))
+			eng.AddTicket(model.NewTicket("TKT-002", "Medium task", 5, model.MediumUnderstanding))
+			eng.AddTicket(model.NewTicket("TKT-003", "Large task", 8, model.LowUnderstanding))
 
 			// Assign tickets
 			if err := eng.AssignTicket("TKT-001", "dev-1"); err != nil {
@@ -114,14 +120,20 @@ func TestEngine_TryDecompose_Either(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			sim := model.NewSimulation(tt.policy, 12345)
+			sim.ID = "test-decompose"
+
+			eng := engine.NewEngine(sim.Seed)
+			eng.EmitCreated(sim.ID, sim.CurrentTick, events.SimConfig{
+				TeamSize:     0,
+				SprintLength: sim.SprintLength,
+				Seed:         sim.Seed,
+				Policy:       tt.policy,
+			})
 
 			// Only add ticket if we're testing with a real ticket
 			if tt.ticketID == "TKT-001" {
-				sim.AddTicket(model.NewTicket("TKT-001", "Large feature", tt.ticketSize, model.MediumUnderstanding))
+				eng.AddTicket(model.NewTicket("TKT-001", "Large feature", tt.ticketSize, model.MediumUnderstanding))
 			}
-
-			eng := engine.NewEngine(sim.Seed)
-			eng.EmitLoadedState(*sim)
 
 			result := eng.TryDecompose(tt.ticketID)
 
@@ -170,17 +182,22 @@ func TestEngine_WIPTracking(t *testing.T) {
 	sim := model.NewSimulation(model.PolicyNone, 12345)
 	sim.ID = "wip-test"
 
-	sim.AddDeveloper(model.NewDeveloper("dev-1", "Alice", 1.0))
-	sim.AddDeveloper(model.NewDeveloper("dev-2", "Bob", 1.0))
-
-	// Add tickets that will create WIP
-	sim.AddTicket(model.NewTicket("TKT-001", "Task 1", 3, model.HighUnderstanding))
-	sim.AddTicket(model.NewTicket("TKT-002", "Task 2", 5, model.HighUnderstanding))
-
 	// Use event store to verify WIP tracking via events
 	store := events.NewMemoryStore()
 	eng := engine.NewEngineWithStore(sim.Seed, store)
-	eng.EmitLoadedState(*sim) // Sync projection with sim state
+	eng.EmitCreated(sim.ID, sim.CurrentTick, events.SimConfig{
+		TeamSize:     2,
+		SprintLength: sim.SprintLength,
+		Seed:         sim.Seed,
+		Policy:       model.PolicyNone,
+	})
+
+	eng.AddDeveloper("dev-1", "Alice", 1.0)
+	eng.AddDeveloper("dev-2", "Bob", 1.0)
+
+	// Add tickets that will create WIP
+	eng.AddTicket(model.NewTicket("TKT-001", "Task 1", 3, model.HighUnderstanding))
+	eng.AddTicket(model.NewTicket("TKT-002", "Task 2", 5, model.HighUnderstanding))
 
 	// Assign both tickets - creates WIP of 2
 	eng.AssignTicket("TKT-001", "dev-1")
@@ -217,17 +234,23 @@ func TestEngine_WIPTracking(t *testing.T) {
 func TestEngine_Reproducibility(t *testing.T) {
 	seed := int64(42)
 
-	runSimulation := func() *model.Simulation {
+	runSimulation := func() model.Simulation {
 		sim := model.NewSimulation(model.PolicyDORAStrict, seed)
-		sim.AddDeveloper(model.NewDeveloper("dev-1", "Alice", 1.0))
-		sim.AddTicket(model.NewTicket("TKT-001", "Task", 5, model.MediumUnderstanding))
+		sim.ID = "repro-test"
 
 		eng := engine.NewEngine(sim.Seed)
-		eng.EmitLoadedState(*sim) // Sync projection with sim state
+		eng.EmitCreated(sim.ID, sim.CurrentTick, events.SimConfig{
+			TeamSize:     1,
+			SprintLength: sim.SprintLength,
+			Seed:         sim.Seed,
+			Policy:       model.PolicyDORAStrict,
+		})
+		eng.AddDeveloper("dev-1", "Alice", 1.0)
+		eng.AddTicket(model.NewTicket("TKT-001", "Task", 5, model.MediumUnderstanding))
 		eng.AssignTicket("TKT-001", "dev-1")
 		eng.RunSprint()
 
-		return sim
+		return eng.Sim() // Return state from engine
 	}
 
 	sim1 := runSimulation()

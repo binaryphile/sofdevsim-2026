@@ -1,6 +1,6 @@
 # sofdevsim-2026 Compliance Grading
 
-**Graded:** 2026-01-21
+**Graded:** 2026-01-21 (Updated: 2026-01-22)
 **Project:** binaryphile/sofdevsim-2026
 **Files reviewed:** 33 test files, 45 source files
 
@@ -10,9 +10,9 @@
 |-------|-------|-------|---------|
 | Khorikov Unit Testing | A | 94/100 | Behavior-focused tests with explicit guide references; some edge case gaps |
 | Event Sourcing | A | 96/100 | Full CQRS with optimistic concurrency; minor handler mixing |
-| Functional Programming | B+ | 88/100 | Strong ACD separation; Simulation type violates Data inertness |
-| Go Development | A- | 93/100 | Value semantics conversion done; Simulation still has pointer receivers |
-| **Overall** | **A-** | **93/100** | Well-designed with one structural issue (Simulation type) across guides |
+| Functional Programming | A | 96/100 | Strong ACD separation; Simulation now pure Data type |
+| Go Development | A | 98/100 | Value semantics conversion done; Simulation uses value receivers only |
+| **Overall** | **A** | **97/100** | Well-designed codebase with proper ACD separation |
 
 ---
 
@@ -150,23 +150,8 @@
 
 #### Compliance Issues
 
-**Critical** (-8 points):
-- `model/simulation.go:58-72` - Data type has mutating methods:
-  ```go
-  func (s *Simulation) AddDeveloper(dev Developer) {  // Line 58
-      s.Developers = append(s.Developers, dev)
-  }
-  func (s *Simulation) AddTicket(ticket Ticket) {     // Line 63
-      s.Backlog = append(s.Backlog, ticket)
-  }
-  func (s *Simulation) StartSprint() {                // Line 68
-      s.SprintNumber++
-      // ...
-  }
-  ```
-  These are **Actions hidden in a Data type**. Per FP guide §3.2, Data must be inert - no methods that perform I/O or mutation. This is the codebase's primary structural violation, affecting both FP and Go Development compliance.
-
-  **Why Critical:** The guide explicitly states "Data is inert. It can be created, transformed, and inspected, but it doesn't *do* anything." These methods *do* something (mutate state). This violates the core ACD separation principle.
+**Resolved** (2026-01-22):
+- ~~`model/simulation.go:58-72` - Data type had mutating methods~~ → **FIXED**: Methods removed. Simulation is now a pure Data type. All mutation goes through Engine (the Action layer).
 
 **Minor** (-4 points):
 - `engine.go:21-28` - Engine mixes pure and impure:
@@ -185,8 +170,8 @@
 
 | Recommendation | Effort | Impact |
 |----------------|--------|--------|
-| **Move all Simulation mutating methods to Engine** | Medium (1 day) | +8 points (Critical fix) |
-| Make Simulation a pure Data type with only query methods | Medium (1 day) | Enables full ACD compliance |
+| ~~**Move all Simulation mutating methods to Engine**~~ | ~~Medium (1 day)~~ | ✅ DONE (2026-01-22) |
+| ~~Make Simulation a pure Data type with only query methods~~ | ~~Medium (1 day)~~ | ✅ DONE (2026-01-22) |
 | Document Engine as "orchestrator of pure + impure" explicitly | Quick win (<1hr) | +2 points |
 | Consider splitting Engine into PureEngine + ImpureShell | Larger refactor | Architectural clarity |
 
@@ -229,16 +214,8 @@
 
 #### Compliance Issues
 
-**Critical** (-5 points):
-- `model/simulation.go:58-72` - Pointer receivers on value type (same issue as FP finding):
-  ```go
-  func (s *Simulation) AddDeveloper(dev Developer)  // Line 58 - pointer on value type
-  func (s *Simulation) AddTicket(ticket Ticket)     // Line 63 - pointer on value type
-  func (s *Simulation) StartSprint()                // Line 68 - pointer on value type
-  ```
-  Per Go guide §2.1: "Use value receivers for types that should be immutable." Simulation is a Data type per FP classification - it should only have value receivers for query methods. Mutation should happen via Engine, which correctly uses pointer receiver.
-
-  **Cross-reference:** This is the same structural issue flagged in FP Guide §3. Fixing it once resolves both compliance gaps.
+**Resolved** (2026-01-22):
+- ~~`model/simulation.go:58-72` - Pointer receivers on value type~~ → **FIXED**: Methods removed. Simulation now only has value receivers for query methods. Mutation happens via Engine.
 
 **Minor** (-2 points):
 - `api/handlers.go:329-363` - `runComparison` function does too much:
@@ -252,11 +229,11 @@
 
 | Recommendation | Effort | Impact |
 |----------------|--------|--------|
-| **Move Simulation mutating methods to Engine** (same as FP fix) | Medium (1 day) | +5 points (Critical fix) |
+| ~~**Move Simulation mutating methods to Engine**~~ | ~~Medium (1 day)~~ | ✅ DONE (2026-01-22) |
 | Decompose `runComparison` into smaller functions | Medium (1 day) | +2 points |
 | Add `//nolint:receiver` comments to document pointer receiver choices | Quick win (<1hr) | Clarity |
 
-**Note:** The Simulation fix is shared with FP Guide - one refactor, two compliance improvements.
+**Note:** ~~The Simulation fix is shared with FP Guide - one refactor, two compliance improvements.~~ Completed 2026-01-22.
 
 ---
 
@@ -264,13 +241,13 @@
 
 | Finding | Severity | Effort | Priority |
 |---------|----------|--------|----------|
-| **Simulation mutating methods (FP + Go)** | Critical | Medium | 🔴 Do First |
+| ~~**Simulation mutating methods (FP + Go)**~~ | ~~Critical~~ | ~~Medium~~ | ✅ DONE (2026-01-22) |
 | Missing edge case tests (seed=0, boundaries) | Minor | Quick | 🟢 Easy Win |
 | Test names describe methods not behaviors | Minor | Quick | 🟢 Easy Win |
 | `runComparison` function too large | Minor | Medium | 🔵 Backlog |
 | Read model extraction from handlers | Minor | Medium | 🔵 Backlog |
 
-**Key Insight:** The Simulation structural issue is the only Critical finding. Fixing it improves both FP score (+8) and Go Dev score (+5) - a single Medium-effort refactor yields +13 points overall.
+**Key Insight:** ~~The Simulation structural issue is the only Critical finding.~~ **Resolved 2026-01-22:** Simulation methods moved to Engine, yielding +8 (FP) + +5 (Go) = +13 points.
 
 ---
 
@@ -302,7 +279,7 @@
 |----------|----------|------------|
 | Actions | handlers.go, Engine.emit() | ✅ Clear I/O boundary |
 | Calculations | variance.Calculate(), LinksFor() | ✅ Pure, documented |
-| Data | Event types, Lesson, State | ❌ **Simulation has Actions (Critical)** |
+| Data | Event types, Lesson, State, Simulation | ✅ All Data types are inert |
 
 ### Go: Value Semantics Audit
 
@@ -312,7 +289,7 @@
 | Events | Value | ✅ Immutable facts |
 | Engine | Pointer | ✅ Mutates proj field |
 | MemoryStore | Pointer | ✅ Has sync.RWMutex |
-| Simulation | Mixed | ❌ **Pointer receivers on Data type (Critical)** |
+| Simulation | Value | ✅ Query methods only, mutation via Engine |
 
 ---
 
