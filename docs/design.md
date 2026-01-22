@@ -747,6 +747,7 @@ POST /comparisons
 │                    ┌───────────┐     ┌───────────┐
 │                    │ SimInst 1 │     │ SimInst 2 │
 │                    │ (seed 42) │     │ (seed 99) │
+│                    │ ⚠ SHARED  │     │ ⚠ SHARED  │
 │                    └───────────┘     └───────────┘
 └─────────────────────────────────────────────────┘
 ```
@@ -754,9 +755,52 @@ POST /comparisons
 **Concurrency model:**
 
 1. SimRegistry uses `sync.RWMutex` to protect the shared instances map
-2. Individual simulations don't share state (no nested mutexes needed)
+2. **LIMITATION:** Individual `SimInstance` structs ARE shared across concurrent requests
 3. Read locks for lookups (`GetInstance`), write locks for registration
-4. Each simulation instance is independent once retrieved
+4. Engine mutations are NOT serialized - concurrent tick/assign calls can race
+
+### API Layer Concurrency: Known Limitation
+
+The current implementation has a race condition when multiple HTTP requests
+access the same simulation concurrently.
+
+**What happens:**
+1. Request A calls `GetInstance("sim-1")` → gets `*SimInstance`
+2. Request B calls `GetInstance("sim-1")` → gets SAME `*SimInstance`
+3. Both call `inst.Engine.Tick()` concurrently → DATA RACE
+4. Event store detects conflict → PANIC (unhandled)
+
+**What the ES Guide prescribes (Section 11):**
+> "Optimistic concurrency: When appending, provide expected version.
+> If current version differs, another process modified the aggregate—
+> reject and retry."
+
+**Current state:**
+- Event store correctly detects conflicts via version checking ✓
+- Engine panics on conflict instead of handling gracefully ✗
+- No serialization of commands per simulation ✗
+
+**Fix options (in order of recommendation):**
+
+| Option | Change | Trade-off |
+|--------|--------|-----------|
+| **1. Per-simulation mutex** | Add `sync.Mutex` to `SimInstance` | Simple, serializes all requests to same sim |
+| **2. Retry on conflict** | Catch panic, retry with backoff | Complex, but allows concurrent reads |
+| **3. Rebuild per request** | Load from events each request | True ES pattern, expensive for hot paths |
+
+**Recommended:** Option 1 for simplicity. The simulation is inherently single-threaded
+(one tick at a time makes domain sense), so serialization matches the domain model.
+
+**For now:** This is a known limitation. Single-client usage (TUI or single API client)
+works correctly. Multi-client concurrent access to the same simulation will race.
+
+**Why TUI is safe:** Bubbletea runs a single-threaded event loop. All simulation
+access happens sequentially within `Update()`. The race only affects HTTP API
+where the Go HTTP server spawns goroutines per request.
+
+**Reproduction:** `go test -race ./internal/api/ -run Concurrent`
+(See `internal/api/stress_test.go:16` for `TestAPI_ConcurrentTicks`,
+line 81 for `TestAPI_ConcurrentMixedOperations`)
 
 ### SimRegistry
 

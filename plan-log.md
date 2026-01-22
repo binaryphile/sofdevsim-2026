@@ -20136,3 +20136,160 @@ Addressed remaining compliance backlog items: documented Engine as ACD orchestra
 
 **Why it matters:**
 Completes compliance polish - pointer receivers now documented with consequences, value semantics applied where appropriate.
+
+---
+
+## Approved Plan: 2026-01-22 - Phase 5 Design Doc Concurrency Update
+
+# Plan: Update Design Documents - API Layer Concurrency Model
+
+## Context
+
+Stress testing revealed race conditions when multiple HTTP requests access the same simulation concurrently. The design doc claims "Individual simulations don't share state" but this is incorrect - the `SimInstance.Engine` is shared across concurrent requests.
+
+**Root cause:** Registry has mutex for the map, but once an instance is retrieved, multiple goroutines can call `Engine.Tick()` without synchronization.
+
+**ES Guide says:** (`urma-obsidian/guides/cqrs-event-sourcing-guide.md`, Sections 11, 15)
+- Optimistic concurrency: reject conflicting writes, caller handles retry
+- Command handlers should serialize per aggregate: load → execute → save is atomic
+
+## Task
+
+Update `docs/design.md` to:
+1. Correct the false claim about shared state
+2. Document the actual concurrency model
+3. Document the gap and fix options per ES guide
+4. Mark as known limitation OR plan for fix
+
+## Files to Modify
+
+| File | Section | Change |
+|------|---------|--------|
+| `docs/design.md` | Lines 754-760 | Correct "no shared state" claim |
+| `docs/design.md` | New section | Add "API Concurrency Model" section |
+
+## Success Criteria
+
+- [ ] False "no shared state" claim corrected (lines 756-759)
+- [ ] New section inserted at line 761 (before `### SimRegistry`)
+- [ ] ES Guide sections 11/15 referenced for prescribed pattern
+- [ ] Fix options listed with trade-offs
+- [ ] TUI safety explained (single-threaded event loop)
+- [ ] Reproduction command documented (`go test -race ...`)
+- [ ] Current state clearly marked as "known limitation"
+
+## Compliance Note
+
+This documentation update acknowledges a violation of ES Guide Section 11 (optimistic
+concurrency should be handled, not panic). Documenting known limitations is preferable
+to hiding them.
+
+---
+
+## Approved Contract: 2026-01-22
+
+# Phase 5 Contract - Design Doc Concurrency Update
+
+**Created:** 2026-01-22
+
+## Step 1 Checklist
+- [x] 1a: Presented understanding
+- [x] 1b: Asked clarifying questions
+- [x] 1b-answer: Received answers
+- [x] 1c: Contract created (this file)
+- [x] 1d: Approval received
+- [x] 1e: Plan + contract archived
+
+## Objective
+Update `docs/design.md` to document the API layer concurrency limitation discovered during stress testing.
+
+## Success Criteria
+- [ ] False "no shared state" claim corrected (lines 756-759)
+- [ ] New section inserted at line 761 (before `### SimRegistry`)
+- [ ] ES Guide sections 11/15 referenced for prescribed pattern
+- [ ] Fix options listed with trade-offs
+- [ ] TUI safety explained (single-threaded event loop)
+- [ ] Reproduction command documented
+- [ ] Current state clearly marked as "known limitation"
+
+## Approach
+1. Edit lines 756-759 to correct false claim
+2. Insert new "API Layer Concurrency: Known Limitation" section at line 761
+3. Verify changes with grep
+
+## Token Budget
+Estimated: 8-10K tokens
+
+---
+
+## Archived: 2026-01-22
+
+# Phase 5 Contract - Design Doc Concurrency Update
+
+**Created:** 2026-01-22
+
+## Step 1 Checklist
+- [x] 1a: Presented understanding
+- [x] 1b: Asked clarifying questions
+- [x] 1b-answer: Received answers
+- [x] 1c: Contract created (this file)
+- [x] 1d: Approval received
+- [x] 1e: Plan + contract archived
+
+## Objective
+Update `docs/design.md` to document the API layer concurrency limitation discovered during stress testing.
+
+## Success Criteria
+- [x] False "no shared state" claim corrected (lines 756-759)
+- [x] New section inserted at line 761 (before `### SimRegistry`)
+- [x] ES Guide sections 11/15 referenced for prescribed pattern
+- [x] Fix options listed with trade-offs
+- [x] TUI safety explained (single-threaded event loop)
+- [x] Reproduction command documented
+- [x] Current state clearly marked as "known limitation"
+
+## Actual Results
+
+**Deliverable:** `docs/design.md` (updated)
+**Completed:** 2026-01-22
+
+### Changes Made
+
+1. **Corrected false claim** (lines 756-759):
+   - Changed "don't share state" → "ARE shared across concurrent requests"
+   - Changed "independent once retrieved" → "NOT serialized - can race"
+
+2. **New section inserted** (lines 761-801):
+   - `### API Layer Concurrency: Known Limitation`
+   - Documents what happens (4-step race scenario)
+   - Quotes ES Guide Section 11 prescription
+   - Lists 3 fix options with trade-offs table
+   - Recommends Option 1 (per-sim mutex)
+   - Explains TUI safety (Bubbletea single-threaded)
+   - Includes reproduction command
+
+### Improvements Made (post-grading)
+1. Added `⚠ SHARED` annotation to architecture diagram (line 750)
+2. Added line number references for stress tests (lines 801-802)
+3. Ran `go test` to verify - stress tests fail as expected (confirms limitation)
+
+### Self-Assessment
+Grade: A (97/100)
+
+## Approval
+✅ APPROVED BY USER - 2026-01-22
+Final grade: A (97/100)
+
+---
+
+## Log: 2026-01-22 - Phase 5 Design Doc Concurrency Update
+
+**What was done:**
+Updated docs/design.md to document the API layer concurrency limitation discovered during stress testing. Corrected the false claim that "simulations don't share state" and added a comprehensive section explaining the race condition, ES Guide prescription, fix options, and why TUI is safe.
+
+**Key files changed:**
+- `docs/design.md`: Corrected concurrency model claims (lines 757-759), added new "API Layer Concurrency: Known Limitation" section (lines 761-803), added ⚠ SHARED annotation to architecture diagram (line 750)
+- `internal/api/stress_test.go`: Already existed from previous work, now referenced with line numbers
+
+**Why it matters:**
+Honest documentation of known limitations is preferable to hiding them. Future work to implement Option 1 (per-simulation mutex) would restore full ES Guide compliance.
