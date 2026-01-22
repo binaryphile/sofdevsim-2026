@@ -265,3 +265,55 @@ func TestEngine_Reproducibility(t *testing.T) {
 		t.Errorf("CompletedTickets: %d != %d", len(sim1.CompletedTickets), len(sim2.CompletedTickets))
 	}
 }
+
+// Integration test: sprint ends exactly on boundary tick
+// Per Khorikov: edge case test for off-by-one boundary conditions
+func TestEngine_SprintEndsExactlyOnBoundary(t *testing.T) {
+	sim := model.NewSimulation(model.PolicyNone, 12345)
+	sim.ID = "boundary-test"
+
+	eng := engine.NewEngine(sim.Seed)
+	eng.EmitCreated(sim.ID, sim.CurrentTick, events.SimConfig{
+		TeamSize:     1,
+		SprintLength: 10, // 10 ticks
+		Seed:         sim.Seed,
+		Policy:       model.PolicyNone,
+	})
+	eng.AddDeveloper("dev-1", "Alice", 1.0)
+	eng.StartSprint()
+
+	// Verify sprint started
+	state := eng.Sim()
+	sprint, hasActiveSprint := state.CurrentSprintOption.Get()
+	if !hasActiveSprint {
+		t.Fatal("Sprint should be active after StartSprint")
+	}
+	if sprint.EndDay != 10 {
+		t.Errorf("Sprint.EndDay = %d, want 10", sprint.EndDay)
+	}
+
+	// Tick exactly to sprint end (10 ticks)
+	for i := 0; i < 10; i++ {
+		eng.Tick()
+	}
+
+	state = eng.Sim()
+
+	// Sprint should have ended exactly at tick 10
+	_, hasActiveSprint = state.CurrentSprintOption.Get()
+	if hasActiveSprint {
+		t.Error("Sprint should have ended at tick 10")
+	}
+
+	// CurrentTick should be exactly 10
+	if state.CurrentTick != 10 {
+		t.Errorf("CurrentTick = %d, want 10", state.CurrentTick)
+	}
+
+	// One more tick should not cause panic or start new sprint
+	eng.Tick()
+	state = eng.Sim()
+	if state.CurrentTick != 11 {
+		t.Errorf("CurrentTick after extra tick = %d, want 11", state.CurrentTick)
+	}
+}

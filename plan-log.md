@@ -19787,3 +19787,105 @@ Removed 3 mutating methods (AddDeveloper, AddTicket, StartSprint) from `model/Si
 
 **Why it matters:**
 Simulation is now a pure Data type per FP guide §3.2. All mutation goes through Engine (the Action layer), achieving proper ACD separation.
+
+---
+
+## Archived: 2026-01-22
+
+# Phase 2 Contract: Edge Case Tests
+
+**Created:** 2026-01-22
+
+## Step 1 Checklist
+- [x] 1a: Presented understanding (plan file)
+- [x] 1b: Asked clarifying questions (scope: all 4 tests)
+- [x] 1b-answer: Received answers (user selected all 4)
+- [x] 1c: Contract created (this file)
+- [x] 1d: Approval received (user approved plan via ExitPlanMode)
+- [x] 1e: Plan + contract archived
+
+## Step 2 Checklist
+- [x] 2a: Implementation started
+- [x] 2b: Test 1 added (seed=0 determinism)
+- [x] 2c: Test 2 added (1000+ event replay)
+- [x] 2d: Test 3 added (concurrent append)
+- [x] 2e: Test 4 added (sprint boundary)
+- [x] 2f: All tests pass with -race
+
+## Objective
+
+Add 4 edge case tests identified in compliance report as regression protection.
+
+## Success Criteria
+
+- [x] `TestVarianceModel_ZeroSeed` added to variance_test.go
+- [x] `TestProjection_ReplayManyEvents_Correctness` added to projection_test.go
+- [x] `TestMemoryStore_ConcurrentAppend` added to store_test.go
+- [x] `TestEngine_SprintEndsExactlyOnBoundary` added to engine_integration_test.go
+- [x] `go test ./... -race` passes
+- [ ] Commit with message describing edge case coverage
+
+## Actual Results
+
+**Completed:** 2026-01-22
+
+### Files Modified
+
+| File | Test Added | Lines |
+|------|------------|-------|
+| `internal/engine/variance_test.go` | `TestVarianceModel_ZeroSeed` | +24 |
+| `internal/events/projection_test.go` | `TestProjection_ReplayManyEvents_Correctness` | +28 |
+| `internal/events/store_test.go` | `TestMemoryStore_ConcurrentAppend` | +60 |
+| `internal/engine/engine_integration_test.go` | `TestEngine_SprintEndsExactlyOnBoundary` | +48 |
+
+### Verification
+
+```
+$ go test -v -run "ZeroSeed|ReplayMany|ConcurrentAppend|SprintEndsExactly" ./...
+=== RUN   TestEngine_SprintEndsExactlyOnBoundary
+--- PASS: TestEngine_SprintEndsExactlyOnBoundary (0.00s)
+=== RUN   TestVarianceModel_ZeroSeed
+--- PASS: TestVarianceModel_ZeroSeed (0.00s)
+=== RUN   TestMemoryStore_ConcurrentAppend
+--- PASS: TestMemoryStore_ConcurrentAppend (0.00s)
+=== RUN   TestProjection_ReplayManyEvents_Correctness
+--- PASS: TestProjection_ReplayManyEvents_Correctness (0.01s)
+```
+
+### Self-Assessment
+
+**Grade: A (96/100)**
+
+What went well:
+- All 4 tests implemented as planned
+- Tests follow existing patterns in each file
+- All tests pass including race detection
+- Tests are meaningful (not trivial pass)
+
+Deductions:
+- Minor: store_test.go required adding `sync` import: -2 points
+- Minor: Projection test needed adjustment for generateTestEvents tick numbering: -2 points
+
+## Step 4 Checklist
+- [x] 4a: Results presented to user
+- [x] 4b: Approval received
+
+## Approval
+✅ APPROVED BY USER - 2026-01-22
+4 edge case tests added for regression protection.
+
+---
+
+## Log: 2026-01-22 - Phase 2: Edge Case Tests
+
+**What was done:**
+Added 4 edge case tests for regression protection: seed=0 determinism, 1000+ event replay correctness, concurrent append stress test, and sprint boundary tick verification.
+
+**Key files changed:**
+- `internal/engine/variance_test.go`: TestVarianceModel_ZeroSeed
+- `internal/events/projection_test.go`: TestProjection_ReplayManyEvents_Correctness
+- `internal/events/store_test.go`: TestMemoryStore_ConcurrentAppend
+- `internal/engine/engine_integration_test.go`: TestEngine_SprintEndsExactlyOnBoundary
+
+**Why it matters:**
+Protects against regressions in edge cases: zero seed, large event streams, concurrent access, and boundary conditions.
