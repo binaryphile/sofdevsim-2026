@@ -21986,3 +21986,330 @@ Updated TUI to work with Phase 10's immutable Engine pattern. Changed EngineMode
 
 **Why it matters:**
 TUI now correctly handles immutable Engine values, maintaining consistency with the FP/ES architecture established in Phase 10.
+
+---
+
+## Approved Plan: 2026-01-23 - Phase 12
+
+# Plan: Phase 12 - Update fluentfp to v0.11.0
+
+## Objective
+
+Update fluentfp dependency from v0.9.0 to v0.11.0 and fix documentation for breaking API changes.
+
+## Breaking Changes (v0.9.0 → v0.11.0)
+
+| Old | New | Type |
+|-----|-----|------|
+| `option.FromOpt(ptr)` | `option.IfNotNil(ptr)` | Renamed (v0.10.0) |
+| `option.IfProvided(t)` | `option.IfNotZero(t)` | Renamed (v0.10.0) |
+| `option.ZeroChecker` | (removed) | Removed (v0.10.0) |
+| `either.GetOrElse(default)` | `either.GetOr(default)` | Renamed (v0.11.0) |
+| `either.LeftOrElse(default)` | `either.LeftOr(default)` | Renamed (v0.11.0) |
+
+## Impact Analysis
+
+**No code changes needed** - grep found no `.go` files using the renamed functions.
+
+**Documentation updates required:**
+- `CLAUDE.md` - option package API documentation
+- `internal/registry/registry.go` - comment on line 41
+
+**Out of scope:**
+- `plan-log.md` - Historical references, no updates needed
+
+**Verified unchanged in v0.11.0:**
+- `Option.MustGet()` - Same signature and behavior
+
+## CLAUDE.md either Section to Update
+
+### Section: "### either Package" (~line 217)
+
+**Before (lines 237-238):**
+```go
+.GetOrElse(default R) R               // Right value or default
+.LeftOrElse(default L) L              // Left value or default
+```
+
+**After:**
+```go
+.GetOr(default R) R                   // Right value or default
+.LeftOr(default L) L                  // Left value or default
+```
+
+## Files to Modify
+
+| File | Changes |
+|------|---------|
+| `go.mod` | v0.9.0 → v0.11.0 |
+| `CLAUDE.md` | Update 4 sections (see below) |
+| `internal/registry/registry.go` | Update comment (line 41) |
+
+## CLAUDE.md Sections to Update
+
+Note: Line numbers are approximate hints. Use section headers as anchors.
+
+### Section: "### option Package" (~line 128)
+
+**Before (lines 136-138):**
+```go
+option.IfProvided(t T) Basic[T]        // Ok if non-zero value (comparable types)
+option.IfNotZero(t T) Basic[T]         // Ok if !t.IsZero() (ZeroChecker types)
+option.FromOpt(ptr *T) Basic[T]        // From pointer (nil = not-ok)
+```
+
+**After:**
+```go
+option.IfNotZero(t T) Basic[T]         // Ok if non-zero value (comparable types)
+option.IfNotNil(ptr *T) Basic[T]       // From pointer (nil = not-ok)
+```
+
+**Remove (lines 151-152):**
+```go
+// ZeroChecker interface (for non-comparable types)
+type ZeroChecker interface { IsZero() bool }
+```
+
+### Section: "### option Patterns" (~line 155)
+
+**Before (line 160):**
+```go
+return option.IfProvided(r.NullableHost.String)
+```
+
+**After:**
+```go
+return option.IfNotZero(r.NullableHost.String)
+```
+
+### Section: "### Pseudo-Option Conventions" (~line 170)
+
+**Before (lines 176-178):**
+```
+| Pointer (`*T`) | Suffix variable with `Opt` | `ptr != nil` | `option.FromOpt(ptr)` |
+| Zero-value (comparable) | No suffix needed | `t != zero` | `option.IfProvided(t)` |
+| Zero-value (struct) | Add `IsZero() bool` method | `!t.IsZero()` | `option.IfNotZero(t)` |
+```
+
+**After:**
+```
+| Pointer (`*T`) | Suffix variable with `Opt` | `ptr != nil` | `option.IfNotNil(ptr)` |
+| Zero-value (comparable) | No suffix needed | `t != zero` | `option.IfNotZero(t)` |
+```
+
+Remove row 3 (ZeroChecker pattern no longer exists).
+
+## registry.go Comment Update
+
+**Before (line 41):**
+```go
+// Implements option.ZeroChecker for use with option.IfNotZero.
+```
+
+**After:**
+```go
+// Supports zero-value-as-absent pattern (see CLAUDE.md "Pseudo-Option Conventions").
+```
+
+## Approach
+
+1. Update `go.mod` version
+2. Run `go mod tidy`
+3. Update CLAUDE.md option sections (4 edits)
+4. Update CLAUDE.md either section (1 edit)
+5. Update registry.go comment (1 edit)
+6. Run `go build ./...` and `go test ./...` to verify
+
+## Success Criteria
+
+- [ ] `go build ./...` compiles
+- [ ] `go test ./...` passes
+- [ ] CLAUDE.md reflects v0.10.0 API
+- [ ] No references to removed `ZeroChecker` interface
+
+## Token Budget
+
+Estimated: 3-5K tokens (documentation updates only)
+
+---
+
+## Approved Contract: 2026-01-23 - Phase 12
+
+# Phase 12 Contract: Update fluentfp to v0.11.0
+
+**Created:** 2026-01-23
+
+## Step 1 Checklist
+- [x] 1a: Presented understanding
+- [x] 1b: Asked clarifying questions (N/A - scope clear from version number)
+- [x] 1c: Contract created (this file)
+- [x] 1d: Approval received
+- [x] 1e: Plan + contract archived
+
+## Objective
+
+Update fluentfp dependency from v0.9.0 to v0.11.0 and fix documentation for breaking API changes.
+
+## Breaking Changes (v0.9.0 → v0.11.0)
+
+| Old | New | Version |
+|-----|-----|---------|
+| `option.FromOpt(ptr)` | `option.IfNotNil(ptr)` | v0.10.0 |
+| `option.IfProvided(t)` | `option.IfNotZero(t)` | v0.10.0 |
+| `option.ZeroChecker` | (removed) | v0.10.0 |
+| `either.GetOrElse(default)` | `either.GetOr(default)` | v0.11.0 |
+| `either.LeftOrElse(default)` | `either.LeftOr(default)` | v0.11.0 |
+
+## Impact Analysis
+
+**No code changes needed** - No `.go` files use the renamed functions.
+
+**Documentation updates only:**
+- `CLAUDE.md` - option and either package sections
+- `internal/registry/registry.go` - comment update
+
+## Success Criteria
+
+- [ ] `go build ./...` compiles
+- [ ] `go test ./...` passes
+- [ ] CLAUDE.md reflects v0.11.0 API
+- [ ] No references to removed `ZeroChecker` interface
+
+## Approach
+
+1. Update `go.mod` version
+2. Run `go mod tidy`
+3. Update CLAUDE.md option sections (4 edits)
+4. Update CLAUDE.md either section (1 edit)
+5. Update registry.go comment (1 edit)
+6. Run `go build ./...` and `go test ./...` to verify
+
+## Files to Modify
+
+| File | Changes |
+|------|---------|
+| `go.mod` | v0.9.0 → v0.11.0 |
+| `CLAUDE.md` | Update 5 documentation sections |
+| `internal/registry/registry.go` | Update comment (line 41) |
+
+## Token Budget
+
+Estimated: 3-5K tokens
+
+---
+
+## Archived: 2026-01-23 - Phase 12 Contract
+
+# Phase 12 Contract: Update fluentfp to v0.11.0
+
+**Created:** 2026-01-23
+
+## Step 1 Checklist
+- [x] 1a: Presented understanding
+- [x] 1b: Asked clarifying questions (N/A - scope clear from version number)
+- [x] 1c: Contract created (this file)
+- [x] 1d: Approval received
+- [x] 1e: Plan + contract archived
+
+## Objective
+
+Update fluentfp dependency from v0.9.0 to v0.11.0 and fix documentation for breaking API changes.
+
+## Breaking Changes (v0.9.0 → v0.11.0)
+
+| Old | New | Version |
+|-----|-----|---------|
+| `option.FromOpt(ptr)` | `option.IfNotNil(ptr)` | v0.10.0 |
+| `option.IfProvided(t)` | `option.IfNotZero(t)` | v0.10.0 |
+| `option.ZeroChecker` | (removed) | v0.10.0 |
+| `either.GetOrElse(default)` | `either.GetOr(default)` | v0.11.0 |
+| `either.LeftOrElse(default)` | `either.LeftOr(default)` | v0.11.0 |
+
+## Impact Analysis
+
+**No code changes needed** - No `.go` files use the renamed functions.
+
+**Documentation updates only:**
+- `CLAUDE.md` - option and either package sections
+- `internal/registry/registry.go` - comment update
+
+## Success Criteria
+
+- [x] `go build ./...` compiles
+- [x] `go test ./...` passes
+- [x] CLAUDE.md reflects v0.11.0 API
+- [x] No references to removed `ZeroChecker` interface
+
+## Approach
+
+1. Update `go.mod` version
+2. Run `go mod tidy`
+3. Update CLAUDE.md option sections (4 edits)
+4. Update CLAUDE.md either section (1 edit)
+5. Update registry.go comment (1 edit)
+6. Run `go build ./...` and `go test ./...` to verify
+
+## Files to Modify
+
+| File | Changes |
+|------|---------|
+| `go.mod` | v0.9.0 → v0.11.0 |
+| `CLAUDE.md` | Update 5 documentation sections |
+| `internal/registry/registry.go` | Update comment (line 41) |
+
+## Token Budget
+
+Estimated: 3-5K tokens
+
+## Actual Results
+
+**Completed:** 2026-01-23
+
+### Files Modified
+
+| File | Changes |
+|------|---------|
+| `go.mod` | v0.9.0 → v0.11.0 |
+| `CLAUDE.md` | Updated option API (4 edits), either API (1 edit) |
+| `internal/registry/registry.go` | Updated comment (line 41) |
+
+### Verification
+
+```
+go build ./...  → compiles
+go test ./...   → all pass
+grep ZeroChecker *.go → no matches
+```
+
+### Self-Assessment
+
+Grade: A (100/100)
+
+What went well:
+- All changes were documentation only (as planned)
+- No code changes required
+- All tests pass
+
+## Step 4 Checklist
+
+- [x] 4a: Results presented to user
+- [x] 4b: Approval received
+
+## Approval
+
+✅ APPROVED BY USER - 2026-01-23
+
+---
+
+## Log: 2026-01-23 - Phase 12: Update fluentfp to v0.11.0
+
+**What was done:**
+Updated fluentfp dependency from v0.9.0 to v0.11.0 and fixed documentation for breaking API changes. No code changes were needed - only go.mod version bump and CLAUDE.md documentation updates.
+
+**Key files changed:**
+- `go.mod`: Version bump to v0.11.0
+- `CLAUDE.md`: Updated option API (IfNotNil, IfNotZero, removed ZeroChecker) and either API (GetOr, LeftOr)
+- `internal/registry/registry.go`: Updated comment
+
+**Why it matters:**
+Keeps dependency current with latest fluentfp API naming conventions.

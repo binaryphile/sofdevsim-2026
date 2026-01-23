@@ -133,9 +133,8 @@ import "github.com/binaryphile/fluentfp/option"
 // Creating options
 option.Of(t T) Basic[T]                // Always ok
 option.New(t T, ok bool) Basic[T]      // Conditional ok
-option.IfProvided(t T) Basic[T]        // Ok if non-zero value (comparable types)
-option.IfNotZero(t T) Basic[T]         // Ok if !t.IsZero() (ZeroChecker types)
-option.FromOpt(ptr *T) Basic[T]        // From pointer (nil = not-ok)
+option.IfNotZero(t T) Basic[T]         // Ok if non-zero value (comparable types)
+option.IfNotNil(ptr *T) Basic[T]       // From pointer (nil = not-ok)
 
 // Using options
 .Get() (T, bool)                       // Comma-ok unwrap
@@ -147,9 +146,6 @@ option.FromOpt(ptr *T) Basic[T]        // From pointer (nil = not-ok)
 
 // Pre-defined types
 option.String, option.Int, option.Bool, option.Error
-
-// ZeroChecker interface (for non-comparable types)
-type ZeroChecker interface { IsZero() bool }
 ```
 
 ### option Patterns
@@ -157,7 +153,7 @@ type ZeroChecker interface { IsZero() bool }
 ```go
 // Nullable database field
 func (r Record) GetHost() option.String {
-    return option.IfProvided(r.NullableHost.String)
+    return option.IfNotZero(r.NullableHost.String)
 }
 
 // Tri-state boolean (true/false/unknown)
@@ -173,9 +169,8 @@ Pseudo-options use Go's zero values to represent "absent" without formal Option 
 
 | Style | Convention | Detection | Conversion to Option |
 |-------|------------|-----------|---------------------|
-| Pointer (`*T`) | Suffix variable with `Opt` | `ptr != nil` | `option.FromOpt(ptr)` |
-| Zero-value (comparable) | No suffix needed | `t != zero` | `option.IfProvided(t)` |
-| Zero-value (struct) | Add `IsZero() bool` method | `!t.IsZero()` | `option.IfNotZero(t)` |
+| Pointer (`*T`) | Suffix variable with `Opt` | `ptr != nil` | `option.IfNotNil(ptr)` |
+| Zero-value (comparable) | No suffix needed | `t != zero` | `option.IfNotZero(t)` |
 
 **Pointer pseudo-options (`*T`):**
 ```go
@@ -234,8 +229,8 @@ either.Right[L, R](r R) Either[L, R]  // Create Right variant
 .MustGetLeft() L                      // Left value or panic
 
 // Defaults
-.GetOrElse(default R) R               // Right value or default
-.LeftOrElse(default L) L              // Left value or default
+.GetOr(default R) R                   // Right value or default
+.LeftOr(default L) L                  // Left value or default
 .GetOrCall(fn func() R) R             // Right value or lazy default
 .LeftOrCall(fn func() L) L            // Left value or lazy default
 

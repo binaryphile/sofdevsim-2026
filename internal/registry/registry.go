@@ -38,7 +38,7 @@ func (r *SimRegistry) Store() events.Store {
 }
 
 // IsZero returns true if the registry is uninitialized (zero value).
-// Implements option.ZeroChecker for use with option.IfNotZero.
+// Supports zero-value-as-absent pattern (see CLAUDE.md "Pseudo-Option Conventions").
 func (r *SimRegistry) IsZero() bool {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
