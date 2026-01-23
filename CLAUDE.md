@@ -320,10 +320,11 @@ Option is for "maybe nothing." Either is for "definitely something, but which on
 ```go
 import "github.com/binaryphile/fluentfp/must"
 
-must.Get(t T, err error) T             // Return or panic
-must.BeNil(err error)                  // Panic if error
-must.Getenv(key string) string         // Env var or panic
-must.Of(fn func(T) (R, error)) func(T) R  // Wrap fallible func
+must.Get(t T, err error) T                    // Return or panic
+must.Get2(t T, t2 T2, err error) (T, T2)      // 3-return variant
+must.BeNil(err error)                         // Panic if error
+must.Getenv(key string) string                // Env var or panic
+must.Of(fn func(T) (R, error)) func(T) R      // Wrap fallible func
 ```
 
 ### must Patterns
@@ -342,7 +343,18 @@ must.BeNil(db.Ping())
 
 // Time parsing
 timestamp := must.Get(time.Parse("2006-01-02 15:04:05", s.ScannedAt))
+
+// Invariants: errors that should never happen at runtime
+// Use must when the error represents a bug, not a runtime condition
+eng = must.Get(eng.StartSprint())           // Single-user: no concurrent conflicts
+eng, events = must.Get2(eng.Tick())         // 3-return: (Engine, []Event, error)
+sprint := sim.CurrentSprintOption.MustGet() // Option has MustGet() for invariants
 ```
+
+**When to use must vs error handling:**
+- `must.Get`: Error indicates a bug (invariant violation), not a runtime condition
+- Error handling: Error is expected and recoverable (user input, network, file I/O)
+- If you think "this error can never happen here", use `must` to enforce that invariant
 
 ### ternary Package
 
