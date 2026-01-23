@@ -8,7 +8,7 @@
 
 | Guide | Grade | Score | Summary |
 |-------|-------|-------|---------|
-| Khorikov Unit Testing | A | 96/100 | Behavior-focused tests with explicit guide references; some edge case gaps |
+| Khorikov Unit Testing | A | 99/100 | Behavior-focused tests with explicit guide references; full edge case coverage |
 | Event Sourcing | A | 96/100 | Full CQRS with optimistic concurrency; minor handler mixing |
 | Functional Programming | A | 96/100 | Strong ACD separation; Simulation now pure Data type |
 | Go Development | A | 98/100 | Value semantics conversion done; Simulation uses value receivers only |
@@ -20,7 +20,7 @@
 
 ### 1. Khorikov Unit Testing Guide
 
-**Score: 94/100**
+**Score: 99/100**
 
 #### Strengths
 
@@ -44,12 +44,12 @@
 **Resolved** (2026-01-23):
 - ~~Some test names describe implementation rather than behavior~~ → **FIXED**: 29 tests renamed to behavior-focused names (e.g., `TestClient_Tick` → `TestClient_Tick_AdvancesSimulationTime`)
 
-**Minor** (-3 points):
-- Missing edge case tests (Khorikov Pillar 2: Protection Against Regressions):
-  - `variance_test.go` - No test for seed=0 edge case (deterministic baseline)
-  - `projection_test.go` - No test for replaying 1000+ events (performance regression)
-  - `store_test.go` - No test for concurrent Append from multiple goroutines
-  - `engine_test.go` - No test for sprint ending exactly on tick boundary
+**Resolved** (2026-01-23):
+- ~~Missing edge case tests~~ → **FIXED**: All 4 edge cases now covered:
+  - `variance_test.go:99` - `TestVarianceModel_ZeroSeed`
+  - `projection_test.go:452` - `TestProjection_ReplayManyEvents_Correctness`
+  - `store_test.go:403` - `TestMemoryStore_ConcurrentAppend`
+  - `engine_integration_test.go:275` - `TestEngine_SprintEndsExactlyOnBoundary`
 
 **Nitpick** (0 points):
 - `decode_test.go:133-147` - `limitedReader` test helper could be documented more clearly
@@ -59,7 +59,7 @@
 | Recommendation | Effort | Impact |
 |----------------|--------|--------|
 | ~~Rename tests to describe behaviors, not methods~~ | ~~Quick win (<1hr)~~ | ✅ DONE (2026-01-23) |
-| Add seed=0 and boundary tests | Quick win (<1hr) | +2 points |
+| ~~Add seed=0 and boundary tests~~ | ~~Quick win (<1hr)~~ | ✅ DONE (2026-01-23) |
 | Add concurrent append stress test | Medium (1 day) | +1 point, catches race |
 | Add behavior descriptions to test table comments | Quick win (<1hr) | Clarity |
 
@@ -240,7 +240,7 @@
 | Finding | Severity | Effort | Priority |
 |---------|----------|--------|----------|
 | ~~**Simulation mutating methods (FP + Go)**~~ | ~~Critical~~ | ~~Medium~~ | ✅ DONE (2026-01-22) |
-| Missing edge case tests (seed=0, boundaries) | Minor | Quick | 🟢 Easy Win |
+| ~~Missing edge case tests (seed=0, boundaries)~~ | ~~Minor~~ | ~~Quick~~ | ✅ DONE (2026-01-23) |
 | ~~Test names describe methods not behaviors~~ | ~~Minor~~ | ~~Quick~~ | ✅ DONE (2026-01-23) |
 | `runComparison` function too large | Minor | Medium | 🔵 Backlog |
 | Read model extraction from handlers | Minor | Medium | 🔵 Backlog |
@@ -256,7 +256,7 @@
 | Pillar | Score | Evidence |
 |--------|-------|----------|
 | Resistance to Refactoring | 8/8 | Tests verify behaviors via ranges, not implementation |
-| Protection Against Regressions | 4/6 | Domain logic tested but missing: seed=0, boundaries, concurrent append |
+| Protection Against Regressions | 6/6 | Full edge case coverage: seed=0, boundaries, concurrent append, large replay |
 | Fast Feedback | 5/5 | All tests < 1s, no flaky tests detected |
 | Maintainability | 3/3 | Table-driven pattern; behavior-focused test names |
 | Mock Usage | 3/3 | No internal mocks, only HTTP boundary |

@@ -22833,3 +22833,219 @@ Renamed 29 method-focused tests to behavior-focused names per Khorikov testing p
 **Why it matters:**
 Improves test maintainability by making test names describe observable behaviors rather than implementation methods.
 
+
+---
+
+## Approved Plan: 2026-01-23
+
+# Plan: Phase 15 - Compliance Document Update
+
+## Objective
+
+Update compliance-grading.md to reflect that all "missing" edge case tests now exist.
+
+## Discovery
+
+The compliance document lists 4 missing edge case tests, but all 4 have been implemented:
+
+| Missing Test | File | Actual Test Name |
+|--------------|------|------------------|
+| seed=0 edge case | variance_test.go:99 | `TestVarianceModel_ZeroSeed` |
+| 1000+ events replay | projection_test.go:452 | `TestProjection_ReplayManyEvents_Correctness` |
+| Concurrent append | store_test.go:403 | `TestMemoryStore_ConcurrentAppend` |
+| Sprint boundary tick | engine_integration_test.go:275 | `TestEngine_SprintEndsExactlyOnBoundary` |
+
+## Score Impact
+
+**Note:** Document has score inconsistency:
+- Line 11 (executive summary): 96/100
+- Line 23 (detailed section): 94/100
+
+Both should become 99/100 after this update (+3 for edge case tests).
+
+**Protection Against Regressions pillar:** 4/6 → 6/6
+
+## Specific Edits
+
+### Edit 1: Executive summary (line 11)
+```
+OLD: | Khorikov Unit Testing | A | 96/100 | Behavior-focused tests with explicit guide references; some edge case gaps |
+NEW: | Khorikov Unit Testing | A | 99/100 | Behavior-focused tests with explicit guide references; full edge case coverage |
+```
+
+### Edit 2: Detailed section header (line 23)
+```
+OLD: **Score: 94/100**
+NEW: **Score: 99/100**
+```
+
+### Edit 3: Mark edge case tests resolved (lines 47-52)
+```
+OLD:
+**Minor** (-3 points):
+- Missing edge case tests (Khorikov Pillar 2: Protection Against Regressions):
+  - `variance_test.go` - No test for seed=0 edge case (deterministic baseline)
+  - `projection_test.go` - No test for replaying 1000+ events (performance regression)
+  - `store_test.go` - No test for concurrent Append from multiple goroutines
+  - `engine_test.go` - No test for sprint ending exactly on tick boundary
+
+NEW:
+**Resolved** (2026-01-23):
+- ~~Missing edge case tests~~ → **FIXED**: All 4 edge cases now covered:
+  - `variance_test.go:99` - `TestVarianceModel_ZeroSeed`
+  - `projection_test.go:452` - `TestProjection_ReplayManyEvents_Correctness`
+  - `store_test.go:403` - `TestMemoryStore_ConcurrentAppend`
+  - `engine_integration_test.go:275` - `TestEngine_SprintEndsExactlyOnBoundary`
+```
+
+### Edit 4: Mark recommendation done (line 62)
+```
+OLD: | Add seed=0 and boundary tests | Quick win (<1hr) | +2 points |
+NEW: | ~~Add seed=0 and boundary tests~~ | ~~Quick win (<1hr)~~ | ✅ DONE (2026-01-23) |
+```
+
+### Edit 5: Priority matrix (line 243)
+```
+OLD: | Missing edge case tests (seed=0, boundaries) | Minor | Quick | 🟢 Easy Win |
+NEW: | ~~Missing edge case tests (seed=0, boundaries)~~ | ~~Minor~~ | ~~Quick~~ | ✅ DONE (2026-01-23) |
+```
+
+### Edit 6: Pillar score (line 259)
+```
+OLD: | Protection Against Regressions | 4/6 | Domain logic tested but missing: seed=0, boundaries, concurrent append |
+NEW: | Protection Against Regressions | 6/6 | Full edge case coverage: seed=0, boundaries, concurrent append, large replay |
+```
+
+## Success Criteria
+
+- [ ] All 4 edge case tests marked as resolved
+- [ ] Khorikov score updated: 96 → 99
+- [ ] Protection Against Regressions: 4/6 → 6/6
+- [ ] Priority matrix item marked done
+
+## Token Budget
+
+Estimated: 3-5K tokens (documentation edits only)
+
+---
+
+## Approved Contract: 2026-01-23
+
+# Phase 15 Contract
+
+**Created:** 2026-01-23
+
+## Step 1 Checklist
+- [x] 1a: Presented understanding
+- [x] 1b: Asked clarifying questions
+- [x] 1b-answer: Received answers
+- [x] 1c: Contract created (this file)
+- [x] 1d: Approval received
+- [x] 1e: Plan + contract archived
+
+## Objective
+
+Update compliance-grading.md to reflect that all 4 "missing" edge case tests now exist.
+
+## Success Criteria
+
+- [ ] All 4 edge case tests marked as resolved
+- [ ] Khorikov score updated: 94→99, 96→99
+- [ ] Protection Against Regressions: 4/6 → 6/6
+- [ ] Priority matrix item marked done
+
+## Approach
+
+6 precise edits to `docs/compliance-grading.md`:
+1. Executive summary score: 96→99
+2. Detailed section header: 94→99
+3. Mark edge case tests resolved (lines 47-52)
+4. Mark recommendation done (line 62)
+5. Priority matrix item done (line 243)
+6. Pillar score: 4/6→6/6 (line 259)
+
+## Token Budget
+
+Estimated: 3-5K tokens
+
+---
+
+## Archived: 2026-01-23
+
+# Phase 15 Contract
+
+**Created:** 2026-01-23
+
+## Step 1 Checklist
+- [x] 1a: Presented understanding
+- [x] 1b: Asked clarifying questions
+- [x] 1b-answer: Received answers
+- [x] 1c: Contract created (this file)
+- [x] 1d: Approval received
+- [x] 1e: Plan + contract archived
+
+## Objective
+
+Update compliance-grading.md to reflect that all 4 "missing" edge case tests now exist.
+
+## Success Criteria
+
+- [x] All 4 edge case tests marked as resolved
+- [x] Khorikov score updated: 94→99, 96→99
+- [x] Protection Against Regressions: 4/6 → 6/6
+- [x] Priority matrix item marked done
+
+## Approach
+
+6 precise edits to `docs/compliance-grading.md`:
+1. Executive summary score: 96→99
+2. Detailed section header: 94→99
+3. Mark edge case tests resolved (lines 47-52)
+4. Mark recommendation done (line 62)
+5. Priority matrix item done (line 243)
+6. Pillar score: 4/6→6/6 (line 259)
+
+## Token Budget
+
+Estimated: 3-5K tokens
+
+## Actual Results
+
+**Completed:** 2026-01-23
+
+### Edits Applied
+1. ✅ Executive summary: 96→99
+2. ✅ Detailed section: 94→99
+3. ✅ Edge case tests marked resolved with test names/locations
+4. ✅ Recommendation marked done
+5. ✅ Priority matrix marked done
+6. ✅ Pillar score: 4/6→6/6
+
+### Verification
+All 4 tests confirmed to exist:
+- `TestVarianceModel_ZeroSeed` (variance_test.go:99)
+- `TestProjection_ReplayManyEvents_Correctness` (projection_test.go:452)
+- `TestMemoryStore_ConcurrentAppend` (store_test.go:403)
+- `TestEngine_SprintEndsExactlyOnBoundary` (engine_integration_test.go:275)
+
+## Step 4 Checklist
+- [x] 4a: Results presented to user
+- [x] 4b: Approval received
+
+## Approval
+✅ APPROVED BY USER - 2026-01-23
+Final results: Compliance doc updated, Khorikov score 94/96→99, all edge case tests documented
+
+---
+
+## Log: 2026-01-23 - Phase 15 Compliance Document Update
+
+**What was done:**
+Updated compliance-grading.md to reflect that all 4 "missing" edge case tests already exist. Fixed score inconsistency (94 vs 96 both now 99).
+
+**Key files changed:**
+- `docs/compliance-grading.md`: Khorikov score 99/100, Protection Against Regressions 6/6
+
+**Why it matters:**
+Accurate compliance tracking ensures the grading document reflects actual codebase state.
+
