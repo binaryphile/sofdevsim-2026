@@ -760,7 +760,7 @@ POST /comparisons
 4. Engine mutations are NOT serialized - concurrent tick/assign calls can race
 
 **ES Design Sections** (per `urma-obsidian/guides/cqrs-event-sourcing-guide.md`):
-- Concurrency Model (§11) - mutex serialization
+- Concurrency Model (§11) - immutable engine pattern
 - Idempotency (§15) - command ID tracking
 - Snapshots (§7) - periodic state capture
 - Projections (§8) - pre-computed read models
@@ -770,39 +770,42 @@ POST /comparisons
 
 > Reference: `urma-obsidian/guides/cqrs-event-sourcing-guide.md` §11
 
-**Current state:** `SimInstance` is shared across concurrent HTTP requests without
-synchronization. The event store detects version conflicts but Engine panics instead
-of handling gracefully. Single-client usage (TUI) is safe; multi-client API access races.
-(See `internal/api/stress_test.go` for reproduction.)
+**Problem:** Engine.proj field races between emit() and Sim(). The current
+pointer receiver pattern `e.proj = e.proj.Apply(evt)` mutates shared state.
+Concurrent Tick() calls race on the proj field. (See `internal/api/stress_test.go`
+for reproduction.)
 
-**Design:** `SimInstance` serializes all Engine operations via mutex:
+**Rejected approaches:**
+
+| Approach | Why Rejected |
+|----------|--------------|
+| RWMutex on SimInstance | Works but violates FP Guide §7 - still mutable state, just protected |
+| Atomic pointer | Lock-free but same FP violation - Engine field still mutable |
+
+**Design:** Immutable Engine pattern. Methods use value receivers and return
+new Engine. Callers must capture the return value.
 
 ```go
-type SimInstance struct {
-    mu      sync.Mutex        // Serializes access to this simulation
-    Sim     *model.Simulation
-    Engine  *engine.Engine
-    Tracker metrics.Tracker
+// Value receiver - returns new Engine instead of mutating
+func (e Engine) Tick() (Engine, []model.Event) {
+    // ... emit events to store ...
+    newProj := e.store.Replay().Apply(newEvents...)
+    return Engine{store: e.store, proj: newProj}, modelEvents
 }
 
-// All handler methods acquire lock before Engine access
-func (r *SimRegistry) handleTick(w http.ResponseWriter, req *http.Request) {
-    inst := r.GetInstance(simID)
-    inst.mu.Lock()
-    defer inst.mu.Unlock()
-    // ... Engine.Tick() ...
-}
+// Caller must capture return
+eng, events = eng.Tick()
 ```
 
-This matches the domain model: a simulation tick is inherently sequential.
-Concurrent requests to the same simulation are serialized; requests to
-different simulations proceed in parallel.
+**Why this works:**
+- No shared mutable state = no races (FP Guide §7)
+- Value semantics throughout (Go Dev Guide §3)
+- Event store remains source of truth (ES Guide)
 
-**Mutex vs version check:** The mutex serializes requests to the same simulation,
-eliminating races. The event store's version check remains as a safety net—if
-somehow two goroutines bypassed the mutex (bug), the version check would catch
-the conflict. In normal operation, version conflicts never occur because the
-mutex ensures sequential access.
+**Trade-offs:**
+- More allocations (new Engine per operation)
+- Verbose call sites (`eng = eng.Method()` vs `eng.Method()`)
+- Acceptable for reference implementation prioritizing correctness
 
 **Verified by:** `go test -race ./internal/api/ -run Concurrent` (must pass)
 
@@ -810,7 +813,7 @@ mutex ensures sequential access.
 
 **Cleanup:** Remove `⚠ SHARED` annotation from architecture diagram (line 750) after implementation.
 
-**Size: S** (~1-2 hours)
+**Size: M** (~4-8 hours due to caller updates)
 
 ---
 

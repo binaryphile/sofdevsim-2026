@@ -20734,3 +20734,264 @@ Added "Reference Implementation Principles" section to CLAUDE.md documenting tha
 
 **Why it matters:**
 Codifies the decision from Phase 8 design review - future concurrency implementation must use immutable pattern (operations return new Engine) rather than RWMutex or atomic pointer, satisfying ES Guide, FP Guide §7, and Go Dev Guide §3.
+
+---
+
+## Approved Plan: 2026-01-22 - Phase 8 Design Doc Update
+
+# Plan: Phase 8 - Update Design Doc for Immutable Engine Pattern
+
+## Context
+
+Phase 8 was aborted because the mutex approach violates FP Guide §7 (immutability). We've already added architectural guidance to CLAUDE.md requiring the Immutable Engine pattern. Now we need to update the design document to match.
+
+## Objective
+
+Update `docs/design.md` §11 (Concurrency Model, lines 769-812) to specify the Immutable Engine pattern instead of mutex-based serialization.
+
+## Current State
+
+**Line 763** says: `Concurrency Model (§11) - mutex serialization`
+
+**Lines 769-813** contain §11 with:
+- Mutex serialization on SimInstance
+- Code example showing `sync.Mutex` in SimInstance
+- Handlers acquire lock before Engine access
+- References stress tests as regression tests
+
+## Changes
+
+**File:** `docs/design.md`
+
+### Change 1: Line 763
+
+Change:
+```
+- Concurrency Model (§11) - mutex serialization
+```
+To:
+```
+- Concurrency Model (§11) - immutable engine pattern
+```
+
+### Change 2: Lines 769-813 (§11 section)
+
+Replace entire section with:
+
+````markdown
+### Concurrency Model (ES Guide §11)
+
+> Reference: `urma-obsidian/guides/cqrs-event-sourcing-guide.md` §11
+
+**Problem:** Engine.proj field races between emit() and Sim(). The current
+pointer receiver pattern `e.proj = e.proj.Apply(evt)` mutates shared state.
+Concurrent Tick() calls race on the proj field. (See `internal/api/stress_test.go`
+for reproduction.)
+
+**Rejected approaches:**
+
+| Approach | Why Rejected |
+|----------|--------------|
+| RWMutex on SimInstance | Works but violates FP Guide §7 - still mutable state, just protected |
+| Atomic pointer | Lock-free but same FP violation - Engine field still mutable |
+
+**Design:** Immutable Engine pattern. Methods use value receivers and return
+new Engine. Callers must capture the return value.
+
+```go
+// Value receiver - returns new Engine instead of mutating
+func (e Engine) Tick() (Engine, []model.Event) {
+    // ... emit events to store ...
+    newProj := e.store.Replay().Apply(newEvents...)
+    return Engine{store: e.store, proj: newProj}, modelEvents
+}
+
+// Caller must capture return
+eng, events = eng.Tick()
+```
+
+**Why this works:**
+- No shared mutable state = no races (FP Guide §7)
+- Value semantics throughout (Go Dev Guide §3)
+- Event store remains source of truth (ES Guide)
+
+**Trade-offs:**
+- More allocations (new Engine per operation)
+- Verbose call sites (`eng = eng.Method()` vs `eng.Method()`)
+- Acceptable for reference implementation prioritizing correctness
+
+**Verified by:** `go test -race ./internal/api/ -run Concurrent` (must pass)
+
+**Regression gate:** `internal/api/stress_test.go` - currently fails, becomes passing test.
+
+**Cleanup:** Remove `⚠ SHARED` annotation from architecture diagram (line 750) after implementation.
+
+**Size: M** (~4-8 hours due to caller updates)
+````
+
+## Success Criteria
+
+- [ ] Line 763 says "immutable engine pattern" (not "mutex serialization")
+- [ ] §11 (lines 769-813) describes Immutable Engine pattern
+- [ ] Rejected approaches (RWMutex, atomic pointer) documented with reasons
+- [ ] Trade-offs acknowledged
+- [ ] References FP Guide §7, Go Dev Guide §3, ES Guide
+
+## Files to Modify
+
+| File | Lines | Change |
+|------|-------|--------|
+| `docs/design.md` | 763 | Change "mutex serialization" → "immutable engine pattern" |
+| `docs/design.md` | 769-813 | Replace mutex section with Immutable Engine design |
+
+## Deferred
+
+Implementation of the Immutable Engine pattern (code changes) is deferred to a subsequent phase after this design doc update is approved.
+
+## Token Budget
+
+Estimated: 3-5K tokens (design doc edit only)
+
+---
+
+## Approved Contract: 2026-01-22
+
+# Phase 8 Contract: Update Design Doc for Immutable Engine Pattern
+
+**Created:** 2026-01-22
+
+## Step 1 Checklist
+- [x] 1a: Presented understanding
+- [x] 1b: Asked clarifying questions
+- [x] 1b-answer: Received answers
+- [x] 1c: Contract created (this file)
+- [x] 1d: Approval received
+- [ ] 1e: Plan + contract archived
+
+## Objective
+
+Update `docs/design.md` §11 (Concurrency Model) to specify the Immutable Engine pattern instead of mutex-based serialization.
+
+## Success Criteria
+
+- [ ] Line 763 says "immutable engine pattern" (not "mutex serialization")
+- [ ] §11 (lines 769-813) describes Immutable Engine pattern
+- [ ] Rejected approaches (RWMutex, atomic pointer) documented with reasons
+- [ ] Trade-offs acknowledged
+- [ ] References FP Guide §7, Go Dev Guide §3, ES Guide
+
+## Approach
+
+1. Change line 763: "mutex serialization" → "immutable engine pattern"
+2. Replace lines 769-813 with new §11 content describing:
+   - Problem statement (Engine.proj races)
+   - Rejected approaches table
+   - Immutable Engine design with code example
+   - Why it works (guide references)
+   - Trade-offs acknowledged
+   - Verification commands
+
+## Token Budget
+
+Estimated: 3-5K tokens
+
+---
+
+## Archived: 2026-01-22 - Phase 8 Contract
+
+# Phase 8 Contract: Update Design Doc for Immutable Engine Pattern
+
+**Created:** 2026-01-22
+
+## Step 1 Checklist
+- [x] 1a: Presented understanding
+- [x] 1b: Asked clarifying questions
+- [x] 1b-answer: Received answers
+- [x] 1c: Contract created (this file)
+- [x] 1d: Approval received
+- [x] 1e: Plan + contract archived
+
+## Objective
+
+Update `docs/design.md` §11 (Concurrency Model) to specify the Immutable Engine pattern instead of mutex-based serialization.
+
+## Success Criteria
+
+- [x] Line 763 says "immutable engine pattern" (not "mutex serialization")
+- [x] §11 (lines 769-813) describes Immutable Engine pattern
+- [x] Rejected approaches (RWMutex, atomic pointer) documented with reasons
+- [x] Trade-offs acknowledged
+- [x] References FP Guide §7, Go Dev Guide §3, ES Guide
+
+## Approach
+
+1. Change line 763: "mutex serialization" → "immutable engine pattern"
+2. Replace lines 769-813 with new §11 content describing:
+   - Problem statement (Engine.proj races)
+   - Rejected approaches table
+   - Immutable Engine design with code example
+   - Why it works (guide references)
+   - Trade-offs acknowledged
+   - Verification commands
+
+## Actual Results
+
+**Completed:** 2026-01-22
+
+### Changes Made
+
+| File | Line | Change |
+|------|------|--------|
+| `docs/design.md` | 763 | "mutex serialization" → "immutable engine pattern" |
+| `docs/design.md` | 769-813 | Replaced mutex section with Immutable Engine design |
+
+### Verification
+
+```
+$ grep -n "immutable engine pattern" docs/design.md
+763:- Concurrency Model (§11) - immutable engine pattern
+
+$ grep -n "FP Guide §7\|Go Dev Guide §3" docs/design.md
+782:| RWMutex on SimInstance | Works but violates FP Guide §7 - still mutable state, just protected |
+801:- No shared mutable state = no races (FP Guide §7)
+802:- Value semantics throughout (Go Dev Guide §3)
+```
+
+### Self-Assessment
+
+Grade: A (95/100)
+
+What went well:
+- Both changes applied cleanly
+- All success criteria met
+- Rejected approaches documented with clear reasons
+
+Deductions:
+- Minor: Size estimate in new §11 references implementation scope, not this phase (-5)
+
+## Step 4 Checklist
+
+- [x] 4a: Results presented to user
+- [x] 4b: Approval received
+
+## Approval
+
+✅ APPROVED BY USER - 2026-01-22
+Final results: design.md §11 updated to Immutable Engine pattern
+
+## Token Budget
+
+Estimated: 3-5K tokens
+
+---
+
+## Log: 2026-01-22 - Phase 8 Design Doc Update
+
+**What was done:**
+Updated docs/design.md §11 (Concurrency Model) to specify Immutable Engine pattern instead of mutex-based serialization. Documented rejected approaches (RWMutex, atomic pointer) with reasons referencing FP Guide §7 and Go Dev Guide §3.
+
+**Key files changed:**
+- `docs/design.md`: Line 763 updated, lines 769-813 replaced with Immutable Engine design
+
+**Why it matters:**
+Establishes the architectural foundation for Phase 9 implementation. The design now specifies value-receiver methods returning new Engine, eliminating shared mutable state.
