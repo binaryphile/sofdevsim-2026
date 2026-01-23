@@ -2,6 +2,54 @@
 
 # Software Development Simulation
 
+## Reference Implementation Principles
+
+This project is a **reference implementation for scaling**. Always choose the architecturally correct approach over expedient solutions.
+
+### Architectural Decision Framework
+
+When multiple solutions exist, evaluate against these guides (in `urma-obsidian/guides/`):
+
+| Guide | Key Principle | Example Violation |
+|-------|---------------|-------------------|
+| **ES Guide** | Events are source of truth, projections derived | Caching projection in mutable field |
+| **FP Guide §7** | Immutability - no shared mutable state | `eng.proj = newProj` races with readers |
+| **Go Dev Guide §3** | Value semantics - return values, not mutate | Pointer receivers that mutate state |
+
+### Concurrency: Immutable Engine Pattern
+
+**Required approach**: Operations return new Engine, no mutable cached state.
+
+```go
+// CORRECT: Immutable - operation returns new Engine
+func (e Engine) Tick() Engine {
+    newProj := e.store.Replay().Apply(newEvents...)
+    return Engine{store: e.store, proj: newProj}
+}
+// Usage: eng = eng.Tick()
+
+// WRONG: Mutable field races between emit() and Sim()
+func (e *Engine) emit(event Event) {
+    e.proj = e.proj.Apply(event)  // RACE with Sim() readers
+}
+```
+
+**Why not RWMutex?** While `sync.RWMutex` works (tested), it:
+- Adds contention on high-read workloads
+- Violates FP Guide §7 (still has mutable state, just protected)
+- Doesn't align with ES philosophy (projection derived on demand)
+
+**Why not atomic pointer?** `atomic.Pointer[Projection]` is lock-free but still mutates the Engine's internal state - same FP violation.
+
+### Trade-off Acknowledgment
+
+The immutable pattern has costs:
+- More allocations (new Engine per operation)
+- Verbose call sites (`eng = eng.Tick()` vs `eng.Tick()`)
+- May need optimization for very high-frequency operations
+
+These are acceptable for a reference implementation that prioritizes correctness.
+
 ## Development Environment
 
 - **Language**: Go
