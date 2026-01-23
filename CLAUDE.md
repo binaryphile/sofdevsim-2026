@@ -1159,8 +1159,39 @@ func upcastTicketAssignedV1ToV2(evt Event) Event {
 
 Raw events remain unchanged in storage—upcasting is read-side only.
 
-### Future Work
+### Event Metadata
 
-Per ES guide §11, consider adding event metadata:
-- **Correlation ID**: Links events across bounded contexts
-- **Causation ID**: Tracks event chains (event A caused event B)
+Infrastructure for correlation and causation tracking exists in Header fields but is not yet wired into production operations.
+
+**Available API:**
+
+| Method | Purpose | Status |
+|--------|---------|--------|
+| `Engine.SetTrace(tc)` | Set correlation context | Test-only |
+| `Engine.ClearTrace()` | Clear correlation context | Test-only |
+| `Engine.CurrentTrace()` | Get current trace context | Test-only |
+| `evt.WithCausedBy(id)` | Link causation chain | Test-only |
+
+**Usage example:**
+```go
+// Correlation: group related events under one trace
+eng = eng.SetTrace(events.TraceContext{TraceID: "req-123", SpanID: "op-1"})
+eng = must.Get2(eng.AddTicket(ticket))  // Event includes trace context
+eng = eng.ClearTrace()
+
+// Causation: link event chains
+created := events.NewTicketCreated("sim-1", 0, "t-1", "Title", 3.0, model.WellUnderstood)
+assigned := events.NewTicketAssigned("sim-1", 1, "t-1", "dev-1", time.Now()).
+    WithCausedBy(created.EventID())
+```
+
+**Header Fields:**
+
+| Field | Purpose |
+|-------|---------|
+| `Trace` | Correlation ID linking related events |
+| `Span` | Current operation identifier |
+| `ParentSpan` | Parent operation for nested traces |
+| `CausedByID` | ID of event that caused this event |
+
+**Future:** Wire `SetTrace` into API request handlers and `WithCausedBy` into Engine operations that trigger cascading events.

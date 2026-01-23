@@ -22313,3 +22313,231 @@ Updated fluentfp dependency from v0.9.0 to v0.11.0 and fixed documentation for b
 
 **Why it matters:**
 Keeps dependency current with latest fluentfp API naming conventions.
+
+---
+
+## Approved Plan: 2026-01-23
+
+# Plan: Phase 13 - Document Event Metadata Infrastructure
+
+## Objective
+
+Update CLAUDE.md to document the existing event metadata infrastructure and clarify its status (implemented but not yet used in production code).
+
+## Discovery
+
+The "Future Work" item in CLAUDE.md (line 1162) lists:
+- Correlation ID: Links events across bounded contexts
+- Causation ID: Tracks event chains (event A caused event B)
+
+**Infrastructure is implemented:**
+
+```go
+// internal/events/types.go - Header struct
+type Header struct {
+    ID         string
+    SimID      string
+    Type       string
+    OccurredAt int
+    DetectedAt time.Time
+    CausedByID string    // ← Causation ID
+    Trace      string    // ← Correlation ID (TraceID)
+    Span       string
+    ParentSpan string
+}
+```
+
+**API available:**
+- `WithCausedBy(eventID string)` method on all event types
+- `Header.CausedBy()` accessor
+- `Engine.SetTrace(tc events.TraceContext)` for correlation context
+- `Engine.ClearTrace()` and `Engine.CurrentTrace()` methods
+- Full test coverage in `internal/events/*_test.go`
+
+**Usage status: Test-only**
+- `WithCausedBy` called only in `domain_events_test.go`
+- `SetTrace` called only in `event_sourcing_test.go`
+- No production code wires these into actual operations yet
+
+## Files to Modify
+
+| File | Changes |
+|------|---------|
+| `/home/ted/projects/sofdevsim-2026/CLAUDE.md` | Replace "### Future Work" with "### Event Metadata" |
+
+## CLAUDE.md Changes
+
+**Location:** Replace lines 1162-1166 ("### Future Work" section)
+
+**Replace with:**
+
+```markdown
+### Event Metadata
+
+Infrastructure for correlation and causation tracking exists in Header fields but is not yet wired into production operations.
+
+**Available API:**
+
+| Method | Purpose | Status |
+|--------|---------|--------|
+| `Engine.SetTrace(tc)` | Set correlation context | Test-only |
+| `Engine.ClearTrace()` | Clear correlation context | Test-only |
+| `evt.WithCausedBy(id)` | Link causation chain | Test-only |
+
+**Usage example:**
+```go
+// Correlation: group related events under one trace
+eng = eng.SetTrace(events.TraceContext{TraceID: "req-123", SpanID: "op-1"})
+// ... emit events ...
+eng = eng.ClearTrace()
+
+// Causation: link event chains
+created := events.NewTicketCreated(...)
+assigned := events.NewTicketAssigned(...).WithCausedBy(created.EventID())
+```
+
+**Header Fields:**
+
+| Field | Purpose |
+|-------|---------|
+| `Trace` | Correlation ID linking related events |
+| `Span` | Current operation identifier |
+| `ParentSpan` | Parent operation for nested traces |
+| `CausedByID` | ID of event that caused this event |
+
+**Future:** Wire `SetTrace` into API request handlers and `WithCausedBy` into Engine operations that trigger cascading events.
+```
+
+## Approach
+
+1. Replace "### Future Work" section (lines 1162-1166) with "### Event Metadata" documentation
+2. Run `go test ./...` to verify no regressions
+
+## Success Criteria
+
+- [ ] CLAUDE.md documents event metadata API and its test-only status
+- [ ] Outdated "Future Work" item replaced (not just removed)
+- [ ] New "Future:" note points to next steps for production wiring
+- [ ] `go test ./...` passes
+
+## Token Budget
+
+Estimated: 2K tokens (single edit)
+
+---
+
+## Approved Contract: 2026-01-23
+
+# Phase 13 Contract
+
+**Created:** 2026-01-23
+
+## Step 1 Checklist
+- [x] 1a: Presented understanding
+- [x] 1b: Asked clarifying questions
+- [x] 1b-answer: Received answers
+- [x] 1c: Contract created (this file)
+- [x] 1d: Approval received
+- [ ] 1e: Plan + contract archived
+
+## Objective
+
+Document existing event metadata infrastructure in CLAUDE.md and remove outdated "Future Work" item.
+
+## Success Criteria
+
+- [ ] CLAUDE.md documents event metadata API and its test-only status
+- [ ] Outdated "Future Work" item replaced (not just removed)
+- [ ] New "Future:" note points to next steps for production wiring
+- [ ] `go test ./...` passes
+
+## Approach
+
+1. Replace "### Future Work" section (lines 1162-1166) with "### Event Metadata" documentation
+2. Run `go test ./...` to verify no regressions
+
+## Token Budget
+
+Estimated: 2K tokens (single edit)
+
+---
+
+## Archived: 2026-01-23
+
+# Phase 13 Contract
+
+**Created:** 2026-01-23
+
+## Step 1 Checklist
+- [x] 1a: Presented understanding
+- [x] 1b: Asked clarifying questions
+- [x] 1b-answer: Received answers
+- [x] 1c: Contract created (this file)
+- [x] 1d: Approval received
+- [x] 1e: Plan + contract archived
+
+## Objective
+
+Document existing event metadata infrastructure in CLAUDE.md and remove outdated "Future Work" item.
+
+## Success Criteria
+
+- [x] CLAUDE.md documents event metadata API and its test-only status
+- [x] Outdated "Future Work" item replaced (not just removed)
+- [x] New "Future:" note points to next steps for production wiring
+- [x] `go test ./...` passes
+
+## Approach
+
+1. Replace "### Future Work" section (lines 1162-1166) with "### Event Metadata" documentation
+2. Run `go test ./...` to verify no regressions
+
+## Token Budget
+
+Estimated: 2K tokens (single edit)
+
+## Actual Results
+
+**Deliverable:** CLAUDE.md updated
+**Completed:** 2026-01-23
+
+### Changes Made
+- Replaced "### Future Work" (5 lines) with "### Event Metadata" (29 lines)
+- Location: lines 1162-1190 (previously 1162-1166)
+- Added: API table, usage examples, header fields table, future work note
+
+### Quality Verification
+- `go test ./...` passes (all packages OK)
+- Documentation accurately reflects existing infrastructure
+- "Test-only" status clearly indicated
+
+### Self-Assessment
+Grade: A (96/100)
+
+What went well:
+- Clean replacement of outdated section with accurate documentation
+- Usage examples show both correlation and causation patterns
+
+Deductions:
+- None significant for this documentation-only phase
+
+## Step 4 Checklist
+- [x] 4a: Results presented to user
+- [x] 4b: Approval received
+
+## Approval
+✅ APPROVED BY USER - 2026-01-23
+Final results: Event Metadata documentation added to CLAUDE.md with complete API table, real usage examples, and proper must.Get2 error handling convention.
+
+---
+
+## Log: 2026-01-23 - Phase 13: Document Event Metadata Infrastructure
+
+**What was done:**
+Updated CLAUDE.md to document the existing event metadata infrastructure (Correlation ID, Causation ID) that was previously listed as "Future Work" but is already implemented. Documentation includes API table, usage examples, and header fields reference.
+
+**Key files changed:**
+- `CLAUDE.md`: Replaced "### Future Work" section with "### Event Metadata" documentation (lines 1162-1197)
+
+**Why it matters:**
+Ensures documentation accurately reflects implemented features, providing developers with clear guidance on using correlation/causation tracking.
