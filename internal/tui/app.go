@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/binaryphile/fluentfp/either"
+	"github.com/binaryphile/fluentfp/must"
 	"github.com/binaryphile/sofdevsim-2026/internal/engine"
 	"github.com/binaryphile/sofdevsim-2026/internal/events"
 	"github.com/binaryphile/sofdevsim-2026/internal/export"
@@ -28,8 +29,13 @@ type ClientMode struct {
 
 // EngineMode holds all local engine state.
 // Value type: stored by value in Either.
+//
+// Error handling: Engine methods return errors for event store conflicts,
+// which only occur in concurrent multi-user scenarios. TUI runs in single-user
+// mode with no concurrent access, so errors represent invariant violations.
+// We use must.Get/must.Get2 to panic on errors - if they occur, it's a bug.
 type EngineMode struct {
-	Engine   *engine.Engine
+	Engine   engine.Engine // Value type - immutable pattern
 	Tracker  metrics.Tracker
 	Store    events.Store
 	EventSub <-chan events.Event
@@ -121,34 +127,34 @@ func NewAppWithRegistry(seed int64, reg *registry.SimRegistry) *App {
 	tracker := metrics.NewTracker()
 
 	var store events.Store
-	var eng *engine.Engine
+	var eng engine.Engine
 
 	if reg != nil {
 		// Use shared registry - simulation accessible by both TUI and API
 		store = reg.Store()
-		eng = reg.RegisterSimulation(sim, tracker)
+		eng = must.Get(reg.RegisterSimulation(sim, tracker))
 	} else {
 		// Standalone mode - own event store
 		store = events.NewMemoryStore()
 		eng = engine.NewEngineWithStore(sim.Seed, store)
-		eng.EmitCreated(sim.ID, sim.CurrentTick, events.SimConfig{
+		eng = must.Get(eng.EmitCreated(sim.ID, sim.CurrentTick, events.SimConfig{
 			TeamSize:     len(sim.Developers),
 			SprintLength: sim.SprintLength,
 			Seed:         sim.Seed,
-		})
+		}))
 	}
 
 	// Add default team via engine (emits DeveloperAdded events)
-	eng.AddDeveloper("dev-1", "Alice", 1.0)
-	eng.AddDeveloper("dev-2", "Bob", 0.8)
-	eng.AddDeveloper("dev-3", "Carol", 1.2)
+	eng = must.Get(eng.AddDeveloper("dev-1", "Alice", 1.0))
+	eng = must.Get(eng.AddDeveloper("dev-2", "Bob", 0.8))
+	eng = must.Get(eng.AddDeveloper("dev-3", "Carol", 1.2))
 
 	// Generate initial backlog via engine (emits TicketCreated events)
 	gen := engine.Scenarios["healthy"]
 	rng := rand.New(rand.NewSource(seed))
 	tickets := gen.Generate(rng, 12)
 	for _, t := range tickets {
-		eng.AddTicket(t)
+		eng = must.Get(eng.AddTicket(t))
 	}
 
 	// Subscribe to event store for live updates
@@ -291,7 +297,8 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, nil
 		}
 		if !a.paused && a.currentView == ViewExecution {
-			tickEvents := eng.Engine.Tick()
+			var tickEvents []model.Event
+			eng.Engine, tickEvents = must.Get2(eng.Engine.Tick())
 			a.modelEvents = append(a.modelEvents, tickEvents...)
 
 			// Get current state from projection
@@ -363,11 +370,12 @@ func (a *App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			nextIdx := (currentIdx + 1) % len(policies)
 			return a, a.doHTTPSetPolicy(policies[nextIdx])
 		}
-		// Engine mode
+		// Engine mode - SetPolicy returns new engine (value semantics)
 		eng, _ := a.mode.GetLeft()
 		sim := eng.Engine.Sim()
 		newPolicy := (sim.SizingPolicy + 1) % 4
-		eng.Engine.SetPolicy(newPolicy)
+		eng.Engine = must.Get(eng.Engine.SetPolicy(newPolicy))
+		a.mode = either.Left[EngineMode, ClientMode](eng)
 		return a, nil
 
 	case "s":
@@ -379,11 +387,12 @@ func (a *App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			return a, nil
 		}
-		// Engine mode
+		// Engine mode - StartSprint returns new engine (value semantics)
 		eng, _ := a.mode.GetLeft()
 		sim := eng.Engine.Sim()
 		if _, ok := sim.CurrentSprintOption.Get(); a.currentView == ViewPlanning && !ok {
-			eng.Engine.StartSprint()
+			eng.Engine = must.Get(eng.Engine.StartSprint())
+			a.mode = either.Left[EngineMode, ClientMode](eng)
 			a.currentView = ViewExecution
 			a.paused = false
 			return a, a.tickCmd()
@@ -410,14 +419,15 @@ func (a *App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			return a, nil
 		}
-		// Engine mode
+		// Engine mode - AssignTicket returns new engine (value semantics)
 		eng, _ := a.mode.GetLeft()
 		sim := eng.Engine.Sim()
 		if a.currentView == ViewPlanning && a.selected < len(sim.Backlog) {
 			ticket := sim.Backlog[a.selected]
 			for _, dev := range sim.Developers {
 				if dev.IsIdle() {
-					eng.Engine.AssignTicket(ticket.ID, dev.ID)
+					eng.Engine = must.Get(eng.Engine.AssignTicket(ticket.ID, dev.ID))
+					a.mode = either.Left[EngineMode, ClientMode](eng)
 					break
 				}
 			}
@@ -434,12 +444,13 @@ func (a *App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			return a, nil
 		}
-		// Engine mode
+		// Engine mode - TryDecompose returns new engine (value semantics)
 		eng, _ := a.mode.GetLeft()
 		sim := eng.Engine.Sim()
 		if a.currentView == ViewPlanning && a.selected < len(sim.Backlog) {
 			ticket := sim.Backlog[a.selected]
-			eng.Engine.TryDecompose(ticket.ID)
+			eng.Engine, _ = must.Get2(eng.Engine.TryDecompose(ticket.ID))
+			a.mode = either.Left[EngineMode, ClientMode](eng)
 		}
 		return a, nil
 
@@ -546,18 +557,18 @@ func (a *App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		// Rebuild EngineMode with loaded state
 		var newStore events.Store
-		var newEngine *engine.Engine
+		var newEngine engine.Engine
 		reg := currentEng.Registry
 
 		if !reg.IsZero() {
 			newStore = reg.Store()
-			newEngine = reg.RegisterSimulation(sim, tracker)
+			newEngine = must.Get(reg.RegisterSimulation(sim, tracker))
 			// RegisterSimulation already calls EmitLoadedState
 		} else {
 			newStore = events.NewMemoryStore()
 			newEngine = engine.NewEngineWithStore(sim.Seed, newStore)
 			// Emit events to populate projection from loaded state
-			newEngine.EmitLoadedState(*sim)
+			newEngine = must.Get(newEngine.EmitLoadedState(*sim))
 		}
 
 		// Re-subscribe to new simulation's events
@@ -607,8 +618,8 @@ func (a *App) runComparison() {
 
 	// Run 3 sprints each
 	for i := 0; i < 3; i++ {
-		trackerA = a.runSprintWithAutoAssign(engA, trackerA)
-		trackerB = a.runSprintWithAutoAssign(engB, trackerB)
+		engA, trackerA = a.runSprintWithAutoAssign(engA, trackerA)
+		engB, trackerB = a.runSprintWithAutoAssign(engB, trackerB)
 	}
 
 	// Get results and compare
@@ -622,37 +633,37 @@ func (a *App) runComparison() {
 }
 
 // createSimulationEngine creates a fresh engine with identical setup
-func (a *App) createSimulationEngine(policy model.SizingPolicy, seed int64) *engine.Engine {
+func (a *App) createSimulationEngine(policy model.SizingPolicy, seed int64) engine.Engine {
 	sim := model.NewSimulation(policy, seed)
 	sim.ID = fmt.Sprintf("cmp-%d-%s", seed, policy)
 
 	eng := engine.NewEngine(sim.Seed)
-	eng.EmitCreated(sim.ID, sim.CurrentTick, events.SimConfig{
+	eng = must.Get(eng.EmitCreated(sim.ID, sim.CurrentTick, events.SimConfig{
 		TeamSize:     3,
 		SprintLength: sim.SprintLength,
 		Seed:         sim.Seed,
 		Policy:       policy,
-	})
+	}))
 
 	// Same team
-	eng.AddDeveloper("dev-1", "Alice", 1.0)
-	eng.AddDeveloper("dev-2", "Bob", 0.8)
-	eng.AddDeveloper("dev-3", "Carol", 1.2)
+	eng = must.Get(eng.AddDeveloper("dev-1", "Alice", 1.0))
+	eng = must.Get(eng.AddDeveloper("dev-2", "Bob", 0.8))
+	eng = must.Get(eng.AddDeveloper("dev-3", "Carol", 1.2))
 
 	// Same backlog (using same seed)
 	gen := engine.Scenarios["mixed"] // Use mixed for more interesting comparison
 	rng := rand.New(rand.NewSource(seed))
 	tickets := gen.Generate(rng, 15)
 	for _, t := range tickets {
-		eng.AddTicket(t)
+		eng = must.Get(eng.AddTicket(t))
 	}
 
 	return eng
 }
 
 // runSprintWithAutoAssign runs a sprint with automatic ticket assignment
-func (a *App) runSprintWithAutoAssign(eng *engine.Engine, tracker metrics.Tracker) metrics.Tracker {
-	eng.StartSprint()
+func (a *App) runSprintWithAutoAssign(eng engine.Engine, tracker metrics.Tracker) (engine.Engine, metrics.Tracker) {
+	eng = must.Get(eng.StartSprint())
 
 	// Auto-assign tickets to idle developers at start
 	// Use index-based iteration so re-reads affect subsequent checks
@@ -662,23 +673,25 @@ func (a *App) runSprintWithAutoAssign(eng *engine.Engine, tracker metrics.Tracke
 		if dev.IsIdle() && len(state.Backlog) > 0 {
 			ticket := state.Backlog[0]
 			// Try decomposition first based on policy
-			if children, decomposed := eng.TryDecompose(ticket.ID).Get(); decomposed {
+			var result either.Either[engine.NotDecomposable, []model.Ticket]
+			eng, result = must.Get2(eng.TryDecompose(ticket.ID))
+			if children, decomposed := result.Get(); decomposed {
 				// Assign first child
 				if len(children) > 0 {
-					eng.AssignTicket(children[0].ID, dev.ID)
+					eng = must.Get(eng.AssignTicket(children[0].ID, dev.ID))
 				}
 			} else {
-				eng.AssignTicket(ticket.ID, dev.ID)
+				eng = must.Get(eng.AssignTicket(ticket.ID, dev.ID))
 			}
 			// Re-read state after assignment - affects subsequent iterations
 			state = eng.Sim()
 		}
 	}
 
-	// Run the sprint
-	sprint, _ := eng.Sim().CurrentSprintOption.Get()
+	// Run the sprint (sprint guaranteed active after StartSprint)
+	sprint := eng.Sim().CurrentSprintOption.MustGet()
 	for eng.Sim().CurrentTick < sprint.EndDay {
-		eng.Tick()
+		eng, _ = must.Get2(eng.Tick())
 		state = eng.Sim()
 		tracker = tracker.Updated(&state)
 
@@ -687,19 +700,21 @@ func (a *App) runSprintWithAutoAssign(eng *engine.Engine, tracker metrics.Tracke
 			dev := state.Developers[i]
 			if dev.IsIdle() && len(state.Backlog) > 0 {
 				ticket := state.Backlog[0]
-				if children, decomposed := eng.TryDecompose(ticket.ID).Get(); decomposed {
+				var result either.Either[engine.NotDecomposable, []model.Ticket]
+				eng, result = must.Get2(eng.TryDecompose(ticket.ID))
+				if children, decomposed := result.Get(); decomposed {
 					if len(children) > 0 {
-						eng.AssignTicket(children[0].ID, dev.ID)
+						eng = must.Get(eng.AssignTicket(children[0].ID, dev.ID))
 					}
 				} else {
-					eng.AssignTicket(ticket.ID, dev.ID)
+					eng = must.Get(eng.AssignTicket(ticket.ID, dev.ID))
 				}
 				// Re-read state after assignment - affects subsequent iterations
 				state = eng.Sim()
 			}
 		}
 	}
-	return tracker
+	return eng, tracker
 }
 
 func (a *App) tickCmd() tea.Cmd {

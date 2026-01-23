@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/binaryphile/fluentfp/either"
+	"github.com/binaryphile/fluentfp/must"
 	"github.com/binaryphile/sofdevsim-2026/internal/api"
 	"github.com/binaryphile/sofdevsim-2026/internal/registry"
 	tea "github.com/charmbracelet/bubbletea"
@@ -53,7 +55,8 @@ func TestNewAppWithSeed_ZeroUsesRandomSeed(t *testing.T) {
 func TestSprintEndsWhenDurationReached(t *testing.T) {
 	app := NewAppWithSeed(42)
 	eng, _ := app.mode.GetLeft()
-	eng.Engine.StartSprint() // Use engine to emit events
+	eng.Engine = must.Get(eng.Engine.StartSprint())
+	app.mode = either.Left[EngineMode, ClientMode](eng)
 	app.paused = false              // Enable tick processing
 	app.currentView = ViewExecution // Required for tick processing
 

@@ -113,7 +113,12 @@ func TestClient_Assign(t *testing.T) {
 		t.Fatalf("Assign failed: %v", err)
 	}
 
-	// Verify assignment
+	// Re-fetch instance after HTTP update.
+	// Engine uses value semantics (immutable) - the instance we fetched before
+	// the HTTP call holds the OLD engine value. HTTP handlers update the registry
+	// with a new engine value, so we must re-fetch to see the change.
+	// This is the correct pattern when verifying state after any registry mutation.
+	inst, _ = registry.GetInstance(resp.Simulation.ID)
 	state = inst.Engine.Sim()
 	found := false
 	for _, at := range state.ActiveTickets {
