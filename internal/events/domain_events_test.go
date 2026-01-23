@@ -8,7 +8,7 @@ import (
 	"github.com/binaryphile/sofdevsim-2026/internal/model"
 )
 
-func TestSimulationCreated(t *testing.T) {
+func TestSimulationCreatedEvent_CapturesConfigAndTick(t *testing.T) {
 	before := time.Now()
 	e := NewSimulationCreated("sim-1", 0, SimConfig{
 		TeamSize:     5,
@@ -37,7 +37,7 @@ func TestSimulationCreated(t *testing.T) {
 	}
 }
 
-func TestSprintStarted(t *testing.T) {
+func TestSprintStartedEvent_CapturesNumberAndVelocity(t *testing.T) {
 	e := NewSprintStarted("sim-1", 0, 1, 2.0)
 
 	if e.SimulationID() != "sim-1" {
@@ -57,7 +57,7 @@ func TestSprintStarted(t *testing.T) {
 	}
 }
 
-func TestTicked(t *testing.T) {
+func TestTickedEvent_IncrementsCurrentTick(t *testing.T) {
 	e := NewTicked("sim-1", 42)
 
 	if e.SimulationID() != "sim-1" {
@@ -77,7 +77,7 @@ func TestTicked(t *testing.T) {
 	}
 }
 
-func TestTicketAssigned(t *testing.T) {
+func TestTicketAssignedEvent_LinksDeveloperToTicket(t *testing.T) {
 	e := NewTicketAssigned("sim-1", 10, "TKT-001", "DEV-001", time.Now())
 
 	if e.SimulationID() != "sim-1" {
@@ -100,7 +100,7 @@ func TestTicketAssigned(t *testing.T) {
 	}
 }
 
-func TestTicketCompleted(t *testing.T) {
+func TestTicketCompletedEvent_RecordsActualDuration(t *testing.T) {
 	e := NewTicketCompleted("sim-1", 25, "TKT-001", "DEV-001", 5.0)
 
 	if e.SimulationID() != "sim-1" {
@@ -114,7 +114,7 @@ func TestTicketCompleted(t *testing.T) {
 	}
 }
 
-func TestIncidentStarted(t *testing.T) {
+func TestIncidentStartedEvent_CapturesSeverityAndCause(t *testing.T) {
 	e := NewIncidentStarted("sim-1", 15, "INC-001", "DEV-001", "TKT-001", model.SeverityHigh)
 
 	if e.SimulationID() != "sim-1" {
@@ -128,7 +128,7 @@ func TestIncidentStarted(t *testing.T) {
 	}
 }
 
-func TestIncidentResolved(t *testing.T) {
+func TestIncidentResolvedEvent_LinksToResolver(t *testing.T) {
 	e := NewIncidentResolved("sim-1", 20, "INC-001", "DEV-001")
 
 	if e.SimulationID() != "sim-1" {
@@ -142,7 +142,7 @@ func TestIncidentResolved(t *testing.T) {
 	}
 }
 
-func TestSprintEnded(t *testing.T) {
+func TestSprintEndedEvent_RecordsSprintNumber(t *testing.T) {
 	e := NewSprintEnded("sim-1", 10, 1)
 
 	if e.SimulationID() != "sim-1" {
@@ -188,7 +188,7 @@ func TestEventInterfaceCompliance(t *testing.T) {
 	}
 }
 
-func TestWithTrace(t *testing.T) {
+func TestWithTrace_SetsTraceSpanAndParent(t *testing.T) {
 	e := NewTicketAssigned("sim-1", 10, "TKT-001", "DEV-001", time.Now()).
 		WithTrace("trace-123", "span-456", "span-parent")
 
@@ -203,7 +203,7 @@ func TestWithTrace(t *testing.T) {
 	}
 }
 
-func TestWithCausedBy(t *testing.T) {
+func TestWithCausedBy_SetsCausedByID(t *testing.T) {
 	e := NewTicketCompleted("sim-1", 25, "TKT-001", "DEV-001", 5.0).
 		WithCausedBy("TicketAssigned-1")
 
@@ -212,7 +212,7 @@ func TestWithCausedBy(t *testing.T) {
 	}
 }
 
-func TestNextSpanID(t *testing.T) {
+func TestNextSpanID_GeneratesUniqueIDs(t *testing.T) {
 	id1 := NextSpanID()
 	id2 := NextSpanID()
 
@@ -224,7 +224,7 @@ func TestNextSpanID(t *testing.T) {
 	}
 }
 
-func TestNextTraceID(t *testing.T) {
+func TestNextTraceID_GeneratesUniqueIDs(t *testing.T) {
 	id1 := NextTraceID()
 	id2 := NextTraceID()
 
@@ -341,7 +341,7 @@ func TestEvents_CausedByWorksOnAllTypes(t *testing.T) {
 	}
 }
 
-func TestApplyTrace(t *testing.T) {
+func TestApplyTrace_SetsAllTraceFields(t *testing.T) {
 	tc := TraceContext{
 		TraceID:      "trace-test",
 		SpanID:       "span-test",

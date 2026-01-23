@@ -38,7 +38,7 @@ func (e testEvent) withTrace(traceID, spanID, parentSpanID string) Event {
 	return e
 }
 
-func TestMemoryStore_AppendAndReplay(t *testing.T) {
+func TestMemoryStore_AppendAndReplay_ReturnsStoredEvents(t *testing.T) {
 	tests := []struct {
 		name   string
 		simID  string
@@ -120,7 +120,7 @@ func TestMemoryStore_IsolatesSimulations(t *testing.T) {
 	}
 }
 
-func TestMemoryStore_Subscribe(t *testing.T) {
+func TestMemoryStore_Subscribe_DeliversNewEvents(t *testing.T) {
 	store := NewMemoryStore()
 	defer store.Close()
 
@@ -159,7 +159,7 @@ func TestMemoryStore_SubscribeDoesNotReceiveOtherSimulations(t *testing.T) {
 	}
 }
 
-func TestMemoryStore_Unsubscribe(t *testing.T) {
+func TestMemoryStore_Unsubscribe_StopsDelivery(t *testing.T) {
 	store := NewMemoryStore()
 	defer store.Close()
 
@@ -198,7 +198,7 @@ func TestMemoryStore_ReplayReturnsCopy(t *testing.T) {
 	}
 }
 
-func TestMemoryStore_EventCount(t *testing.T) {
+func TestMemoryStore_EventCount_ReturnsAccurateTotal(t *testing.T) {
 	store := NewMemoryStore()
 	defer store.Close()
 

@@ -1,6 +1,6 @@
 # sofdevsim-2026 Compliance Grading
 
-**Graded:** 2026-01-21 (Updated: 2026-01-22)
+**Graded:** 2026-01-21 (Updated: 2026-01-23)
 **Project:** binaryphile/sofdevsim-2026
 **Files reviewed:** 33 test files, 45 source files
 
@@ -8,7 +8,7 @@
 
 | Guide | Grade | Score | Summary |
 |-------|-------|-------|---------|
-| Khorikov Unit Testing | A | 94/100 | Behavior-focused tests with explicit guide references; some edge case gaps |
+| Khorikov Unit Testing | A | 96/100 | Behavior-focused tests with explicit guide references; some edge case gaps |
 | Event Sourcing | A | 96/100 | Full CQRS with optimistic concurrency; minor handler mixing |
 | Functional Programming | A | 96/100 | Strong ACD separation; Simulation now pure Data type |
 | Go Development | A | 98/100 | Value semantics conversion done; Simulation uses value receivers only |
@@ -41,10 +41,8 @@
 
 #### Compliance Issues
 
-**Minor** (-3 points):
-- Some test names describe implementation rather than behavior
-  - `developer_test.go:12` `TestDeveloper_WithTicket` → could be `TestDeveloper_AssigningTicketMakesDevBusy`
-  - `sprint_test.go:45` `TestSprint_WithBufferConsumed` → could be `TestSprint_ConsumingBufferReducesRemaining`
+**Resolved** (2026-01-23):
+- ~~Some test names describe implementation rather than behavior~~ → **FIXED**: 29 tests renamed to behavior-focused names (e.g., `TestClient_Tick` → `TestClient_Tick_AdvancesSimulationTime`)
 
 **Minor** (-3 points):
 - Missing edge case tests (Khorikov Pillar 2: Protection Against Regressions):
@@ -60,7 +58,7 @@
 
 | Recommendation | Effort | Impact |
 |----------------|--------|--------|
-| Rename tests to describe behaviors, not methods | Quick win (<1hr) | +2 points |
+| ~~Rename tests to describe behaviors, not methods~~ | ~~Quick win (<1hr)~~ | ✅ DONE (2026-01-23) |
 | Add seed=0 and boundary tests | Quick win (<1hr) | +2 points |
 | Add concurrent append stress test | Medium (1 day) | +1 point, catches race |
 | Add behavior descriptions to test table comments | Quick win (<1hr) | Clarity |
@@ -243,7 +241,7 @@
 |---------|----------|--------|----------|
 | ~~**Simulation mutating methods (FP + Go)**~~ | ~~Critical~~ | ~~Medium~~ | ✅ DONE (2026-01-22) |
 | Missing edge case tests (seed=0, boundaries) | Minor | Quick | 🟢 Easy Win |
-| Test names describe methods not behaviors | Minor | Quick | 🟢 Easy Win |
+| ~~Test names describe methods not behaviors~~ | ~~Minor~~ | ~~Quick~~ | ✅ DONE (2026-01-23) |
 | `runComparison` function too large | Minor | Medium | 🔵 Backlog |
 | Read model extraction from handlers | Minor | Medium | 🔵 Backlog |
 
@@ -260,7 +258,7 @@
 | Resistance to Refactoring | 8/8 | Tests verify behaviors via ranges, not implementation |
 | Protection Against Regressions | 4/6 | Domain logic tested but missing: seed=0, boundaries, concurrent append |
 | Fast Feedback | 5/5 | All tests < 1s, no flaky tests detected |
-| Maintainability | 2/3 | Table-driven pattern; some test names describe methods not behaviors |
+| Maintainability | 3/3 | Table-driven pattern; behavior-focused test names |
 | Mock Usage | 3/3 | No internal mocks, only HTTP boundary |
 
 ### Event Sourcing: CQRS Checklist

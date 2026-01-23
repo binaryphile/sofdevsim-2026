@@ -7,7 +7,7 @@ import (
 )
 
 // Test domain logic: phase effort calculation with understanding multipliers
-func TestTicket_CalculatePhaseEffort(t *testing.T) {
+func TestTicket_CalculatePhaseEffort_ReturnsCorrectDistribution(t *testing.T) {
 	tests := []struct {
 		name          string
 		estimatedDays float64
@@ -67,7 +67,7 @@ func TestTicket_CalculatePhaseEffort(t *testing.T) {
 }
 
 // Test that phase effort percentages sum to 1.0 (important invariant)
-func TestPhaseEffortPct_SumsToOne(t *testing.T) {
+func TestPhaseEffortPct_SumsToOne_AcrossAllPhases(t *testing.T) {
 	var total float64
 	for phase := model.PhaseResearch; phase <= model.PhaseReview; phase++ {
 		total += model.PhaseEffortPct[phase]

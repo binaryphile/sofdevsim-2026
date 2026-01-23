@@ -84,7 +84,7 @@ func TestSprint_BufferConsumptionUpdatesFeverStatus(t *testing.T) {
 }
 
 // Test sprint progress calculation
-func TestSprint_ProgressPct(t *testing.T) {
+func TestSprint_ProgressPct_CalculatesPercentage(t *testing.T) {
 	sprint := model.NewSprint(1, 0, 10, 0.2)
 
 	tests := []struct {
@@ -106,7 +106,7 @@ func TestSprint_ProgressPct(t *testing.T) {
 }
 
 // Test WIP tracking for export
-func TestSprint_AvgWIP(t *testing.T) {
+func TestSprint_AvgWIP_CalculatesAverage(t *testing.T) {
 	tests := []struct {
 		name     string
 		wipSum   int

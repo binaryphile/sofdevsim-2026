@@ -11,7 +11,7 @@ import (
 
 // TestClient_CreateSimulation verifies HTTP client creates simulations correctly.
 // Uses httptest.NewServer with real router per Go Dev Guide §7.
-func TestClient_CreateSimulation(t *testing.T) {
+func TestClient_CreateSimulation_ReturnsValidState(t *testing.T) {
 	registry := api.NewSimRegistry()
 	srv := httptest.NewServer(api.NewRouter(registry))
 	defer srv.Close()
@@ -53,7 +53,7 @@ func TestClient_CreateSimulation(t *testing.T) {
 }
 
 // TestClient_Tick verifies tick advances simulation and returns current tick.
-func TestClient_Tick(t *testing.T) {
+func TestClient_Tick_AdvancesSimulationTime(t *testing.T) {
 	registry := api.NewSimRegistry()
 	srv := httptest.NewServer(api.NewRouter(registry))
 	defer srv.Close()
@@ -82,7 +82,7 @@ func TestClient_Tick(t *testing.T) {
 }
 
 // TestClient_Assign verifies ticket assignment via HTTP.
-func TestClient_Assign(t *testing.T) {
+func TestClient_Assign_MovesTicketToActive(t *testing.T) {
 	registry := api.NewSimRegistry()
 	srv := httptest.NewServer(api.NewRouter(registry))
 	defer srv.Close()
@@ -133,7 +133,7 @@ func TestClient_Assign(t *testing.T) {
 }
 
 // TestClient_StartSprint verifies sprint start via HTTP.
-func TestClient_StartSprint(t *testing.T) {
+func TestClient_StartSprint_InitializesSprintState(t *testing.T) {
 	registry := api.NewSimRegistry()
 	srv := httptest.NewServer(api.NewRouter(registry))
 	defer srv.Close()
@@ -302,7 +302,7 @@ func TestClient_DedupMiddleware(t *testing.T) {
 }
 
 // TestClient_GetSimulation verifies fetching simulation state via HTTP.
-func TestClient_GetSimulation(t *testing.T) {
+func TestClient_GetSimulation_ReturnsCurrentState(t *testing.T) {
 	registry := api.NewSimRegistry()
 	srv := httptest.NewServer(api.NewRouter(registry))
 	defer srv.Close()
@@ -334,7 +334,7 @@ func TestClient_GetSimulation(t *testing.T) {
 }
 
 // TestClient_SetPolicy verifies policy change via PATCH endpoint.
-func TestClient_SetPolicy(t *testing.T) {
+func TestClient_SetPolicy_UpdatesSizingPolicy(t *testing.T) {
 	tests := []struct {
 		name       string
 		policy     string
@@ -383,7 +383,7 @@ func TestClient_SetPolicy(t *testing.T) {
 }
 
 // TestClient_Decompose verifies ticket decomposition via HTTP.
-func TestClient_Decompose(t *testing.T) {
+func TestClient_Decompose_SplitsTicketIntoChildren(t *testing.T) {
 	registry := api.NewSimRegistry()
 	srv := httptest.NewServer(api.NewRouter(registry))
 	defer srv.Close()
@@ -429,7 +429,7 @@ func TestClient_Decompose(t *testing.T) {
 }
 
 // TestClient_Decompose_NotFound verifies decompose handles missing ticket.
-func TestClient_Decompose_NotFound(t *testing.T) {
+func TestClient_Decompose_ReturnsNotFoundForMissingTicket(t *testing.T) {
 	registry := api.NewSimRegistry()
 	srv := httptest.NewServer(api.NewRouter(registry))
 	defer srv.Close()

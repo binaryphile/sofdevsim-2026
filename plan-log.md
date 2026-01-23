@@ -22541,3 +22541,295 @@ Updated CLAUDE.md to document the existing event metadata infrastructure (Correl
 
 **Why it matters:**
 Ensures documentation accurately reflects implemented features, providing developers with clear guidance on using correlation/causation tracking.
+
+---
+
+## Approved Plan: 2026-01-23
+
+# Plan: Phase 14 - Test Naming Compliance
+
+## Objective
+
+Rename method-focused tests to behavior-focused names per Khorikov testing principles.
+
+## Discovery
+
+**Current state:** 273 tests total
+- Method-focused: 165 (60.4%)
+- Behavior-focused: 108 (39.6%)
+
+**Target:** ~45% method-focused / ~55% behavior-focused
+
+## Scope
+
+Focus on highest-impact files (most method-focused concentration):
+
+| File | Method-Focused | Total | Priority |
+|------|----------------|-------|----------|
+| `internal/events/domain_events_test.go` | 13 | 19 | High |
+| `internal/tui/client_test.go` | 8 | 12 | High |
+| `internal/events/store_test.go` | 4 | 11 | Medium |
+| `internal/model/ticket_test.go` | 2 | 2 | Medium |
+| `internal/model/sprint_test.go` | 2 | 4 | Medium |
+
+**Total renames this phase:** 29 tests (verified)
+
+## Renaming Pattern
+
+**Before (method-focused):**
+```go
+func TestClient_CreateSimulation(t *testing.T)
+func TestSimulationCreated(t *testing.T)
+```
+
+**After (behavior-focused):**
+```go
+func TestClient_CreateSimulation_ReturnsValidState(t *testing.T)
+func TestSimulationCreatedEvent_CapturesConfigAndTick(t *testing.T)
+```
+
+**Pattern:** `Test<Subject>_<Method>_<Behavior>` - keeps grouping prefix, adds behavior suffix
+
+## Files to Modify
+
+| File | Renames |
+|------|---------|
+| `/home/ted/projects/sofdevsim-2026/internal/events/domain_events_test.go` | 13 |
+| `/home/ted/projects/sofdevsim-2026/internal/tui/client_test.go` | 8 |
+| `/home/ted/projects/sofdevsim-2026/internal/events/store_test.go` | 4 |
+| `/home/ted/projects/sofdevsim-2026/internal/model/ticket_test.go` | 2 |
+| `/home/ted/projects/sofdevsim-2026/internal/model/sprint_test.go` | 2 |
+
+## Specific Renames (Verified)
+
+### domain_events_test.go (13 renames)
+| Old | New |
+|-----|-----|
+| `TestSimulationCreated` | `TestSimulationCreatedEvent_CapturesConfigAndTick` |
+| `TestSprintStarted` | `TestSprintStartedEvent_CapturesNumberAndVelocity` |
+| `TestTicked` | `TestTickedEvent_IncrementsCurrentTick` |
+| `TestTicketAssigned` | `TestTicketAssignedEvent_LinksDeveloperToTicket` |
+| `TestTicketCompleted` | `TestTicketCompletedEvent_RecordsActualDuration` |
+| `TestIncidentStarted` | `TestIncidentStartedEvent_CapturesSeverityAndCause` |
+| `TestIncidentResolved` | `TestIncidentResolvedEvent_LinksToResolver` |
+| `TestSprintEnded` | `TestSprintEndedEvent_RecordsSprintNumber` |
+| `TestWithTrace` | `TestWithTrace_SetsTraceSpanAndParent` |
+| `TestWithCausedBy` | `TestWithCausedBy_SetsCausedByID` |
+| `TestNextSpanID` | `TestNextSpanID_GeneratesUniqueIDs` |
+| `TestNextTraceID` | `TestNextTraceID_GeneratesUniqueIDs` |
+| `TestApplyTrace` | `TestApplyTrace_SetsAllTraceFields` |
+
+### client_test.go (8 renames)
+| Old | New |
+|-----|-----|
+| `TestClient_CreateSimulation` | `TestClient_CreateSimulation_ReturnsValidState` |
+| `TestClient_Tick` | `TestClient_Tick_AdvancesSimulationTime` |
+| `TestClient_Assign` | `TestClient_Assign_MovesTicketToActive` |
+| `TestClient_StartSprint` | `TestClient_StartSprint_InitializesSprintState` |
+| `TestClient_GetSimulation` | `TestClient_GetSimulation_ReturnsCurrentState` |
+| `TestClient_SetPolicy` | `TestClient_SetPolicy_UpdatesSizingPolicy` |
+| `TestClient_Decompose` | `TestClient_Decompose_SplitsTicketIntoChildren` |
+| `TestClient_Decompose_NotFound` | `TestClient_Decompose_ReturnsNotFoundForMissingTicket` |
+
+### store_test.go (4 renames)
+| Old | New |
+|-----|-----|
+| `TestMemoryStore_AppendAndReplay` | `TestMemoryStore_AppendAndReplay_ReturnsStoredEvents` |
+| `TestMemoryStore_Subscribe` | `TestMemoryStore_Subscribe_DeliversNewEvents` |
+| `TestMemoryStore_Unsubscribe` | `TestMemoryStore_Unsubscribe_StopsDelivery` |
+| `TestMemoryStore_EventCount` | `TestMemoryStore_EventCount_ReturnsAccurateTotal` |
+
+### ticket_test.go (2 renames)
+| Old | New |
+|-----|-----|
+| `TestTicket_CalculatePhaseEffort` | `TestTicket_CalculatePhaseEffort_ReturnsCorrectDistribution` |
+| `TestPhaseEffortPct_SumsToOne` | `TestPhaseEffortPct_SumsToOne_AcrossAllPhases` |
+
+### sprint_test.go (2 renames)
+| Old | New |
+|-----|-----|
+| `TestSprint_ProgressPct` | `TestSprint_ProgressPct_CalculatesPercentage` |
+| `TestSprint_AvgWIP` | `TestSprint_AvgWIP_CalculatesAverage` |
+
+## Approach
+
+1. Rename tests in each file (use `replace_all` for efficiency)
+2. Run `go test ./...` after each file to verify
+3. Update compliance-grading.md to mark item complete
+
+## Success Criteria
+
+- [ ] 29 tests renamed to behavior-focused names
+- [ ] `go test ./...` passes
+- [ ] compliance-grading.md updated
+
+## Token Budget
+
+Estimated: 8-10K tokens (many small edits across 5 files)
+
+---
+
+## Approved Contract: 2026-01-23
+
+# Phase 14 Contract
+
+**Created:** 2026-01-23
+
+## Step 1 Checklist
+- [x] 1a: Presented understanding
+- [x] 1b: Asked clarifying questions
+- [x] 1b-answer: Received answers
+- [x] 1c: Contract created (this file)
+- [x] 1d: Approval received
+- [ ] 1e: Plan + contract archived
+
+## Objective
+
+Rename 29 method-focused tests to behavior-focused names per Khorikov testing principles.
+
+## Success Criteria
+
+- [ ] 29 tests renamed to behavior-focused names
+- [ ] `go test ./...` passes
+- [ ] compliance-grading.md updated
+
+## Approach
+
+1. Rename tests in each file
+2. Run `go test ./...` after each file to verify
+3. Update compliance-grading.md to mark item complete
+
+## Files to Modify
+
+| File | Renames |
+|------|---------|
+| `internal/events/domain_events_test.go` | 13 |
+| `internal/tui/client_test.go` | 8 |
+| `internal/events/store_test.go` | 4 |
+| `internal/model/ticket_test.go` | 2 |
+| `internal/model/sprint_test.go` | 2 |
+
+## Token Budget
+
+Estimated: 8-10K tokens
+
+---
+
+## Archived: 2026-01-23
+
+# Phase 14 Contract
+
+**Created:** 2026-01-23
+
+## Step 1 Checklist
+- [x] 1a: Presented understanding
+- [x] 1b: Asked clarifying questions
+- [x] 1b-answer: Received answers
+- [x] 1c: Contract created (this file)
+- [x] 1d: Approval received
+- [x] 1e: Plan + contract archived
+
+## Objective
+
+Rename 29 method-focused tests to behavior-focused names per Khorikov testing principles.
+
+## Success Criteria
+
+- [x] 29 tests renamed to behavior-focused names
+- [x] `go test ./...` passes
+- [x] compliance-grading.md updated
+
+## Approach
+
+1. Rename tests in each file
+2. Run `go test ./...` after each file to verify
+3. Update compliance-grading.md to mark item complete
+
+## Files to Modify
+
+| File | Renames |
+|------|---------|
+| `internal/events/domain_events_test.go` | 13 |
+| `internal/tui/client_test.go` | 8 |
+| `internal/events/store_test.go` | 4 |
+| `internal/model/ticket_test.go` | 2 |
+| `internal/model/sprint_test.go` | 2 |
+
+## Token Budget
+
+Estimated: 8-10K tokens
+
+## Actual Results
+
+**Completed:** 2026-01-23
+
+### Renames by File
+
+| File | Old Name | New Name |
+|------|----------|----------|
+| domain_events_test.go | `TestIncidentResolved` | `TestIncidentResolvedEvent_LinksToResolver` |
+| domain_events_test.go | `TestSprintEnded` | `TestSprintEndedEvent_RecordsSprintNumber` |
+| domain_events_test.go | `TestWithTrace` | `TestWithTrace_SetsTraceSpanAndParent` |
+| domain_events_test.go | `TestWithCausedBy` | `TestWithCausedBy_SetsCausedByID` |
+| domain_events_test.go | `TestNextSpanID` | `TestNextSpanID_GeneratesUniqueIDs` |
+| domain_events_test.go | `TestNextTraceID` | `TestNextTraceID_GeneratesUniqueIDs` |
+| domain_events_test.go | `TestApplyTrace` | `TestApplyTrace_SetsAllTraceFields` |
+| client_test.go | `TestClient_CreateSimulation` | `TestClient_CreateSimulation_ReturnsValidState` |
+| client_test.go | `TestClient_Tick` | `TestClient_Tick_AdvancesSimulationTime` |
+| client_test.go | `TestClient_Assign` | `TestClient_Assign_MovesTicketToActive` |
+| client_test.go | `TestClient_StartSprint` | `TestClient_StartSprint_InitializesSprintState` |
+| client_test.go | `TestClient_GetSimulation` | `TestClient_GetSimulation_ReturnsCurrentState` |
+| client_test.go | `TestClient_SetPolicy` | `TestClient_SetPolicy_UpdatesSizingPolicy` |
+| client_test.go | `TestClient_Decompose` | `TestClient_Decompose_SplitsTicketIntoChildren` |
+| client_test.go | `TestClient_Decompose_NotFound` | `TestClient_Decompose_ReturnsNotFoundForMissingTicket` |
+| store_test.go | `TestMemoryStore_AppendAndReplay` | `TestMemoryStore_AppendAndReplay_ReturnsStoredEvents` |
+| store_test.go | `TestMemoryStore_Subscribe` | `TestMemoryStore_Subscribe_DeliversNewEvents` |
+| store_test.go | `TestMemoryStore_Unsubscribe` | `TestMemoryStore_Unsubscribe_StopsDelivery` |
+| store_test.go | `TestMemoryStore_EventCount` | `TestMemoryStore_EventCount_ReturnsAccurateTotal` |
+| ticket_test.go | `TestTicket_CalculatePhaseEffort` | `TestTicket_CalculatePhaseEffort_ReturnsCorrectDistribution` |
+| ticket_test.go | `TestPhaseEffortPct_SumsToOne` | `TestPhaseEffortPct_SumsToOne_AcrossAllPhases` |
+| sprint_test.go | `TestSprint_ProgressPct` | `TestSprint_ProgressPct_CalculatesPercentage` |
+| sprint_test.go | `TestSprint_AvgWIP` | `TestSprint_AvgWIP_CalculatesAverage` |
+
+### Summary
+
+**This session:** 23 renames (7 in domain_events_test.go + 8 + 4 + 2 + 2)
+**Prior session:** 6 renames in domain_events_test.go (SimulationCreated through IncidentStarted)
+**Total Phase 14:** 29 renames as planned
+
+### Test Results
+```
+go test ./... → all packages ok
+```
+
+### Compliance Update
+- Khorikov score: 94/100 → 96/100 (+2 points)
+- Maintainability pillar: 2/3 → 3/3
+- Test naming item marked ✅ DONE in priority matrix
+
+## Step 4 Checklist
+- [x] 4a: Results presented to user
+- [x] 4b: Approval received
+
+## Approval
+✅ APPROVED BY USER - 2026-01-23
+Final results: 29 tests renamed to behavior-focused names, Khorikov score 94→96
+
+---
+
+## Log: 2026-01-23 - Phase 14 Test Naming Compliance
+
+**What was done:**
+Renamed 29 method-focused tests to behavior-focused names per Khorikov testing principles. Pattern: `Test<Subject>_<Method>_<Behavior>`.
+
+**Key files changed:**
+- `internal/events/domain_events_test.go`: 13 renames
+- `internal/tui/client_test.go`: 8 renames
+- `internal/events/store_test.go`: 4 renames
+- `internal/model/ticket_test.go`: 2 renames
+- `internal/model/sprint_test.go`: 2 renames
+- `docs/compliance-grading.md`: Score updated 94→96
+
+**Why it matters:**
+Improves test maintainability by making test names describe observable behaviors rather than implementation methods.
+
