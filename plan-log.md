@@ -20483,3 +20483,254 @@ Added clarifying details to the Event Sourcing design sections in docs/design.md
 
 **Why it matters:**
 Design doc now achieves A grade (99/100) against ES Guide, up from B+ (88/100).
+
+---
+
+## Approved Plan: 2026-01-22
+
+# Plan: Phase 8 - Implement Concurrency (ES Guide §11)
+
+## Context
+
+The ES design doc (Phase 6-7) specifies a 4-phase implementation:
+
+| Phase | ES Guide | Size | Status |
+|-------|----------|------|--------|
+| **Concurrency** | §11 | S | ← This phase |
+| Idempotency | §15 | M | Future |
+| Snapshots | §7 | M | Future |
+| Projections | §8 | L | Future |
+
+**Current state** (from exploration):
+- `SimInstance` in `internal/registry/registry.go:48-55` has no mutex
+- Concurrent tick requests race - Engine panics on store version conflict
+- Stress test `internal/api/stress_test.go` fails
+
+**Design from docs/design.md:769-813**:
+- Add `sync.Mutex` to `SimInstance`
+- Handlers acquire lock before Engine access
+- Requests to same simulation serialize; different simulations proceed in parallel
+
+## Objective
+
+Add per-simulation mutex to serialize concurrent requests, fixing the race condition that causes stress tests to fail.
+
+## Approach
+
+Change `map[string]SimInstance` to `map[string]*SimInstance`, add `sync.Mutex` to `SimInstance`, and acquire lock in mutating handlers before Engine access.
+
+## Contract
+
+Will be created as `phase-8-contract.md` in project directory.
+
+## Implementation
+
+### 1. Change map to store pointers
+
+**File:** `internal/registry/registry.go`
+
+The map currently stores `SimInstance` by value (line 22). Getting from map returns a copy - locking a copy's mutex won't protect the original. Must change to pointers.
+
+```go
+// Line 22: Change type
+instances map[string]*SimInstance  // was: map[string]SimInstance
+
+// Line 29: Update make
+instances: make(map[string]*SimInstance),
+```
+
+### 2. Add mutex to SimInstance
+
+**File:** `internal/registry/registry.go:51-55`
+
+```go
+type SimInstance struct {
+    mu      sync.Mutex        // Serializes access to this simulation (unexported - locked by handlers only)
+    Sim     *model.Simulation
+    Engine  *engine.Engine
+    Tracker metrics.Tracker
+}
+```
+
+Note: `mu` is unexported (lowercase) intentionally - only handlers in this package should acquire the lock.
+
+### 3. Update all map assignments to use pointers
+
+**File:** `internal/registry/registry.go`
+
+```go
+// Line 102-106: CreateSimulation
+r.instances[id] = &SimInstance{  // was: SimInstance{
+    Sim:     sim,
+    Engine:  eng,
+    Tracker: metrics.NewTracker(),
+}
+
+// Line 120-124: RegisterSimulation
+r.instances[sim.ID] = &SimInstance{  // was: SimInstance{
+    Sim:     sim,
+    Engine:  eng,
+    Tracker: tracker,
+}
+```
+
+### 4. Update GetInstance return type
+
+**File:** `internal/registry/registry.go:132-137`
+
+```go
+// GetInstance returns simulation instance pointer.
+func (r *SimRegistry) GetInstance(id string) (*SimInstance, bool) {
+    r.mu.RLock()
+    defer r.mu.RUnlock()
+    inst, ok := r.instances[id]
+    return inst, ok  // now returns *SimInstance directly
+}
+```
+
+### 5. Remove SetInstance (no longer needed)
+
+**File:** `internal/registry/registry.go:141-145`
+
+Delete `SetInstance` - callers now mutate through the pointer directly.
+
+### 6. Update handlers to lock before Engine access
+
+**File:** `internal/api/handlers.go`
+
+Pattern for all mutating handlers:
+
+```go
+func (r SimRegistry) HandleTick(w http.ResponseWriter, req *http.Request) {
+    id := req.PathValue("id")  // matches existing code style
+    inst, ok := r.GetInstance(id)
+    if !ok {
+        writeError(w, http.StatusNotFound, "simulation not found")
+        return
+    }
+
+    inst.mu.Lock()
+    defer inst.mu.Unlock()
+
+    // existing tick logic using inst.Engine, inst.Tracker
+}
+```
+
+Update these handlers:
+- `HandleTick` (line 203) - also remove `r.SetInstance(id, inst)` call (line 227)
+- `HandleStartSprint` (line 177)
+- `HandleAssignTicket` (line 243)
+
+### 7. No changes needed for read-only code
+
+**Read-only handlers** (`HandleGetSimulation`, `HandleListSimulations`): No mutex needed - `Engine.Sim()` is thread-safe via projection.
+
+**ListSimulations loop** (`registry.go:152`): Loop variable `inst` becomes `*SimInstance`. Code works unchanged.
+
+**External callers** (`tui/client_test.go`, `tui/client_benchmark_test.go`, `api/shared_access_test.go`): Call `GetInstance` and access `inst.Engine.Sim()`. Works with pointer return type.
+
+### 8. Verify
+
+```bash
+# Stress test (must pass)
+go test -race ./internal/api/ -run Concurrent
+
+# Full suite
+go test ./...
+```
+
+Expected: `TestAPI_ConcurrentTicks` and `TestAPI_ConcurrentMixedOperations` pass.
+
+## Files to Modify
+
+| File | Lines | Change |
+|------|-------|--------|
+| `internal/registry/registry.go` | 22, 29, 51-55, 102-106, 120-124, 132-137, 141-145 | Change to `*SimInstance`, add mutex, update accessors, remove SetInstance |
+| `internal/api/handlers.go` | 177, 203, 227, 243 | Add `inst.mu.Lock()` to mutating handlers, remove SetInstance call |
+
+## Rollback
+
+If tests fail, changes are isolated to 2 files (`registry.go`, `handlers.go`). Revert both to restore original behavior.
+
+## Success Criteria
+
+- [ ] Map stores `*SimInstance` (not value)
+- [ ] SimInstance has `sync.Mutex` field
+- [ ] Mutating handlers acquire lock before Engine access
+- [ ] `go test -race ./internal/api/ -run Concurrent` passes
+- [ ] `go test ./...` passes
+
+## Token Budget
+
+Estimated: 8-12K tokens
+
+---
+
+## Approved Contract: 2026-01-22
+
+# Phase 8 Contract - Implement Concurrency (ES Guide §11)
+
+**Created:** 2026-01-22
+
+## Step 1 Checklist
+- [x] 1a: Presented understanding
+- [x] 1b: Asked clarifying questions
+- [x] 1b-answer: Received answers (scope: concurrency only)
+- [x] 1c: Contract created (this file)
+- [x] 1d: Approval received
+- [ ] 1e: Plan + contract archived
+
+## Objective
+
+Add per-simulation mutex to serialize concurrent requests, fixing the race condition that causes stress tests to fail.
+
+## Success Criteria
+- [ ] Map stores `*SimInstance` (not value)
+- [ ] SimInstance has `sync.Mutex` field
+- [ ] Mutating handlers acquire lock before Engine access
+- [ ] `go test -race ./internal/api/ -run Concurrent` passes
+- [ ] `go test ./...` passes
+
+## Approach
+
+1. Change `map[string]SimInstance` → `map[string]*SimInstance`
+2. Add `sync.Mutex` to `SimInstance`
+3. Update map assignments to use `&SimInstance{}`
+4. Update `GetInstance` return type to `*SimInstance`
+5. Remove `SetInstance` (mutations go through pointer)
+6. Add `inst.mu.Lock()` to mutating handlers
+7. Verify with stress test + full suite
+
+## Files to Modify
+
+| File | Change |
+|------|--------|
+| `internal/registry/registry.go` | Pointer map, mutex, accessors |
+| `internal/api/handlers.go` | Lock in handlers, remove SetInstance call |
+
+## Token Budget
+
+Estimated: 8-12K tokens
+
+---
+
+## ABORTED: 2026-01-22
+
+Phase 8 aborted during implementation. Plan had incorrect assumption about Engine.Sim() thread safety - the Engine.proj field races between emit() and Sim(). Need to re-plan with either:
+1. Atomic pointer for projection
+2. RWMutex on SimInstance (tested and works)
+3. Alternative architecture
+
+
+---
+
+## Log: 2026-01-22 - Architectural Guidance Added
+
+**What was done:**
+Added "Reference Implementation Principles" section to CLAUDE.md documenting that this is a reference implementation requiring architecturally correct solutions. Established Immutable Engine pattern as the required concurrency approach.
+
+**Key files changed:**
+- `CLAUDE.md`: Added architectural decision framework and Immutable Engine pattern documentation
+
+**Why it matters:**
+Codifies the decision from Phase 8 design review - future concurrency implementation must use immutable pattern (operations return new Engine) rather than RWMutex or atomic pointer, satisfying ES Guide, FP Guide §7, and Go Dev Guide §3.
