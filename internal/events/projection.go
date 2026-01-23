@@ -1,6 +1,7 @@
 package events
 
 import (
+	"sort"
 	"time"
 
 	"github.com/binaryphile/fluentfp/option"
@@ -11,8 +12,9 @@ import (
 // Value receiver: immutable, returns new Projection with updated state.
 // This is the core of event sourcing - state is derived, not stored.
 type Projection struct {
-	sim     model.Simulation // Value, not pointer - enables value semantics
-	version int              // Event count for optimistic concurrency (also serves as idempotency check)
+	sim       model.Simulation // Value, not pointer - enables value semantics
+	version   int              // Event count for optimistic concurrency
+	processed []string         // Sorted slice of processed EventIDs for idempotency
 }
 
 // NewProjection creates an empty projection.
@@ -22,13 +24,21 @@ func NewProjection() Projection {
 
 // Apply processes a single event, returning new Projection.
 // Pure function: no side effects. Creates new Projection, doesn't mutate receiver.
-// Idempotent: events are applied in order; version check prevents reprocessing.
+// Idempotent: if event was already processed, returns unchanged projection.
 func (p Projection) Apply(evt Event) Projection {
-	// Create new projection with incremented version
+	eventID := evt.EventID()
+
+	// Idempotency check: if already processed, return unchanged
+	if eventID != "" && p.hasProcessed(eventID) {
+		return p // No version bump, no state change
+	}
+
+	// Create new projection with incremented version and event ID tracked
 	// Note: p.sim is a value, so this copies the Simulation
 	next := Projection{
-		sim:     p.sim,
-		version: p.version + 1,
+		sim:       p.sim,
+		version:   p.version + 1,
+		processed: p.withProcessed(eventID),
 	}
 
 	switch e := evt.(type) {
@@ -285,4 +295,26 @@ func (p Projection) State() model.Simulation {
 // Version returns event count for optimistic concurrency checks.
 func (p Projection) Version() int {
 	return p.version
+}
+
+// hasProcessed checks if an event ID has already been processed.
+// Uses binary search for O(log n) lookup.
+func (p Projection) hasProcessed(id string) bool {
+	i := sort.SearchStrings(p.processed, id)
+	return i < len(p.processed) && p.processed[i] == id
+}
+
+// withProcessed returns a new sorted slice with the event ID added.
+// Maintains sort order for O(log n) lookup.
+func (p Projection) withProcessed(id string) []string {
+	if id == "" {
+		// Don't track empty IDs
+		return p.processed
+	}
+	i := sort.SearchStrings(p.processed, id)
+	result := make([]string, len(p.processed)+1)
+	copy(result[:i], p.processed[:i])
+	result[i] = id
+	copy(result[i+1:], p.processed[i:])
+	return result
 }

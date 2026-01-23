@@ -17,7 +17,7 @@ func TestSharedAccess_TUISimulationAccessibleViaAPI(t *testing.T) {
 	sim.Developers = append(sim.Developers, model.NewDeveloper("dev-1", "Alice", 1.0))
 	tracker := metrics.NewTracker()
 
-	eng := registry.RegisterSimulation(sim, tracker)
+	eng, _ := registry.RegisterSimulation(sim, tracker)
 
 	// Verify simulation is accessible via registry (API's access method)
 	inst, ok := registry.GetInstance("sim-42")
@@ -40,10 +40,13 @@ func TestSharedAccess_TUISimulationAccessibleViaAPI(t *testing.T) {
 		t.Errorf("Expected SimulationCreated first, got %s", evts[0].EventType())
 	}
 
-	// TUI starts sprint via engine
-	eng.StartSprint()
+	// TUI starts sprint via engine - must update inst.Engine since engine is immutable
+	eng, _ = eng.StartSprint()
+	inst.Engine = eng
+	registry.SetInstance("sim-42", inst)
 
 	// API should see the sprint started via engine projection (not sim directly)
+	inst, _ = registry.GetInstance("sim-42")
 	if _, active := inst.Engine.Sim().CurrentSprintOption.Get(); !active {
 		t.Error("API does not see sprint started by TUI")
 	}
@@ -72,12 +75,12 @@ func TestSharedAccess_APIChangesVisibleToTUI(t *testing.T) {
 	sim.Backlog = append(sim.Backlog, model.NewTicket("TKT-001", "Test", 3, model.HighUnderstanding))
 	tracker := metrics.NewTracker()
 
-	_ = registry.RegisterSimulation(sim, tracker)
+	_, _ = registry.RegisterSimulation(sim, tracker)
 
 	// API gets the simulation instance and modifies it
 	inst, _ := registry.GetInstance("sim-42")
-	inst.Engine.StartSprint()
-	inst.Engine.AssignTicket("TKT-001", "dev-1")
+	inst.Engine, _ = inst.Engine.StartSprint()
+	inst.Engine, _ = inst.Engine.AssignTicket("TKT-001", "dev-1")
 
 	// TUI should see the changes via engine projection (not sim pointer)
 	state := inst.Engine.Sim()
@@ -107,14 +110,14 @@ func TestSharedAccess_BothCanSubscribe(t *testing.T) {
 	sim.Developers = append(sim.Developers, model.NewDeveloper("dev-1", "Alice", 1.0))
 	tracker := metrics.NewTracker()
 
-	eng := registry.RegisterSimulation(sim, tracker)
+	eng, _ := registry.RegisterSimulation(sim, tracker)
 
 	// Both TUI and API can subscribe to the shared store
 	tuiCh := registry.Store().Subscribe("sim-42")
 	apiCh := registry.Store().Subscribe("sim-42")
 
 	// Engine emits event
-	eng.StartSprint()
+	_, _ = eng.StartSprint()
 
 	// Both should receive the event
 	select {
@@ -151,7 +154,7 @@ func TestSharedAccess_SimulationCreatedHasCorrectTeamSize(t *testing.T) {
 	sim.Developers = append(sim.Developers, model.NewDeveloper("dev-3", "Carol", 1.2))
 	tracker := metrics.NewTracker()
 
-	_ = registry.RegisterSimulation(sim, tracker)
+	_, _ = registry.RegisterSimulation(sim, tracker)
 
 	// Verify SimulationCreated has correct team size
 	evts := registry.Store().Replay("sim-42")

@@ -178,28 +178,36 @@ func (r SimRegistry) HandleGetSimulation(w http.ResponseWriter, req *http.Reques
 func (r SimRegistry) HandleStartSprint(w http.ResponseWriter, req *http.Request) {
 	id := req.PathValue("id")
 
-	inst, ok := r.GetInstance(id)
-	if !ok {
-		writeError(w, http.StatusNotFound, "simulation not found")
+	const maxRetries = 3
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		inst, ok := r.GetInstance(id)
+		if !ok {
+			writeError(w, http.StatusNotFound, "simulation not found")
+			return
+		}
+
+		// Check if sprint already active
+		sim := inst.Engine.Sim()
+		if _, active := sim.CurrentSprintOption.Get(); active {
+			writeError(w, http.StatusConflict, "sprint already active")
+			return
+		}
+
+		var err error
+		if inst.Engine, err = inst.Engine.StartSprint(); err != nil {
+			continue // Retry with fresh state
+		}
+		r.SetInstance(id, inst)
+
+		state := ToState(inst.Engine.Sim(), inst.Tracker)
+		response := HALResponse{
+			State: state,
+			Links: LinksFor(state),
+		}
+		writeJSON(w, http.StatusOK, response)
 		return
 	}
-
-	// Check if sprint already active
-	sim := inst.Engine.Sim()
-	if _, active := sim.CurrentSprintOption.Get(); active {
-		writeError(w, http.StatusConflict, "sprint already active")
-		return
-	}
-
-	inst.Engine = inst.Engine.StartSprint()
-	r.SetInstance(id, inst)
-
-	state := ToState(inst.Engine.Sim(), inst.Tracker)
-	response := HALResponse{
-		State: state,
-		Links: LinksFor(state),
-	}
-	writeJSON(w, http.StatusOK, response)
+	writeError(w, http.StatusConflict, "conflict")
 }
 
 // HandleTick advances the simulation by one tick.
@@ -207,33 +215,41 @@ func (r SimRegistry) HandleStartSprint(w http.ResponseWriter, req *http.Request)
 func (r SimRegistry) HandleTick(w http.ResponseWriter, req *http.Request) {
 	id := req.PathValue("id")
 
-	inst, ok := r.GetInstance(id)
-	if !ok {
-		writeError(w, http.StatusNotFound, "simulation not found")
+	const maxRetries = 3
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		inst, ok := r.GetInstance(id)
+		if !ok {
+			writeError(w, http.StatusNotFound, "simulation not found")
+			return
+		}
+
+		// Check if sprint is active
+		sim := inst.Engine.Sim()
+		if _, active := sim.CurrentSprintOption.Get(); !active {
+			writeError(w, http.StatusConflict, "no active sprint")
+			return
+		}
+
+		// Engine emits events and updates projection - capture new Engine
+		var err error
+		if inst.Engine, _, err = inst.Engine.Tick(); err != nil {
+			continue // Retry with fresh state
+		}
+
+		// SprintEnded event clears sprint in projection automatically
+		sim = inst.Engine.Sim()
+		inst.Tracker = inst.Tracker.Updated(&sim)
+		r.SetInstance(id, inst)
+
+		state := ToState(sim, inst.Tracker)
+		response := HALResponse{
+			State: state,
+			Links: LinksFor(state),
+		}
+		writeJSON(w, http.StatusOK, response)
 		return
 	}
-
-	// Check if sprint is active
-	sim := inst.Engine.Sim()
-	if _, active := sim.CurrentSprintOption.Get(); !active {
-		writeError(w, http.StatusConflict, "no active sprint")
-		return
-	}
-
-	// Engine emits events and updates projection - capture new Engine
-	inst.Engine, _ = inst.Engine.Tick()
-
-	// SprintEnded event clears sprint in projection automatically
-	sim = inst.Engine.Sim()
-	inst.Tracker = inst.Tracker.Updated(&sim)
-	r.SetInstance(id, inst)
-
-	state := ToState(sim, inst.Tracker)
-	response := HALResponse{
-		State: state,
-		Links: LinksFor(state),
-	}
-	writeJSON(w, http.StatusOK, response)
+	writeError(w, http.StatusConflict, "conflict")
 }
 
 // AssignTicketRequest is the request body for assigning a ticket.
@@ -332,12 +348,13 @@ func (r SimRegistry) HandleCompare(w http.ResponseWriter, req *http.Request) {
 }
 
 // runComparison runs a single simulation with the given policy.
+// No event store, so errors are impossible (in-memory only).
 func runComparison(policy model.SizingPolicy, seed int64, sprints int) metrics.SimulationResult {
 	sim := model.NewSimulation(policy, seed)
 	sim.ID = fmt.Sprintf("cmp-%d", seed)
 
 	eng := engine.NewEngine(sim.Seed)
-	eng = eng.EmitCreated(sim.ID, sim.CurrentTick, events.SimConfig{
+	eng, _ = eng.EmitCreated(sim.ID, sim.CurrentTick, events.SimConfig{
 		TeamSize:     3,
 		SprintLength: sim.SprintLength,
 		Seed:         sim.Seed,
@@ -347,26 +364,26 @@ func runComparison(policy model.SizingPolicy, seed int64, sprints int) metrics.S
 	// Standard team setup (3 devs with varied velocities)
 	// Rationale: Fixed scenario ensures fair comparison - both policies
 	// face identical conditions. Varied velocities create realistic workload.
-	eng = eng.AddDeveloper("dev-1", "Alice", 1.0)
-	eng = eng.AddDeveloper("dev-2", "Bob", 0.8)
-	eng = eng.AddDeveloper("dev-3", "Carol", 1.2)
+	eng, _ = eng.AddDeveloper("dev-1", "Alice", 1.0)
+	eng, _ = eng.AddDeveloper("dev-2", "Bob", 0.8)
+	eng, _ = eng.AddDeveloper("dev-3", "Carol", 1.2)
 
 	// Standard backlog (5 tickets covering policy decision points)
 	// - Small+clear: Neither policy decomposes
 	// - Large+unclear: Both policies decompose
 	// - Mixed cases: Policies diverge, showing differentiation
-	eng = eng.AddTicket(model.NewTicket("TKT-001", "Small clear", 2, model.HighUnderstanding))
-	eng = eng.AddTicket(model.NewTicket("TKT-002", "Medium clear", 4, model.HighUnderstanding))
-	eng = eng.AddTicket(model.NewTicket("TKT-003", "Small unclear", 2, model.LowUnderstanding))
-	eng = eng.AddTicket(model.NewTicket("TKT-004", "Large unclear", 8, model.LowUnderstanding))
-	eng = eng.AddTicket(model.NewTicket("TKT-005", "Medium mixed", 5, model.MediumUnderstanding))
+	eng, _ = eng.AddTicket(model.NewTicket("TKT-001", "Small clear", 2, model.HighUnderstanding))
+	eng, _ = eng.AddTicket(model.NewTicket("TKT-002", "Medium clear", 4, model.HighUnderstanding))
+	eng, _ = eng.AddTicket(model.NewTicket("TKT-003", "Small unclear", 2, model.LowUnderstanding))
+	eng, _ = eng.AddTicket(model.NewTicket("TKT-004", "Large unclear", 8, model.LowUnderstanding))
+	eng, _ = eng.AddTicket(model.NewTicket("TKT-005", "Medium mixed", 5, model.MediumUnderstanding))
 	tracker := metrics.NewTracker()
 
 	for i := 0; i < sprints; i++ {
-		eng = eng.StartSprint()
+		eng, _ = eng.StartSprint()
 		// Auto-assign idle developers to backlog tickets
 		eng = autoAssignForComparison(eng)
-		eng, _ = eng.RunSprint()
+		eng, _, _ = eng.RunSprint()
 		state := eng.Sim()
 		tracker = tracker.Updated(&state)
 	}
@@ -377,6 +394,7 @@ func runComparison(policy model.SizingPolicy, seed int64, sprints int) metrics.S
 
 // autoAssignForComparison assigns backlog tickets to idle developers.
 // Returns updated Engine (immutable pattern).
+// No event store, so errors are impossible (in-memory only).
 func autoAssignForComparison(eng engine.Engine) engine.Engine {
 	// Use index-based iteration so re-reads affect subsequent checks
 	state := eng.Sim()
@@ -454,12 +472,6 @@ type UpdateSimulationRequest struct {
 func (r SimRegistry) HandleUpdateSimulation(w http.ResponseWriter, req *http.Request) {
 	id := req.PathValue("id")
 
-	inst, ok := r.GetInstance(id)
-	if !ok {
-		writeError(w, http.StatusNotFound, "simulation not found")
-		return
-	}
-
 	var body UpdateSimulationRequest
 	if err := decodeJSON(req, &body); err != nil {
 		respondDecodeError(w, err)
@@ -480,15 +492,29 @@ func (r SimRegistry) HandleUpdateSimulation(w http.ResponseWriter, req *http.Req
 		return
 	}
 
-	inst.Engine = inst.Engine.SetPolicy(policy)
-	r.SetInstance(id, inst)
+	const maxRetries = 3
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		inst, ok := r.GetInstance(id)
+		if !ok {
+			writeError(w, http.StatusNotFound, "simulation not found")
+			return
+		}
 
-	state := ToState(inst.Engine.Sim(), inst.Tracker)
-	response := HALResponse{
-		State: state,
-		Links: LinksFor(state),
+		var err error
+		if inst.Engine, err = inst.Engine.SetPolicy(policy); err != nil {
+			continue // Retry with fresh state
+		}
+		r.SetInstance(id, inst)
+
+		state := ToState(inst.Engine.Sim(), inst.Tracker)
+		response := HALResponse{
+			State: state,
+			Links: LinksFor(state),
+		}
+		writeJSON(w, http.StatusOK, response)
+		return
 	}
-	writeJSON(w, http.StatusOK, response)
+	writeError(w, http.StatusConflict, "conflict")
 }
 
 // DecomposeRequest is the request body for ticket decomposition.
@@ -509,21 +535,11 @@ type DecomposeResponse struct {
 func (r SimRegistry) HandleDecompose(w http.ResponseWriter, req *http.Request) {
 	id := req.PathValue("id")
 
-	inst, ok := r.GetInstance(id)
-	if !ok {
-		writeError(w, http.StatusNotFound, "simulation not found")
-		return
-	}
-
 	var body DecomposeRequest
 	if err := decodeJSON(req, &body); err != nil {
 		respondDecodeError(w, err)
 		return
 	}
-
-	var result either.Either[engine.NotDecomposable, []model.Ticket]
-	inst.Engine, result = inst.Engine.TryDecompose(body.TicketID)
-	r.SetInstance(id, inst)
 
 	// toTicketStates converts model.Ticket slice to TicketState slice.
 	toTicketStates := func(tickets []model.Ticket) []TicketState {
@@ -534,15 +550,33 @@ func (r SimRegistry) HandleDecompose(w http.ResponseWriter, req *http.Request) {
 		return states
 	}
 
-	children, decomposed := result.Get()
-	state := ToState(inst.Engine.Sim(), inst.Tracker)
-	response := DecomposeResponse{
-		Decomposed: decomposed,
-		Children:   toTicketStates(children),
-		Simulation: state,
-		Links:      LinksFor(state),
+	const maxRetries = 3
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		inst, ok := r.GetInstance(id)
+		if !ok {
+			writeError(w, http.StatusNotFound, "simulation not found")
+			return
+		}
+
+		var result either.Either[engine.NotDecomposable, []model.Ticket]
+		var err error
+		if inst.Engine, result, err = inst.Engine.TryDecompose(body.TicketID); err != nil {
+			continue // Retry with fresh state
+		}
+		r.SetInstance(id, inst)
+
+		children, decomposed := result.Get()
+		state := ToState(inst.Engine.Sim(), inst.Tracker)
+		response := DecomposeResponse{
+			Decomposed: decomposed,
+			Children:   toTicketStates(children),
+			Simulation: state,
+			Links:      LinksFor(state),
+		}
+		writeJSON(w, http.StatusOK, response)
+		return
 	}
-	writeJSON(w, http.StatusOK, response)
+	writeError(w, http.StatusConflict, "conflict")
 }
 
 // HandleGetLessons returns contextual lessons for a simulation.

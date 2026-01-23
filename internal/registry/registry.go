@@ -71,25 +71,36 @@ func (r *SimRegistry) CreateSimulation(seed int64, policy model.SizingPolicy) (s
 	sim := model.NewSimulation(policy, seed)
 	sim.ID = id // Set ID for event sourcing
 
+	var err error
 	eng := engine.NewEngineWithStore(sim.Seed, r.store)
-	eng = eng.EmitCreated(sim.ID, sim.CurrentTick, events.SimConfig{
+	if eng, err = eng.EmitCreated(sim.ID, sim.CurrentTick, events.SimConfig{
 		TeamSize:     len(sim.Developers),
 		SprintLength: sim.SprintLength,
 		Seed:         sim.Seed,
 		Policy:       policy,
-	}) // Emit SimulationCreated first
+	}); err != nil {
+		return "", fmt.Errorf("emit created: %w", err)
+	}
 
 	// Add default team via engine (emits DeveloperAdded events)
-	eng = eng.AddDeveloper("dev-1", "Alice", 1.0)
-	eng = eng.AddDeveloper("dev-2", "Bob", 0.8)
-	eng = eng.AddDeveloper("dev-3", "Carol", 1.2)
+	if eng, err = eng.AddDeveloper("dev-1", "Alice", 1.0); err != nil {
+		return "", fmt.Errorf("add developer: %w", err)
+	}
+	if eng, err = eng.AddDeveloper("dev-2", "Bob", 0.8); err != nil {
+		return "", fmt.Errorf("add developer: %w", err)
+	}
+	if eng, err = eng.AddDeveloper("dev-3", "Carol", 1.2); err != nil {
+		return "", fmt.Errorf("add developer: %w", err)
+	}
 
 	// Generate backlog via engine (emits TicketCreated events)
 	gen := engine.Scenarios["healthy"]
 	rng := rand.New(rand.NewSource(seed))
 	tickets := gen.Generate(rng, 12)
 	for _, t := range tickets {
-		eng = eng.AddTicket(t)
+		if eng, err = eng.AddTicket(t); err != nil {
+			return "", fmt.Errorf("add ticket: %w", err)
+		}
 	}
 
 	// Write under lock
@@ -110,11 +121,14 @@ func (r *SimRegistry) CreateSimulation(seed int64, policy model.SizingPolicy) (s
 }
 
 // RegisterSimulation registers an existing simulation with the shared event store.
-// Returns the engine configured to emit to the shared store.
+// Returns the engine configured to emit to the shared store, and any error.
 // Use this to share simulations between TUI and API.
-func (r *SimRegistry) RegisterSimulation(sim *model.Simulation, tracker metrics.Tracker) engine.Engine {
+func (r *SimRegistry) RegisterSimulation(sim *model.Simulation, tracker metrics.Tracker) (engine.Engine, error) {
 	eng := engine.NewEngineWithStore(sim.Seed, r.store)
-	eng = eng.EmitLoadedState(*sim) // Syncs all sim state (developers, tickets) to projection
+	var err error
+	if eng, err = eng.EmitLoadedState(*sim); err != nil {
+		return eng, fmt.Errorf("emit loaded state: %w", err)
+	}
 
 	r.mu.Lock()
 	r.instances[sim.ID] = SimInstance{
@@ -124,7 +138,7 @@ func (r *SimRegistry) RegisterSimulation(sim *model.Simulation, tracker metrics.
 	}
 	r.mu.Unlock()
 
-	return eng
+	return eng, nil
 }
 
 // GetInstance returns simulation instance using comma-ok pattern.

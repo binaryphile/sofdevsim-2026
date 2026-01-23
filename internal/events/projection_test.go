@@ -570,11 +570,62 @@ func TestProjection_Apply_IncidentResolved_NonExistent(t *testing.T) {
 // cmp is used for complex struct comparisons
 var _ = cmp.Diff
 
-// Note: Projection-level idempotency tests removed. With version-only design:
-// - Store prevents duplicate appends (optimistic concurrency)
-// - Projection.Apply is a pure function - same inputs always produce same outputs
-// - Caller should not apply duplicates; store.Replay returns unique events
-// See TestProjection_Apply_ValueSemantics for value semantics verification.
+// TestProjection_Apply_IdempotentWithSortedSlice verifies that applying the same
+// event twice returns an unchanged projection (no version bump, no state change).
+// This is critical for distributed systems where duplicate delivery is inevitable.
+func TestProjection_Apply_IdempotentWithSortedSlice(t *testing.T) {
+	proj := events.NewProjection()
+
+	// Apply first event
+	evt := events.NewSimulationCreated("sim-1", 0, events.SimConfig{Seed: 42})
+	proj = proj.Apply(evt)
+
+	// Capture state after first apply
+	versionAfterFirst := proj.Version()
+	stateAfterFirst := proj.State()
+
+	// Apply same event again (duplicate)
+	proj2 := proj.Apply(evt)
+
+	// Version should NOT change (idempotent)
+	if proj2.Version() != versionAfterFirst {
+		t.Errorf("Version after duplicate = %d, want %d (unchanged)", proj2.Version(), versionAfterFirst)
+	}
+
+	// State should be identical
+	if proj2.State().ID != stateAfterFirst.ID {
+		t.Errorf("State changed after duplicate apply")
+	}
+
+	// The returned projection should be the same object (or equal)
+	// This verifies true idempotency: duplicate has no effect
+}
+
+func TestProjection_Apply_IdempotentSequence(t *testing.T) {
+	// Verify idempotency works across a sequence of events
+	proj := events.NewProjection()
+
+	evt1 := events.NewSimulationCreated("sim-1", 0, events.SimConfig{Seed: 42})
+	evt2 := events.NewDeveloperAdded("sim-1", 0, "dev-1", "Alice", 1.0)
+	evt3 := events.NewTicked("sim-1", 1)
+
+	// Apply all events
+	proj = proj.Apply(evt1)
+	proj = proj.Apply(evt2)
+	proj = proj.Apply(evt3)
+
+	versionAfterAll := proj.Version() // Should be 3
+
+	// Replay all events (simulating duplicate delivery)
+	proj = proj.Apply(evt1) // duplicate
+	proj = proj.Apply(evt2) // duplicate
+	proj = proj.Apply(evt3) // duplicate
+
+	// Version should still be 3 (all duplicates skipped)
+	if proj.Version() != versionAfterAll {
+		t.Errorf("Version after replay = %d, want %d", proj.Version(), versionAfterAll)
+	}
+}
 
 func TestProjection_Apply_ValueSemantics(t *testing.T) {
 	// Verify that Apply returns new projection without mutating original.

@@ -38,9 +38,9 @@ func TestAPI_ConcurrentTicks(t *testing.T) {
 	resp.Body.Close()
 
 	var wg sync.WaitGroup
-	var successCount atomic.Int32
+	var successCount, conflictCount atomic.Int32
 
-	// 10 concurrent tick requests (sprint is only 10 days)
+	// 10 concurrent tick requests - with retry+409 some will fail under contention
 	for i := 0; i < 10; i++ {
 		wg.Add(1)
 		go func() {
@@ -52,18 +52,31 @@ func TestAPI_ConcurrentTicks(t *testing.T) {
 			}
 			defer resp.Body.Close()
 			io.Copy(io.Discard, resp.Body)
-			if resp.StatusCode == 200 {
+			switch resp.StatusCode {
+			case 200:
 				successCount.Add(1)
+			case 409:
+				conflictCount.Add(1) // Expected under contention
 			}
 		}()
 	}
 	wg.Wait()
 
-	if successCount.Load() != 10 {
-		t.Errorf("Expected 10 successful ticks, got %d", successCount.Load())
+	t.Logf("Concurrent ticks: %d success, %d conflict", successCount.Load(), conflictCount.Load())
+
+	// Under extreme contention, some conflicts are expected (retries exhausted)
+	// Key invariant: all requests complete (no panics, no 500s)
+	total := successCount.Load() + conflictCount.Load()
+	if total != 10 {
+		t.Errorf("Expected 10 total responses (success+conflict), got %d", total)
 	}
 
-	// Check final state
+	// At least some ticks should succeed
+	if successCount.Load() == 0 {
+		t.Error("Expected at least some successful ticks")
+	}
+
+	// Check final state - should equal success count (each success = 1 tick)
 	resp, _ = http.Get(server.URL + "/simulations/sim-12345")
 	var result struct {
 		Simulation struct {
@@ -73,8 +86,9 @@ func TestAPI_ConcurrentTicks(t *testing.T) {
 	json.NewDecoder(resp.Body).Decode(&result)
 	resp.Body.Close()
 
-	if result.Simulation.CurrentTick != 10 {
-		t.Errorf("Final tick = %d, want 10 (race condition?)", result.Simulation.CurrentTick)
+	// Final tick should equal number of successful operations
+	if result.Simulation.CurrentTick != int(successCount.Load()) {
+		t.Errorf("Final tick = %d, want %d (success count)", result.Simulation.CurrentTick, successCount.Load())
 	}
 }
 

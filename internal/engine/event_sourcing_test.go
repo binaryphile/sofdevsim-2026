@@ -13,7 +13,7 @@ func TestEngine_EmitsSimulationCreatedEvent(t *testing.T) {
 	sim := createTestSimulation()
 
 	eng := NewEngineWithStore(sim.Seed, store)
-	_ = emitCreatedFromSim(eng, sim) // result unused in this test
+	_ = emitCreatedFromSim(t, eng, sim) // result unused in this test
 
 	evts := store.Replay(sim.ID)
 	if len(evts) != 1 {
@@ -35,12 +35,12 @@ func TestEngine_EmitsTickedEvent(t *testing.T) {
 	store := events.NewMemoryStore()
 	sim := createTestSimulation()
 	eng := NewEngineWithStore(sim.Seed, store)
-	eng = emitCreatedFromSim(eng, sim)
+	eng = emitCreatedFromSim(t, eng, sim)
 
 	// Initial event count (SimulationCreated)
 	initial := store.EventCount(sim.ID)
 
-	eng, _ = eng.Tick()
+	eng, _, _ = eng.Tick()
 
 	evts := store.Replay(sim.ID)
 	if len(evts) <= initial {
@@ -66,9 +66,9 @@ func TestEngine_EmitsSprintStartedEvent(t *testing.T) {
 	store := events.NewMemoryStore()
 	sim := createTestSimulation()
 	eng := NewEngineWithStore(sim.Seed, store)
-	eng = emitCreatedFromSim(eng, sim)
+	eng = emitCreatedFromSim(t, eng, sim)
 
-	_ = eng.StartSprint() // result unused in this test
+	_, _ = eng.StartSprint() // result unused in this test
 
 	// Find SprintStarted event
 	evts := store.Replay(sim.ID)
@@ -89,10 +89,10 @@ func TestEngine_EmitsTicketAssignedEvent(t *testing.T) {
 	store := events.NewMemoryStore()
 	sim := createTestSimulation()
 	eng := NewEngineWithStore(sim.Seed, store)
-	eng = eng.EmitLoadedState(*sim) // Syncs all sim state (including developers) to projection
+	eng, _ = eng.EmitLoadedState(*sim) // Syncs all sim state (including developers) to projection
 
 	// Add a ticket through engine (emits TicketCreated event)
-	eng = eng.AddTicket(model.Ticket{
+	eng, _ = eng.AddTicket(model.Ticket{
 		ID:            "TKT-001",
 		EstimatedDays: 3,
 	})
@@ -134,9 +134,9 @@ func TestEngine_EmitsTicketCompletedEvent(t *testing.T) {
 	sim.Developers[0] = sim.Developers[0].WithTicket("TKT-001")
 
 	eng := NewEngineWithStore(sim.Seed, store)
-	eng = eng.EmitLoadedState(*sim) // Sync all state including ActiveTickets to projection
+	eng, _ = eng.EmitLoadedState(*sim) // Sync all state including ActiveTickets to projection
 
-	eng, _ = eng.Tick()
+	eng, _, _ = eng.Tick()
 
 	// Find TicketCompleted event
 	evts := store.Replay(sim.ID)
@@ -162,8 +162,8 @@ func TestEngine_TracingAppliedToEvents(t *testing.T) {
 	tc := events.NewTraceContext()
 	eng = eng.SetTrace(tc)
 
-	eng = emitCreatedFromSim(eng, sim)
-	eng, _ = eng.Tick()
+	eng = emitCreatedFromSim(t, eng, sim)
+	eng, _, _ = eng.Tick()
 
 	evts := store.Replay(sim.ID)
 	if len(evts) < 2 {
@@ -191,7 +191,7 @@ func TestEngine_ClearTraceRemovesContext(t *testing.T) {
 	eng = eng.SetTrace(tc)
 	eng = eng.ClearTrace()
 
-	_ = emitCreatedFromSim(eng, sim) // result unused in this test
+	_ = emitCreatedFromSim(t, eng, sim) // result unused in this test
 
 	evts := store.Replay(sim.ID)
 	if len(evts) != 1 {
@@ -212,12 +212,12 @@ func TestEngine_ChildSpanTracking(t *testing.T) {
 	// Create parent trace
 	parentTC := events.NewTraceContext()
 	eng = eng.SetTrace(parentTC)
-	eng = emitCreatedFromSim(eng, sim)
+	eng = emitCreatedFromSim(t, eng, sim)
 
 	// Create child span for tick operation
 	childTC := parentTC.NewChildSpan()
 	eng = eng.SetTrace(childTC)
-	eng, _ = eng.Tick()
+	eng, _, _ = eng.Tick()
 
 	evts := store.Replay(sim.ID)
 	if len(evts) != 2 {
@@ -282,7 +282,7 @@ func TestEngine_EmitUpdatesProjection(t *testing.T) {
 		t.Errorf("Before EmitCreated, proj.Version() = %d, want 0", eng.proj.Version())
 	}
 
-	eng = emitCreatedFromSim(eng, sim)
+	eng = emitCreatedFromSim(t, eng, sim)
 
 	// After EmitCreated, projection should have applied the event
 	if eng.proj.Version() != 1 {
@@ -300,7 +300,7 @@ func TestEngine_SimReturnsProjectionState(t *testing.T) {
 	store := events.NewMemoryStore()
 	sim := createTestSimulation()
 	eng := NewEngineWithStore(sim.Seed, store)
-	eng = emitCreatedFromSim(eng, sim)
+	eng = emitCreatedFromSim(t, eng, sim)
 
 	// Sim() should return state derived from projection
 	state := eng.Sim()
@@ -318,9 +318,9 @@ func TestEngine_AddDeveloperEmitsEvent(t *testing.T) {
 	sim := model.NewSimulation(model.PolicyNone, 42)
 	sim.ID = "test-sim"
 	eng := NewEngineWithStore(sim.Seed, store)
-	eng = emitCreatedFromSim(eng, sim)
+	eng = emitCreatedFromSim(t, eng, sim)
 
-	eng = eng.AddDeveloper("dev-1", "Alice", 1.0)
+	eng, _ = eng.AddDeveloper("dev-1", "Alice", 1.0)
 
 	// Find DeveloperAdded event
 	evts := store.Replay(sim.ID)
@@ -359,10 +359,10 @@ func TestEngine_AddTicketEmitsEvent(t *testing.T) {
 	sim := model.NewSimulation(model.PolicyNone, 42)
 	sim.ID = "test-sim"
 	eng := NewEngineWithStore(sim.Seed, store)
-	eng = emitCreatedFromSim(eng, sim)
+	eng = emitCreatedFromSim(t, eng, sim)
 
 	ticket := model.NewTicket("TKT-001", "Test Ticket", 3.0, model.HighUnderstanding)
-	eng = eng.AddTicket(ticket)
+	eng, _ = eng.AddTicket(ticket)
 
 	// Find TicketCreated event
 	evts := store.Replay(sim.ID)
@@ -406,9 +406,9 @@ func TestEngine_EmitsWorkProgressedEvent(t *testing.T) {
 	sim.Developers[0] = sim.Developers[0].WithTicket("TKT-001")
 
 	eng := NewEngineWithStore(sim.Seed, store)
-	eng = eng.EmitLoadedState(*sim) // Sync all state including ActiveTickets to projection
+	eng, _ = eng.EmitLoadedState(*sim) // Sync all state including ActiveTickets to projection
 
-	eng, _ = eng.Tick()
+	eng, _, _ = eng.Tick()
 
 	// Find WorkProgressed event
 	evts := store.Replay(sim.ID)
@@ -446,9 +446,9 @@ func TestEngine_EmitsTicketPhaseChangedEvent(t *testing.T) {
 	sim.Developers[0] = sim.Developers[0].WithTicket("TKT-001")
 
 	eng := NewEngineWithStore(sim.Seed, store)
-	eng = eng.EmitLoadedState(*sim) // Sync all state including ActiveTickets to projection
+	eng, _ = eng.EmitLoadedState(*sim) // Sync all state including ActiveTickets to projection
 
-	eng, _ = eng.Tick()
+	eng, _, _ = eng.Tick()
 
 	// Find TicketPhaseChanged event
 	evts := store.Replay(sim.ID)
@@ -480,17 +480,17 @@ func TestEngine_EmitsSprintEndedEvent(t *testing.T) {
 	store := events.NewMemoryStore()
 	sim := createTestSimulation()
 	eng := NewEngineWithStore(sim.Seed, store)
-	eng = emitCreatedFromSim(eng, sim)
+	eng = emitCreatedFromSim(t, eng, sim)
 
 	// Start sprint
-	eng = eng.StartSprint()
+	eng, _ = eng.StartSprint()
 
 	// Get sprint info from projection (not sim directly)
 	sprint, _ := eng.Sim().CurrentSprintOption.Get()
 
 	// Advance to sprint end using projection state
 	for eng.Sim().CurrentTick < sprint.EndDay {
-		eng, _ = eng.Tick()
+		eng, _, _ = eng.Tick()
 	}
 
 	// Find SprintEnded event
@@ -518,10 +518,10 @@ func TestEngine_SetPolicyEmitsEvent(t *testing.T) {
 	sim := model.NewSimulation(model.PolicyNone, 42)
 	sim.ID = "test-sim"
 	eng := NewEngineWithStore(sim.Seed, store)
-	eng = emitCreatedFromSim(eng, sim)
+	eng = emitCreatedFromSim(t, eng, sim)
 
 	// Change policy
-	eng = eng.SetPolicy(model.PolicyDORAStrict)
+	eng, _ = eng.SetPolicy(model.PolicyDORAStrict)
 
 	// Find PolicyChanged event
 	evts := store.Replay(sim.ID)
@@ -630,15 +630,20 @@ func createTestSimulation() *model.Simulation {
 
 // emitCreatedFromSim emits SimulationCreated event from sim state.
 // Returns the updated Engine (immutable pattern).
-func emitCreatedFromSim(eng Engine, sim *model.Simulation) Engine {
-	return eng.EmitCreated(sim.ID, sim.CurrentTick, events.SimConfig{
+func emitCreatedFromSim(t *testing.T, eng Engine, sim *model.Simulation) Engine {
+	t.Helper()
+	eng, err := eng.EmitCreated(sim.ID, sim.CurrentTick, events.SimConfig{
 		TeamSize:     len(sim.Developers),
 		SprintLength: sim.SprintLength,
 		Seed:         sim.Seed,
 	})
+	if err != nil {
+		t.Fatalf("emitCreatedFromSim: %v", err)
+	}
+	return eng
 }
 
-// TestEngine_DetectsConcurrencyConflict verifies Engine panics when store returns conflict error.
+// TestEngine_DetectsConcurrencyConflict verifies Engine returns error when store returns conflict.
 // Per Go Development Guide §6: Uses test double at external boundary (store interface).
 func TestEngine_DetectsConcurrencyConflict(t *testing.T) {
 	store := &storeWithConflict{
@@ -648,39 +653,35 @@ func TestEngine_DetectsConcurrencyConflict(t *testing.T) {
 	eng := NewEngineWithStore(42, store)
 
 	// First emit succeeds
-	eng = eng.EmitCreated("sim-1", 0, events.SimConfig{})
+	var err error
+	eng, err = eng.EmitCreated("sim-1", 0, events.SimConfig{})
+	if err != nil {
+		t.Fatalf("First emit should succeed: %v", err)
+	}
 
-	// Second emit should detect conflict and panic
-	defer func() {
-		if r := recover(); r == nil {
-			t.Error("Expected panic on concurrency conflict, got none")
-		}
-	}()
-
-	_ = eng.AddDeveloper("dev-1", "Alice", 1.0)
+	// Second emit should return error (not panic)
+	_, err = eng.AddDeveloper("dev-1", "Alice", 1.0)
+	if err == nil {
+		t.Error("Expected error on concurrency conflict, got none")
+	}
 }
 
-// TestEngine_ConcurrencyConflictPanicMessage verifies panic includes useful debugging info.
-func TestEngine_ConcurrencyConflictPanicMessage(t *testing.T) {
+// TestEngine_ConcurrencyConflictErrorMessage verifies error includes useful debugging info.
+func TestEngine_ConcurrencyConflictErrorMessage(t *testing.T) {
 	store := &storeWithConflict{
 		MemoryStore:    events.NewMemoryStore(),
 		conflictOnCall: 1, // First append will fail
 	}
 	eng := NewEngineWithStore(42, store)
 
-	defer func() {
-		r := recover()
-		if r == nil {
-			t.Fatal("Expected panic, got none")
-		}
+	_, err := eng.EmitCreated("sim-1", 0, events.SimConfig{})
+	if err == nil {
+		t.Fatal("Expected error, got none")
+	}
 
-		panicMsg := fmt.Sprintf("%v", r)
-		if !containsSubstr(panicMsg, "concurrency conflict") {
-			t.Errorf("Panic message should mention 'concurrency conflict', got: %s", panicMsg)
-		}
-	}()
-
-	_ = eng.EmitCreated("sim-1", 0, events.SimConfig{})
+	if !containsSubstr(err.Error(), "concurrency conflict") {
+		t.Errorf("Error message should mention 'concurrency conflict', got: %s", err.Error())
+	}
 }
 
 // containsSubstr checks if s contains substr.
@@ -734,7 +735,7 @@ func TestEmitLoadedState_AppliesOnce(t *testing.T) {
 	eng := NewEngine(sim.Seed)
 
 	// First call - applies events
-	eng = eng.EmitLoadedState(*sim)
+	eng, _ = eng.EmitLoadedState(*sim)
 	version1 := eng.proj.Version()
 	devCount1 := len(eng.Sim().Developers)
 
