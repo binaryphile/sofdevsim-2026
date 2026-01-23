@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/binaryphile/fluentfp/either"
 	"github.com/binaryphile/sofdevsim-2026/internal/engine"
 	"github.com/binaryphile/sofdevsim-2026/internal/events"
 	"github.com/binaryphile/sofdevsim-2026/internal/lessons"
@@ -190,7 +191,8 @@ func (r SimRegistry) HandleStartSprint(w http.ResponseWriter, req *http.Request)
 		return
 	}
 
-	inst.Engine.StartSprint()
+	inst.Engine = inst.Engine.StartSprint()
+	r.SetInstance(id, inst)
 
 	state := ToState(inst.Engine.Sim(), inst.Tracker)
 	response := HALResponse{
@@ -218,8 +220,8 @@ func (r SimRegistry) HandleTick(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	// Engine emits events and updates projection
-	inst.Engine.Tick()
+	// Engine emits events and updates projection - capture new Engine
+	inst.Engine, _ = inst.Engine.Tick()
 
 	// SprintEnded event clears sprint in projection automatically
 	sim = inst.Engine.Sim()
@@ -270,10 +272,13 @@ func (r SimRegistry) HandleAssignTicket(w http.ResponseWriter, req *http.Request
 		devID = idle[0].ID
 	}
 
-	if err := inst.Engine.AssignTicket(body.TicketID, devID); err != nil {
+	var err error
+	inst.Engine, err = inst.Engine.AssignTicket(body.TicketID, devID)
+	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	r.SetInstance(id, inst)
 
 	state := ToState(inst.Engine.Sim(), inst.Tracker)
 	response := HALResponse{
@@ -332,7 +337,7 @@ func runComparison(policy model.SizingPolicy, seed int64, sprints int) metrics.S
 	sim.ID = fmt.Sprintf("cmp-%d", seed)
 
 	eng := engine.NewEngine(sim.Seed)
-	eng.EmitCreated(sim.ID, sim.CurrentTick, events.SimConfig{
+	eng = eng.EmitCreated(sim.ID, sim.CurrentTick, events.SimConfig{
 		TeamSize:     3,
 		SprintLength: sim.SprintLength,
 		Seed:         sim.Seed,
@@ -342,26 +347,26 @@ func runComparison(policy model.SizingPolicy, seed int64, sprints int) metrics.S
 	// Standard team setup (3 devs with varied velocities)
 	// Rationale: Fixed scenario ensures fair comparison - both policies
 	// face identical conditions. Varied velocities create realistic workload.
-	eng.AddDeveloper("dev-1", "Alice", 1.0)
-	eng.AddDeveloper("dev-2", "Bob", 0.8)
-	eng.AddDeveloper("dev-3", "Carol", 1.2)
+	eng = eng.AddDeveloper("dev-1", "Alice", 1.0)
+	eng = eng.AddDeveloper("dev-2", "Bob", 0.8)
+	eng = eng.AddDeveloper("dev-3", "Carol", 1.2)
 
 	// Standard backlog (5 tickets covering policy decision points)
 	// - Small+clear: Neither policy decomposes
 	// - Large+unclear: Both policies decompose
 	// - Mixed cases: Policies diverge, showing differentiation
-	eng.AddTicket(model.NewTicket("TKT-001", "Small clear", 2, model.HighUnderstanding))
-	eng.AddTicket(model.NewTicket("TKT-002", "Medium clear", 4, model.HighUnderstanding))
-	eng.AddTicket(model.NewTicket("TKT-003", "Small unclear", 2, model.LowUnderstanding))
-	eng.AddTicket(model.NewTicket("TKT-004", "Large unclear", 8, model.LowUnderstanding))
-	eng.AddTicket(model.NewTicket("TKT-005", "Medium mixed", 5, model.MediumUnderstanding))
+	eng = eng.AddTicket(model.NewTicket("TKT-001", "Small clear", 2, model.HighUnderstanding))
+	eng = eng.AddTicket(model.NewTicket("TKT-002", "Medium clear", 4, model.HighUnderstanding))
+	eng = eng.AddTicket(model.NewTicket("TKT-003", "Small unclear", 2, model.LowUnderstanding))
+	eng = eng.AddTicket(model.NewTicket("TKT-004", "Large unclear", 8, model.LowUnderstanding))
+	eng = eng.AddTicket(model.NewTicket("TKT-005", "Medium mixed", 5, model.MediumUnderstanding))
 	tracker := metrics.NewTracker()
 
 	for i := 0; i < sprints; i++ {
-		eng.StartSprint()
+		eng = eng.StartSprint()
 		// Auto-assign idle developers to backlog tickets
-		autoAssignForComparison(eng)
-		eng.RunSprint()
+		eng = autoAssignForComparison(eng)
+		eng, _ = eng.RunSprint()
 		state := eng.Sim()
 		tracker = tracker.Updated(&state)
 	}
@@ -371,15 +376,17 @@ func runComparison(policy model.SizingPolicy, seed int64, sprints int) metrics.S
 }
 
 // autoAssignForComparison assigns backlog tickets to idle developers.
-func autoAssignForComparison(eng *engine.Engine) {
+// Returns updated Engine (immutable pattern).
+func autoAssignForComparison(eng engine.Engine) engine.Engine {
 	// Use index-based iteration so re-reads affect subsequent checks
 	state := eng.Sim()
 	idleDevs := state.IdleDevelopers()
 	for i := 0; i < len(idleDevs) && len(state.Backlog) > 0; i++ {
 		dev := idleDevs[i]
-		eng.AssignTicket(state.Backlog[0].ID, dev.ID)
+		eng, _ = eng.AssignTicket(state.Backlog[0].ID, dev.ID)
 		state = eng.Sim() // Re-read after assignment - updates Backlog for next iteration
 	}
+	return eng
 }
 
 // buildCompareResponse converts ComparisonResult to API response.
@@ -473,7 +480,8 @@ func (r SimRegistry) HandleUpdateSimulation(w http.ResponseWriter, req *http.Req
 		return
 	}
 
-	inst.Engine.SetPolicy(policy)
+	inst.Engine = inst.Engine.SetPolicy(policy)
+	r.SetInstance(id, inst)
 
 	state := ToState(inst.Engine.Sim(), inst.Tracker)
 	response := HALResponse{
@@ -513,15 +521,17 @@ func (r SimRegistry) HandleDecompose(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	result := inst.Engine.TryDecompose(body.TicketID)
+	var result either.Either[engine.NotDecomposable, []model.Ticket]
+	inst.Engine, result = inst.Engine.TryDecompose(body.TicketID)
+	r.SetInstance(id, inst)
 
 	// toTicketStates converts model.Ticket slice to TicketState slice.
 	toTicketStates := func(tickets []model.Ticket) []TicketState {
-		result := make([]TicketState, len(tickets))
+		states := make([]TicketState, len(tickets))
 		for i, t := range tickets {
-			result[i] = ToTicketState(t)
+			states[i] = ToTicketState(t)
 		}
-		return result
+		return states
 	}
 
 	children, decomposed := result.Get()

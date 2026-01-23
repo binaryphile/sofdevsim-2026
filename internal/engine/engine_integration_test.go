@@ -24,7 +24,7 @@ func TestEngine_FullSimulationRun(t *testing.T) {
 			sim.ID = "test-full-run"
 
 			eng := engine.NewEngine(sim.Seed)
-			eng.EmitCreated(sim.ID, sim.CurrentTick, events.SimConfig{
+			eng = eng.EmitCreated(sim.ID, sim.CurrentTick, events.SimConfig{
 				TeamSize:     2,
 				SprintLength: sim.SprintLength,
 				Seed:         sim.Seed,
@@ -32,27 +32,31 @@ func TestEngine_FullSimulationRun(t *testing.T) {
 			})
 
 			// Add developers
-			eng.AddDeveloper("dev-1", "Alice", 1.0)
-			eng.AddDeveloper("dev-2", "Bob", 0.8)
+			eng = eng.AddDeveloper("dev-1", "Alice", 1.0)
+			eng = eng.AddDeveloper("dev-2", "Bob", 0.8)
 
 			// Add tickets
-			eng.AddTicket(model.NewTicket("TKT-001", "Small task", 2, model.HighUnderstanding))
-			eng.AddTicket(model.NewTicket("TKT-002", "Medium task", 5, model.MediumUnderstanding))
-			eng.AddTicket(model.NewTicket("TKT-003", "Large task", 8, model.LowUnderstanding))
+			eng = eng.AddTicket(model.NewTicket("TKT-001", "Small task", 2, model.HighUnderstanding))
+			eng = eng.AddTicket(model.NewTicket("TKT-002", "Medium task", 5, model.MediumUnderstanding))
+			eng = eng.AddTicket(model.NewTicket("TKT-003", "Large task", 8, model.LowUnderstanding))
 
 			// Assign tickets
-			if err := eng.AssignTicket("TKT-001", "dev-1"); err != nil {
+			var err error
+			eng, err = eng.AssignTicket("TKT-001", "dev-1")
+			if err != nil {
 				t.Fatalf("Failed to assign TKT-001: %v", err)
 			}
-			if err := eng.AssignTicket("TKT-002", "dev-2"); err != nil {
+			eng, err = eng.AssignTicket("TKT-002", "dev-2")
+			if err != nil {
 				t.Fatalf("Failed to assign TKT-002: %v", err)
 			}
 
 			// Run a sprint
-			events := eng.RunSprint()
+			var evts []model.Event
+			eng, evts = eng.RunSprint()
 
 			// Should have produced some events
-			if len(events) == 0 {
+			if len(evts) == 0 {
 				t.Error("Expected some events from sprint, got none")
 			}
 
@@ -123,7 +127,7 @@ func TestEngine_TryDecompose_Either(t *testing.T) {
 			sim.ID = "test-decompose"
 
 			eng := engine.NewEngine(sim.Seed)
-			eng.EmitCreated(sim.ID, sim.CurrentTick, events.SimConfig{
+			eng = eng.EmitCreated(sim.ID, sim.CurrentTick, events.SimConfig{
 				TeamSize:     0,
 				SprintLength: sim.SprintLength,
 				Seed:         sim.Seed,
@@ -132,10 +136,10 @@ func TestEngine_TryDecompose_Either(t *testing.T) {
 
 			// Only add ticket if we're testing with a real ticket
 			if tt.ticketID == "TKT-001" {
-				eng.AddTicket(model.NewTicket("TKT-001", "Large feature", tt.ticketSize, model.MediumUnderstanding))
+				eng = eng.AddTicket(model.NewTicket("TKT-001", "Large feature", tt.ticketSize, model.MediumUnderstanding))
 			}
 
-			result := eng.TryDecompose(tt.ticketID)
+			eng, result := eng.TryDecompose(tt.ticketID)
 
 			if tt.wantLeft {
 				notDecomp, ok := result.GetLeft()
@@ -185,26 +189,26 @@ func TestEngine_WIPTracking(t *testing.T) {
 	// Use event store to verify WIP tracking via events
 	store := events.NewMemoryStore()
 	eng := engine.NewEngineWithStore(sim.Seed, store)
-	eng.EmitCreated(sim.ID, sim.CurrentTick, events.SimConfig{
+	eng = eng.EmitCreated(sim.ID, sim.CurrentTick, events.SimConfig{
 		TeamSize:     2,
 		SprintLength: sim.SprintLength,
 		Seed:         sim.Seed,
 		Policy:       model.PolicyNone,
 	})
 
-	eng.AddDeveloper("dev-1", "Alice", 1.0)
-	eng.AddDeveloper("dev-2", "Bob", 1.0)
+	eng = eng.AddDeveloper("dev-1", "Alice", 1.0)
+	eng = eng.AddDeveloper("dev-2", "Bob", 1.0)
 
 	// Add tickets that will create WIP
-	eng.AddTicket(model.NewTicket("TKT-001", "Task 1", 3, model.HighUnderstanding))
-	eng.AddTicket(model.NewTicket("TKT-002", "Task 2", 5, model.HighUnderstanding))
+	eng = eng.AddTicket(model.NewTicket("TKT-001", "Task 1", 3, model.HighUnderstanding))
+	eng = eng.AddTicket(model.NewTicket("TKT-002", "Task 2", 5, model.HighUnderstanding))
 
 	// Assign both tickets - creates WIP of 2
-	eng.AssignTicket("TKT-001", "dev-1")
-	eng.AssignTicket("TKT-002", "dev-2")
+	eng, _ = eng.AssignTicket("TKT-001", "dev-1")
+	eng, _ = eng.AssignTicket("TKT-002", "dev-2")
 
 	// Run sprint
-	eng.RunSprint()
+	eng, _ = eng.RunSprint()
 
 	// Verify WIP tracking via SprintWIPUpdated events
 	evts := store.Replay("wip-test")
@@ -239,16 +243,16 @@ func TestEngine_Reproducibility(t *testing.T) {
 		sim.ID = "repro-test"
 
 		eng := engine.NewEngine(sim.Seed)
-		eng.EmitCreated(sim.ID, sim.CurrentTick, events.SimConfig{
+		eng = eng.EmitCreated(sim.ID, sim.CurrentTick, events.SimConfig{
 			TeamSize:     1,
 			SprintLength: sim.SprintLength,
 			Seed:         sim.Seed,
 			Policy:       model.PolicyDORAStrict,
 		})
-		eng.AddDeveloper("dev-1", "Alice", 1.0)
-		eng.AddTicket(model.NewTicket("TKT-001", "Task", 5, model.MediumUnderstanding))
-		eng.AssignTicket("TKT-001", "dev-1")
-		eng.RunSprint()
+		eng = eng.AddDeveloper("dev-1", "Alice", 1.0)
+		eng = eng.AddTicket(model.NewTicket("TKT-001", "Task", 5, model.MediumUnderstanding))
+		eng, _ = eng.AssignTicket("TKT-001", "dev-1")
+		eng, _ = eng.RunSprint()
 
 		return eng.Sim() // Return state from engine
 	}
@@ -273,14 +277,14 @@ func TestEngine_SprintEndsExactlyOnBoundary(t *testing.T) {
 	sim.ID = "boundary-test"
 
 	eng := engine.NewEngine(sim.Seed)
-	eng.EmitCreated(sim.ID, sim.CurrentTick, events.SimConfig{
+	eng = eng.EmitCreated(sim.ID, sim.CurrentTick, events.SimConfig{
 		TeamSize:     1,
 		SprintLength: 10, // 10 ticks
 		Seed:         sim.Seed,
 		Policy:       model.PolicyNone,
 	})
-	eng.AddDeveloper("dev-1", "Alice", 1.0)
-	eng.StartSprint()
+	eng = eng.AddDeveloper("dev-1", "Alice", 1.0)
+	eng = eng.StartSprint()
 
 	// Verify sprint started
 	state := eng.Sim()
@@ -294,7 +298,7 @@ func TestEngine_SprintEndsExactlyOnBoundary(t *testing.T) {
 
 	// Tick exactly to sprint end (10 ticks)
 	for i := 0; i < 10; i++ {
-		eng.Tick()
+		eng, _ = eng.Tick()
 	}
 
 	state = eng.Sim()
@@ -311,9 +315,45 @@ func TestEngine_SprintEndsExactlyOnBoundary(t *testing.T) {
 	}
 
 	// One more tick should not cause panic or start new sprint
-	eng.Tick()
+	eng, _ = eng.Tick()
 	state = eng.Sim()
 	if state.CurrentTick != 11 {
 		t.Errorf("CurrentTick after extra tick = %d, want 11", state.CurrentTick)
+	}
+}
+
+// TestEngine_Tick_ReturnsNewEngine verifies immutable Engine semantics.
+// Per FP Guide §7: operations return new values, original unchanged.
+// This test expects the new signature: Tick() (Engine, []model.Event)
+func TestEngine_Tick_ReturnsNewEngine(t *testing.T) {
+	sim := model.NewSimulation(model.PolicyNone, 42)
+	eng := engine.NewEngine(sim.Seed)
+	eng = eng.EmitCreated("test-immutable", 0, events.SimConfig{
+		TeamSize:     1,
+		SprintLength: 10,
+		Seed:         sim.Seed,
+		Policy:       model.PolicyNone,
+	})
+	eng = eng.AddDeveloper("dev-1", "Alice", 1.0)
+	eng = eng.AddTicket(model.NewTicket("TKT-001", "Task", 3, model.HighUnderstanding))
+	eng, _ = eng.AssignTicket("TKT-001", "dev-1")
+	eng = eng.StartSprint()
+
+	// Capture original state
+	originalTick := eng.Sim().CurrentTick
+
+	// Call Tick - expects new signature returning (Engine, []model.Event)
+	newEng, _ := eng.Tick()
+
+	// Verify original engine unchanged (immutability)
+	if eng.Sim().CurrentTick != originalTick {
+		t.Errorf("original engine was mutated: tick=%d, want=%d",
+			eng.Sim().CurrentTick, originalTick)
+	}
+
+	// Verify new engine has advanced tick
+	if newEng.Sim().CurrentTick != originalTick+1 {
+		t.Errorf("new engine tick=%d, want=%d",
+			newEng.Sim().CurrentTick, originalTick+1)
 	}
 }

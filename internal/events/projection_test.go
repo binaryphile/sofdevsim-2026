@@ -570,99 +570,39 @@ func TestProjection_Apply_IncidentResolved_NonExistent(t *testing.T) {
 // cmp is used for complex struct comparisons
 var _ = cmp.Diff
 
-func TestProjection_Apply_Idempotent(t *testing.T) {
-	// Idempotency: applying the same event twice should not change state or version.
-	// This prevents duplicate event processing from corrupting state.
-	proj := events.NewProjection()
-	evt := events.NewSimulationCreated("sim-1", 0, events.SimConfig{Seed: 42})
+// Note: Projection-level idempotency tests removed. With version-only design:
+// - Store prevents duplicate appends (optimistic concurrency)
+// - Projection.Apply is a pure function - same inputs always produce same outputs
+// - Caller should not apply duplicates; store.Replay returns unique events
+// See TestProjection_Apply_ValueSemantics for value semantics verification.
 
-	// First apply
-	proj1 := proj.Apply(evt)
-	version1 := proj1.Version()
-	state1 := proj1.State()
-
-	// Second apply of SAME event
-	proj2 := proj1.Apply(evt)
-	version2 := proj2.Version()
-	state2 := proj2.State()
-
-	// Version should NOT increment on duplicate
-	if version2 != version1 {
-		t.Errorf("Version incremented on duplicate: %d -> %d, want unchanged", version1, version2)
-	}
-
-	// State should be identical
-	if state2.ID != state1.ID {
-		t.Errorf("State.ID changed on duplicate: %q -> %q", state1.ID, state2.ID)
-	}
-	if state2.Seed != state1.Seed {
-		t.Errorf("State.Seed changed on duplicate: %d -> %d", state1.Seed, state2.Seed)
-	}
-}
-
-func TestProjection_Apply_Idempotent_ComplexSequence(t *testing.T) {
-	// Apply sequence of events, then replay - should be no-op.
-	proj := events.NewProjection()
-
-	evts := []events.Event{
-		events.NewSimulationCreated("sim-1", 0, events.SimConfig{Seed: 42}),
-		events.NewDeveloperAdded("sim-1", 0, "dev-1", "Alice", 1.0),
-		events.NewTicketCreated("sim-1", 0, "TKT-1", "Task", 3.0, model.HighUnderstanding),
-	}
-
-	// Apply all events
-	for _, e := range evts {
-		proj = proj.Apply(e)
-	}
-	stateAfterFirst := proj.State()
-	versionAfterFirst := proj.Version()
-
-	// Replay entire sequence - should be no-op
-	for _, e := range evts {
-		proj = proj.Apply(e)
-	}
-
-	// State and version unchanged
-	if proj.Version() != versionAfterFirst {
-		t.Errorf("Version changed on replay: %d -> %d", versionAfterFirst, proj.Version())
-	}
-	if len(proj.State().Developers) != len(stateAfterFirst.Developers) {
-		t.Errorf("Developers count changed on replay: %d -> %d",
-			len(stateAfterFirst.Developers), len(proj.State().Developers))
-	}
-	if len(proj.State().Backlog) != len(stateAfterFirst.Backlog) {
-		t.Errorf("Backlog count changed on replay: %d -> %d",
-			len(stateAfterFirst.Backlog), len(proj.State().Backlog))
-	}
-}
-
-func TestProjection_Apply_ProcessedMapIsolation(t *testing.T) {
-	// Verify that processed map is properly copied (value semantics).
-	// Modifying one projection's tracking shouldn't affect another.
+func TestProjection_Apply_ValueSemantics(t *testing.T) {
+	// Verify that Apply returns new projection without mutating original.
 	proj1 := events.NewProjection()
 	evt1 := events.NewSimulationCreated("sim-1", 0, events.SimConfig{Seed: 42})
 
 	// Apply event to get proj2
 	proj2 := proj1.Apply(evt1)
 
-	// proj2 has processed evt1, proj1 has not
-	// Apply same event to proj1 - should succeed (not seen before)
-	proj1AfterApply := proj1.Apply(evt1)
-
-	// proj1 should now have version 1 (event was processed)
-	if proj1AfterApply.Version() != 1 {
-		t.Errorf("proj1 after apply: Version = %d, want 1 (should process event)", proj1AfterApply.Version())
+	// proj1 should be unchanged (value semantics)
+	if proj1.Version() != 0 {
+		t.Errorf("proj1.Version() = %d, want 0 (original unchanged)", proj1.Version())
 	}
 
-	// proj2 should still have version 1 (unchanged by proj1's apply)
+	// proj2 should have version 1
 	if proj2.Version() != 1 {
-		t.Errorf("proj2: Version = %d, want 1 (should be unchanged)", proj2.Version())
+		t.Errorf("proj2.Version() = %d, want 1", proj2.Version())
 	}
 
-	// Apply evt1 again to proj2 - should be no-op (already processed)
-	proj2AfterReapply := proj2.Apply(evt1)
-	if proj2AfterReapply.Version() != 1 {
-		t.Errorf("proj2 after reapply: Version = %d, want 1 (idempotent)", proj2AfterReapply.Version())
+	// Apply same event to proj1 - creates new projection with version 1
+	proj1AfterApply := proj1.Apply(evt1)
+	if proj1AfterApply.Version() != 1 {
+		t.Errorf("proj1AfterApply.Version() = %d, want 1", proj1AfterApply.Version())
+	}
+
+	// proj1 STILL unchanged (value semantics)
+	if proj1.Version() != 0 {
+		t.Errorf("proj1.Version() after apply = %d, want 0 (still unchanged)", proj1.Version())
 	}
 }
 
@@ -728,16 +668,9 @@ func TestProjection_VersionSyncWithStore(t *testing.T) {
 			store.EventCount(simID), proj.Version())
 	}
 
-	// Replay same events - projection version should NOT change (idempotency)
-	// but store count stays the same (we didn't append again)
-	proj = proj.Apply(evt1)
-	proj = proj.Apply(evt2)
-
-	// Invariant still holds (both unchanged)
-	if store.EventCount(simID) != proj.Version() {
-		t.Errorf("After replay: store=%d, proj=%d (should still match)",
-			store.EventCount(simID), proj.Version())
-	}
+	// Note: With version-only idempotency, the store prevents duplicate appends.
+	// Projection.Apply is a pure function - applying same event twice WILL increment version.
+	// This is correct: caller should not apply duplicates; store.Replay returns unique events.
 }
 
 func TestProjection_Apply_SprintWIPUpdated(t *testing.T) {
