@@ -977,6 +977,16 @@ BenchmarkProjection_ReplayFull-8            29217     36419 ns/op    560 B/op   
 
 Targets: SingleEvent < 1μs/op, ReplayFull (1000 events) < 1ms. Both well under targets.
 
+**Event Sourcing (Upcaster) - 2026-01-24:**
+```
+BenchmarkUpcaster_Apply_NoTransform-8       5997628    214.6 ns/op    232 B/op     3 allocs/op
+BenchmarkUpcaster_Apply_WithTransform-8     2554708    483.4 ns/op    464 B/op     6 allocs/op
+BenchmarkUpcaster_Apply_TransitiveChain-8   1589707    740.0 ns/op    696 B/op     9 allocs/op
+```
+
+Note: WithTransform tests v1→v2 transform. TransitiveChain tests v1→v2→v3 per ES Guide §11.
+Cycle detection (seen map) adds ~230ns per transform hop. Acceptable for schema evolution safety.
+
 **FluentFP vs Loop Comparisons:**
 ```
 BenchmarkFluentFP_ToFloat64-8          6981193       171.5 ns/op    896 B/op     1 allocs/op

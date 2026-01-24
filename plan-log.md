@@ -24048,3 +24048,209 @@ Updated compliance-grading.md to reflect that quick wins (stress test, pointer r
 
 **Why it matters:**
 Compliance grading now accurately reflects the codebase's current state at A+ (99/100).
+
+---
+
+## Approved Contract: 2026-01-24
+
+# Phase 21 Contract
+
+**Created:** 2026-01-23
+
+## Step 1 Checklist
+- [x] 1a: Presented understanding
+- [x] 1b: Asked clarifying questions
+- [x] 1b-answer: Received answers (user: "you decide")
+- [x] 1c: Contract created (this file)
+- [x] 1d: Approval received
+- [x] 1e: Plan + contract archived
+
+## Objective
+
+Add explicit `Version` field to events for schema evolution, enabling version-based upcasting.
+
+## Success Criteria
+
+- [ ] Header struct has `Version int` field (types.go:141, after ParentSpan)
+- [ ] Event interface has `EventVersion() int` method (types.go:125, after withTrace)
+- [ ] Header.EventVersion() returns h.Version directly (types.go:152)
+- [ ] Upcaster.Apply() keys by `"Type:vN"` with transitive loop (upcasting.go:33-37)
+- [ ] All 19 NewXxx constructors set `Version: 1` (lines 168-942)
+- [ ] Test: version-based upcasting (v1→v2 transform)
+- [ ] Test: cycle detection panics on v1→v2→v1 chain
+- [ ] Test: all constructors produce EventVersion() == 1
+
+## Approach (TDD per Go Guide §5)
+
+**Phase A: Write failing tests first**
+1. **Test EventVersion() method** (types_test.go): Test that Header.EventVersion() returns Version field
+2. **Test versioned upcasting** (upcasting_test.go): TestUpcaster_Apply_VersionedKey - register v1→v2 transform, verify dispatch
+3. **Test cycle detection** (upcasting_test.go): TestUpcaster_Apply_CycleDetection - v1→v2→v1 panics
+4. **Test constructor versions** (types_test.go): TestAllConstructors_ReturnVersionOne - all 19 return EventVersion() == 1
+
+**Phase B: Make tests pass**
+5. **Header struct** (types.go:140-141): Add `Version int // schema version for upcasting` after ParentSpan field
+6. **Event interface** (types.go:125): Add `EventVersion() int` after withTrace method
+7. **Header method** (types.go:152): Add `func (h Header) EventVersion() int { return h.Version }`
+8. **Upcaster.Apply** (upcasting.go:33-37):
+   - Build key: `fmt.Sprintf("%s:v%d", evt.EventType(), evt.EventVersion())`
+   - Loop until no transform matches (transitive: v1→v2→v3)
+   - Add seen-set for cycle detection: panic if same key seen twice
+   - Update comment at line 19-20: change example from `"TicketAssignedV1"` to `"TicketAssigned:v1"`
+9. **19 constructors** (types.go:168-942): Add `Version: 1` to Header initialization in each:
+   - NewSimulationCreated:168, NewSprintStarted:209, NewSprintEnded:251
+   - NewTicked:291, NewTicketAssigned:333, NewTicketStateRestored:381
+   - NewTicketCompleted:427, NewIncidentStarted:472, NewIncidentResolved:515
+   - NewDeveloperAdded:557, NewTicketCreated:601, NewWorkProgressed:645
+   - NewTicketPhaseChanged:688, NewBufferConsumed:729, NewPolicyChanged:769
+   - NewTicketDecomposed:818, NewSprintWIPUpdated:858, NewBugDiscovered:899
+   - NewScopeCreepOccurred:942
+
+**Phase C: Verify**
+10. Run `go test ./...` - all tests pass
+
+## Design Decisions
+
+**Serialization:** Events are in-memory only (MemoryStore). No JSON/gob serialization of event stream. Version field is purely for upcaster dispatch.
+
+**No defensive default:** EventVersion() returns h.Version directly. All constructors explicitly set Version: 1, so Version == 0 indicates a bug (uninitialized event). Fail fast rather than hide errors. Per FP Guide §5: make inputs explicit.
+
+**Transitive upcasting with cycle detection:** Upcaster.Apply() loops until no transform matches, with seen-set to detect cycles. If cycle detected, return error or panic (fail fast). Per CQRS Guide §11: version chains must be DAG.
+
+**Projection compatibility:** Projections already call Upcaster.Apply() during replay (store.go:89). No additional changes needed—versioned events flow through existing pipeline.
+
+## Token Budget
+
+Estimated: 8K tokens
+
+---
+
+## Archived: 2026-01-24
+
+# Phase 21 Contract
+
+**Created:** 2026-01-23
+
+## Step 1 Checklist
+- [x] 1a: Presented understanding
+- [x] 1b: Asked clarifying questions
+- [x] 1b-answer: Received answers (user: "you decide")
+- [x] 1c: Contract created (this file)
+- [x] 1d: Approval received
+- [x] 1e: Plan + contract archived
+
+## Objective
+
+Add explicit `Version` field to events for schema evolution, enabling version-based upcasting.
+
+## Success Criteria
+
+- [x] Header struct has `Version int` field (types.go:144)
+- [x] Event interface has `EventVersion() int` method (types.go:126)
+- [x] Header.EventVersion() returns h.Version directly (types.go:155)
+- [x] Upcaster.Apply() keys by `"Type:vN"` with transitive loop (upcasting.go:37-50)
+- [x] All 19 NewXxx constructors set `Version: 1`
+- [x] Test: version-based upcasting (v1→v2 transform)
+- [x] Test: cycle detection panics on v1→v2→v1 chain
+- [x] Test: all constructors produce EventVersion() == 1
+
+## Approach (TDD per Go Guide §5)
+
+**Phase A: Write failing tests first**
+1. **Test EventVersion() method** (types_test.go): Test that Header.EventVersion() returns Version field
+2. **Test versioned upcasting** (upcasting_test.go): TestUpcaster_Apply_VersionedKey - register v1→v2 transform, verify dispatch
+3. **Test cycle detection** (upcasting_test.go): TestUpcaster_Apply_CycleDetection - v1→v2→v1 panics
+4. **Test constructor versions** (types_test.go): TestAllConstructors_ReturnVersionOne - all 19 return EventVersion() == 1
+
+**Phase B: Make tests pass**
+5. **Header struct** (types.go:140-141): Add `Version int // schema version for upcasting` after ParentSpan field
+6. **Event interface** (types.go:125): Add `EventVersion() int` after withTrace method
+7. **Header method** (types.go:152): Add `func (h Header) EventVersion() int { return h.Version }`
+8. **Upcaster.Apply** (upcasting.go:33-37):
+   - Build key: `fmt.Sprintf("%s:v%d", evt.EventType(), evt.EventVersion())`
+   - Loop until no transform matches (transitive: v1→v2→v3)
+   - Add seen-set for cycle detection: panic if same key seen twice
+   - Update comment at line 19-20: change example from `"TicketAssignedV1"` to `"TicketAssigned:v1"`
+9. **19 constructors** (types.go:168-942): Add `Version: 1` to Header initialization in each:
+   - NewSimulationCreated:168, NewSprintStarted:209, NewSprintEnded:251
+   - NewTicked:291, NewTicketAssigned:333, NewTicketStateRestored:381
+   - NewTicketCompleted:427, NewIncidentStarted:472, NewIncidentResolved:515
+   - NewDeveloperAdded:557, NewTicketCreated:601, NewWorkProgressed:645
+   - NewTicketPhaseChanged:688, NewBufferConsumed:729, NewPolicyChanged:769
+   - NewTicketDecomposed:818, NewSprintWIPUpdated:858, NewBugDiscovered:899
+   - NewScopeCreepOccurred:942
+
+**Phase C: Verify**
+10. Run `go test ./...` - all tests pass
+
+## Design Decisions
+
+**Serialization:** Events are in-memory only (MemoryStore). No JSON/gob serialization of event stream. Version field is purely for upcaster dispatch.
+
+**No defensive default:** EventVersion() returns h.Version directly. All constructors explicitly set Version: 1, so Version == 0 indicates a bug (uninitialized event). Fail fast rather than hide errors. Per FP Guide §5: make inputs explicit.
+
+**Transitive upcasting with cycle detection:** Upcaster.Apply() loops until no transform matches, with seen-set to detect cycles. If cycle detected, return error or panic (fail fast). Per CQRS Guide §11: version chains must be DAG.
+
+**Projection compatibility:** Projections already call Upcaster.Apply() during replay (store.go:89). No additional changes needed—versioned events flow through existing pipeline.
+
+## Token Budget
+
+Estimated: 8K tokens
+
+## Actual Results
+
+**Completed:** 2026-01-24
+
+### Files Modified
+
+| File | Changes |
+|------|---------|
+| `internal/events/types.go` | Added Version field to Header, EventVersion() to interface and Header, Version: 1 to all 19 constructors |
+| `internal/events/upcasting.go` | Added fmt import, versioned key format, transitive loop, cycle detection |
+| `internal/events/domain_events_test.go` | Added TestHeader_EventVersion, TestAllConstructors_ReturnVersionOne |
+| `internal/events/upcasting_test.go` | Added TestUpcaster_Apply_VersionedKey, TestUpcaster_Apply_CycleDetection, updated existing tests for new key format |
+| `internal/events/store_test.go` | Added EventVersion() to testEvent, updated upcaster key format in tests |
+
+### Verification
+
+| Check | Result |
+|-------|--------|
+| `go test ./...` | PASS (all packages) |
+| `go test -race` | PASS (no races) |
+| `go test -cover` | 68.9% coverage |
+| Benchmarks | ~220ns/op for upcaster (acceptable overhead for safety) |
+
+### Self-Assessment
+
+Grade: A (95/100)
+
+What went well:
+- TDD approach: tests written first, then implementation
+- All 8 success criteria met
+- Existing tests updated for new key format
+- Cycle detection works correctly
+
+Deductions:
+- -5: Token budget exceeded (actual ~12K vs estimated 8K due to existing test updates)
+
+## Step 4 Checklist
+- [x] 4a: Results presented to user
+- [x] 4b: Approval received
+
+## Approval
+✅ APPROVED BY USER - 2026-01-24
+Final grade: A+ (100/100) after fixing stale comment and improving EventVersion() docs
+
+---
+
+## Log: 2026-01-24 - Phase 21: Event Versioning
+
+**What was done:**
+Added explicit Version field to events for schema evolution. Upcaster now dispatches by "Type:vN" key format with transitive loop and cycle detection.
+
+**Key files changed:**
+- internal/events/types.go: Version field in Header, EventVersion() method, all 19 constructors set Version: 1
+- internal/events/upcasting.go: Versioned key format, transitive loop, cycle detection
+
+**Why it matters:**
+Enables safe schema evolution via upcasting. Events can now be versioned and transformed as schema evolves.

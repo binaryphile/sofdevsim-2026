@@ -341,6 +341,50 @@ func TestEvents_CausedByWorksOnAllTypes(t *testing.T) {
 	}
 }
 
+func TestHeader_EventVersion_ReturnsVersionField(t *testing.T) {
+	// TDD: Test that EventVersion() returns the Version field value
+	h := Header{Version: 1}
+	if h.EventVersion() != 1 {
+		t.Errorf("EventVersion() = %d, want 1", h.EventVersion())
+	}
+
+	h2 := Header{Version: 2}
+	if h2.EventVersion() != 2 {
+		t.Errorf("EventVersion() = %d, want 2", h2.EventVersion())
+	}
+}
+
+func TestAllConstructors_ReturnVersionOne(t *testing.T) {
+	// TDD: All 19 event constructors must set Version: 1
+	events := []Event{
+		NewSimulationCreated("s", 0, SimConfig{}),
+		NewSprintStarted("s", 0, 1, 2.0),
+		NewSprintEnded("s", 0, 1),
+		NewTicked("s", 0),
+		NewTicketAssigned("s", 0, "t", "d", time.Time{}),
+		NewTicketStateRestored("s", 0, "t", "d", model.PhaseImplement, 1.0, 1.0, time.Time{}),
+		NewTicketCompleted("s", 0, "t", "d", 5.0),
+		NewIncidentStarted("s", 0, "i", "d", "t", model.SeverityLow),
+		NewIncidentResolved("s", 0, "i", "d"),
+		NewDeveloperAdded("s", 0, "d", "name", 1.0),
+		NewTicketCreated("s", 0, "t", "title", 5.0, model.HighUnderstanding),
+		NewWorkProgressed("s", 0, "t", model.PhaseImplement, 1.0),
+		NewTicketPhaseChanged("s", 0, "t", model.PhaseImplement, model.PhaseVerify),
+		NewBufferConsumed("s", 0, 1.0),
+		NewPolicyChanged("s", 0, model.PolicyNone, model.PolicyDORAStrict),
+		NewTicketDecomposed("s", 0, "p", nil),
+		NewSprintWIPUpdated("s", 0, 5),
+		NewBugDiscovered("s", 0, "t", 1.0),
+		NewScopeCreepOccurred("s", 0, "t", 1.0, 1.0),
+	}
+
+	for _, e := range events {
+		if e.EventVersion() != 1 {
+			t.Errorf("%s.EventVersion() = %d, want 1", e.EventType(), e.EventVersion())
+		}
+	}
+}
+
 func TestApplyTrace_SetsAllTraceFields(t *testing.T) {
 	tc := TraceContext{
 		TraceID:      "trace-test",

@@ -122,6 +122,10 @@ type Event interface {
 	// withTrace returns a copy with tracing fields set.
 	// This method enables type-safe tracing without type switches.
 	withTrace(traceID, spanID, parentSpanID string) Event
+
+	// EventVersion returns the schema version for upcasting (per CQRS Guide §11).
+	// Used by Upcaster to dispatch transforms via "Type:vN" key format.
+	EventVersion() int
 }
 
 // Header contains common fields for all events.
@@ -138,6 +142,9 @@ type Header struct {
 	Trace      string // trace ID for request correlation
 	Span       string // this span's ID
 	ParentSpan string // parent span's ID
+
+	// Schema version for upcasting (per CQRS Guide §11)
+	Version int
 }
 
 func (h Header) EventID() string       { return h.ID }
@@ -149,6 +156,7 @@ func (h Header) CausedBy() string      { return h.CausedByID }
 func (h Header) TraceID() string       { return h.Trace }
 func (h Header) SpanID() string        { return h.Span }
 func (h Header) ParentSpanID() string  { return h.ParentSpan }
+func (h Header) EventVersion() int     { return h.Version }
 
 // SimConfig holds simulation configuration captured in SimulationCreated.
 type SimConfig struct {
@@ -173,6 +181,7 @@ func NewSimulationCreated(simID string, tick int, config SimConfig) SimulationCr
 			Type:       "SimulationCreated",
 			OccurredAt: tick,
 			DetectedAt: time.Now(),
+			Version:    1,
 		},
 		Config: config,
 	}
@@ -214,6 +223,7 @@ func NewSprintStarted(simID string, tick int, number int, bufferDays float64) Sp
 			Type:       "SprintStarted",
 			OccurredAt: tick,
 			DetectedAt: time.Now(),
+			Version:    1,
 		},
 		Number:     number,
 		StartTick:  tick,
@@ -256,6 +266,7 @@ func NewSprintEnded(simID string, tick int, number int) SprintEnded {
 			Type:       "SprintEnded",
 			OccurredAt: tick,
 			DetectedAt: time.Now(),
+			Version:    1,
 		},
 		Number:  number,
 		EndTick: tick,
@@ -296,6 +307,7 @@ func NewTicked(simID string, tick int) Ticked {
 			Type:       "Ticked",
 			OccurredAt: tick,
 			DetectedAt: time.Now(),
+			Version:    1,
 		},
 		Tick: tick,
 	}
@@ -338,6 +350,7 @@ func NewTicketAssigned(simID string, tick int, ticketID, developerID string, sta
 			Type:       "TicketAssigned",
 			OccurredAt: tick,
 			DetectedAt: time.Now(),
+			Version:    1,
 		},
 		TicketID:    ticketID,
 		DeveloperID: developerID,
@@ -386,6 +399,7 @@ func NewTicketStateRestored(simID string, tick int, ticketID, developerID string
 			Type:       "TicketStateRestored",
 			OccurredAt: tick,
 			DetectedAt: time.Now(),
+			Version:    1,
 		},
 		TicketID:        ticketID,
 		DeveloperID:     developerID,
@@ -432,6 +446,7 @@ func NewTicketCompleted(simID string, tick int, ticketID, developerID string, ac
 			Type:       "TicketCompleted",
 			OccurredAt: tick,
 			DetectedAt: time.Now(),
+			Version:    1,
 		},
 		TicketID:    ticketID,
 		DeveloperID: developerID,
@@ -477,6 +492,7 @@ func NewIncidentStarted(simID string, tick int, incidentID, developerID, ticketI
 			Type:       "IncidentStarted",
 			OccurredAt: tick,
 			DetectedAt: time.Now(),
+			Version:    1,
 		},
 		IncidentID:  incidentID,
 		DeveloperID: developerID,
@@ -520,6 +536,7 @@ func NewIncidentResolved(simID string, tick int, incidentID, developerID string)
 			Type:       "IncidentResolved",
 			OccurredAt: tick,
 			DetectedAt: time.Now(),
+			Version:    1,
 		},
 		IncidentID:  incidentID,
 		DeveloperID: developerID,
@@ -562,6 +579,7 @@ func NewDeveloperAdded(simID string, tick int, devID, name string, velocity floa
 			Type:       "DeveloperAdded",
 			OccurredAt: tick,
 			DetectedAt: time.Now(),
+			Version:    1,
 		},
 		DeveloperID: devID,
 		Name:        name,
@@ -606,6 +624,7 @@ func NewTicketCreated(simID string, tick int, ticketID, title string, estimatedD
 			Type:       "TicketCreated",
 			OccurredAt: tick,
 			DetectedAt: time.Now(),
+			Version:    1,
 		},
 		TicketID:      ticketID,
 		Title:         title,
@@ -650,6 +669,7 @@ func NewWorkProgressed(simID string, tick int, ticketID string, phase model.Work
 			Type:       "WorkProgressed",
 			OccurredAt: tick,
 			DetectedAt: time.Now(),
+			Version:    1,
 		},
 		TicketID:      ticketID,
 		Phase:         phase,
@@ -693,6 +713,7 @@ func NewTicketPhaseChanged(simID string, tick int, ticketID string, oldPhase, ne
 			Type:       "TicketPhaseChanged",
 			OccurredAt: tick,
 			DetectedAt: time.Now(),
+			Version:    1,
 		},
 		TicketID: ticketID,
 		OldPhase: oldPhase,
@@ -734,6 +755,7 @@ func NewBufferConsumed(simID string, tick int, daysConsumed float64) BufferConsu
 			Type:       "BufferConsumed",
 			OccurredAt: tick,
 			DetectedAt: time.Now(),
+			Version:    1,
 		},
 		DaysConsumed: daysConsumed,
 	}
@@ -774,6 +796,7 @@ func NewPolicyChanged(simID string, tick int, oldPolicy, newPolicy model.SizingP
 			Type:       "PolicyChanged",
 			OccurredAt: tick,
 			DetectedAt: time.Now(),
+			Version:    1,
 		},
 		OldPolicy: oldPolicy,
 		NewPolicy: newPolicy,
@@ -823,6 +846,7 @@ func NewTicketDecomposed(simID string, tick int, parentID string, children []Chi
 			Type:       "TicketDecomposed",
 			OccurredAt: tick,
 			DetectedAt: time.Now(),
+			Version:    1,
 		},
 		ParentTicketID: parentID,
 		Children:       children,
@@ -863,6 +887,7 @@ func NewSprintWIPUpdated(simID string, tick int, currentWIP int) SprintWIPUpdate
 			Type:       "SprintWIPUpdated",
 			OccurredAt: tick,
 			DetectedAt: time.Now(),
+			Version:    1,
 		},
 		CurrentWIP: currentWIP,
 	}
@@ -904,6 +929,7 @@ func NewBugDiscovered(simID string, tick int, ticketID string, reworkEffort floa
 			Type:       "BugDiscovered",
 			OccurredAt: tick,
 			DetectedAt: time.Now(),
+			Version:    1,
 		},
 		TicketID:     ticketID,
 		ReworkEffort: reworkEffort,
@@ -947,6 +973,7 @@ func NewScopeCreepOccurred(simID string, tick int, ticketID string, effortAdded,
 			Type:       "ScopeCreepOccurred",
 			OccurredAt: tick,
 			DetectedAt: time.Now(),
+			Version:    1,
 		},
 		TicketID:      ticketID,
 		EffortAdded:   effortAdded,

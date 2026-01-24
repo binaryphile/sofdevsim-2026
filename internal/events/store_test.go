@@ -37,6 +37,7 @@ func (e testEvent) withTrace(traceID, spanID, parentSpanID string) Event {
 	e.parentSpanID = parentSpanID
 	return e
 }
+func (e testEvent) EventVersion() int { return 1 }
 
 func TestMemoryStore_AppendAndReplay_ReturnsStoredEvents(t *testing.T) {
 	tests := []struct {
@@ -345,7 +346,7 @@ func TestMemoryStore_Replay_AppliesUpcasts(t *testing.T) {
 	}
 
 	upcaster := NewUpcasterWithTransforms(map[string]func(Event) Event{
-		"OriginalEvent": markUpcasted,
+		"OriginalEvent:v1": markUpcasted,
 	})
 
 	store := NewMemoryStoreWithUpcaster(upcaster)
@@ -375,7 +376,7 @@ func TestMemoryStore_Subscribe_AppliesUpcasts(t *testing.T) {
 	}
 
 	upcaster := NewUpcasterWithTransforms(map[string]func(Event) Event{
-		"LiveEvent": markUpcasted,
+		"LiveEvent:v1": markUpcasted,
 	})
 
 	store := NewMemoryStoreWithUpcaster(upcaster)
