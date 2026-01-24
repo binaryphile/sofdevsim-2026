@@ -923,7 +923,7 @@ HTTP middleware chain validates requests before handlers:
 |------------|---------|
 | `LimitBody` | 1MB request size limit |
 | `RequireJSON` | Content-Type validation |
-| `DedupMiddleware` | Rejects duplicate requests (same request ID) |
+| `DedupMiddleware` | Caches responses by `X-Request-ID`; duplicates return cached response (5-min TTL) |
 
 Input validation occurs at handler entry (seed validation, ID format checks). Existence checks before mutation prevent invalid state transitions.
 
