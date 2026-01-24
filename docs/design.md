@@ -31,6 +31,8 @@ Sizing policy affects:
 
 ## Conceptual Model
 
+**Scope:** Single-aggregate architecture. Each simulation instance is an independent aggregate—commands operate on one simulation, no cross-instance coordination needed. Event handlers are idempotent; replaying events produces identical state.
+
 ### How State Works in This Simulation
 
 Traditional applications store state directly: when you change something, you update a variable or database record. This simulation takes a different approach borrowed from accounting and version control—we store *what happened* rather than *what is*.
@@ -196,7 +198,7 @@ The variance model is the heart of the simulation. It maps understanding level t
 | Medium | 0.80 - 1.20x | Some unknowns, moderate variance |
 | Low | 0.50 - 1.50x | High uncertainty, frequent surprise |
 
-**Implementation:** Each tick, actual effort = estimated effort × random multiplier from the range above.
+**Implementation:** Each tick, actual effort = estimated effort × random multiplier from the range above. The multiplier calculation is pure (Calculation); the RNG call that selects a value is an Action. Together they form an Action per FP Guide §4.
 
 ### Phase Effort Distribution
 
@@ -912,6 +914,8 @@ func respondWithSimulation(w http.ResponseWriter, inst registry.SimInstance, sta
 
 **Controller (ONE integration test):** Full lifecycle test - create simulation, start sprint, tick until sprint ends, verify links change. HATEOAS link presence = correct behavior.
 
+**Rebalancing (Khorikov):** Delete unit tests for Trivial code. Replace per-handler controller tests with ONE integration test covering the full lifecycle. Keep domain unit tests.
+
 ### Boundary Defense (Go Dev Guide §8)
 
 HTTP middleware chain validates requests before handlers:
@@ -931,8 +935,6 @@ Input validation occurs at handler entry (seed validation, ID format checks). Ex
 ### Overview
 
 The simulation uses event sourcing to enable shared access between TUI and API. Instead of mutating state directly, the engine emits events. State is derived by replaying events through a projection.
-
-**Scope:** Single-aggregate per simulation instance. No cross-instance queries, no distributed transactions (sagas not needed). Event handlers are idempotent—replaying produces identical state.
 
 ```
 Commands (Tick, Assign, Decompose)
