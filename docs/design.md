@@ -41,7 +41,7 @@ Think of a bank account. You could store just the current balance ($1,234), but 
 
 An **event** is an immutable fact about something that happened: "Developer Alice was assigned to ticket TKT-42" or "Sprint 3 ended with 12 tickets completed." Events are never modified or deleted—they're historical records.
 
-The simulation stores these events in sequence. To know the current state (who's working on what, which tickets are done), we replay the events from the beginning and compute the answer. This replay process uses a **projection**—a function that takes events and produces current state.
+The simulation stores these events in sequence. To know the current state (who's working on what, which tickets are done), we replay the events from the beginning and compute the answer. This replay process uses a **projection**—both a function that transforms events into state, and a persistent read model optimized for queries. Multiple projections can exist, each serving different query patterns (ES Guide §8).
 
 ### Why This Matters
 
@@ -55,7 +55,7 @@ Event sourcing enables several things this simulation needs:
 
 The simulation separates *what data looks like* from *how it changes*. This follows the Actions/Calculations/Data taxonomy from functional programming (FP Guide §3).
 
-**Pure Data types** (like `Simulation`, `Ticket`, `Developer`) are immutable structures with query methods only—they describe state but never change it. When you need a modified version, you create a new copy (copy-on-write).
+**Pure Data types** (like `Simulation`, `Ticket`, `Developer`) are immutable structures with query methods only—they describe state but never change it. When you need a modified version, you create a new copy (copy-on-write). This discipline is what makes reproducibility possible: immutable data plus deterministic calculations means replaying the same events always yields the same state.
 
 **Engine** produces events when you invoke commands:
 
