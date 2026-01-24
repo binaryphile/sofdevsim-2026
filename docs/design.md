@@ -874,7 +874,7 @@ Handlers separate command execution from query response using a dedicated helper
 ```go
 // respondWithSimulation writes the HAL response for a simulation instance.
 // Query: builds read model from instance state.
-// Per CQRS Guide §Query Side: queries should be clearly separated from commands.
+// Per ES Guide §5: queries should be clearly separated from commands.
 func respondWithSimulation(w http.ResponseWriter, inst registry.SimInstance, status int) {
     state := ToState(inst.Engine.Sim(), inst.Tracker)
     response := HALResponse{State: state, Links: LinksFor(state)}
@@ -882,7 +882,7 @@ func respondWithSimulation(w http.ResponseWriter, inst registry.SimInstance, sta
 }
 ```
 
-**Pattern:** Commands mutate state via Engine, then delegate to this helper for the query phase. Per CQRS Guide §Query Side, queries should be clearly separated from commands. The helper builds a read model (ES Guide §8) then performs I/O - an acceptable boundary layer per FP Guide.
+**Pattern:** Commands mutate state via Engine, then delegate to this helper for the query phase. Per ES Guide §5, queries should be clearly separated from commands. The helper builds a read model (ES Guide §8) then performs I/O - an acceptable boundary layer per FP Guide.
 
 **Components:**
 
