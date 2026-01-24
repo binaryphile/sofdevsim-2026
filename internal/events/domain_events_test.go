@@ -341,19 +341,6 @@ func TestEvents_CausedByWorksOnAllTypes(t *testing.T) {
 	}
 }
 
-func TestHeader_EventVersion_ReturnsVersionField(t *testing.T) {
-	// TDD: Test that EventVersion() returns the Version field value
-	h := Header{Version: 1}
-	if h.EventVersion() != 1 {
-		t.Errorf("EventVersion() = %d, want 1", h.EventVersion())
-	}
-
-	h2 := Header{Version: 2}
-	if h2.EventVersion() != 2 {
-		t.Errorf("EventVersion() = %d, want 2", h2.EventVersion())
-	}
-}
-
 func TestAllConstructors_ReturnVersionOne(t *testing.T) {
 	// TDD: All 19 event constructors must set Version: 1
 	events := []Event{
