@@ -1078,6 +1078,31 @@ type EventStore interface {
 }
 ```
 
+### Event Versioning (ES Guide §11)
+
+Events are immutable—once stored, they cannot be changed. When event structure evolves, upcasting transforms old versions to current schema on read:
+
+```go
+// Upcaster transforms old event versions to current schema.
+// Key format: "EventType:vN" (e.g., "TicketAssigned:v1")
+type Upcaster struct {
+    transforms map[string]func(Event) Event
+}
+
+func (u Upcaster) Apply(evt Event) Event {
+    // Loop until no transform matches (transitive: v1→v2→v3)
+    // Panics on cycle detection (version chains must be DAG)
+}
+```
+
+**How it works:**
+1. Each event carries a `Version` field (default: 1)
+2. On replay, `Upcaster.Apply()` checks for registered transforms
+3. Transform bumps version and modifies fields as needed
+4. Transitive chaining: v1→v2, v2→v3 automatically applies v1→v3
+
+**Current state:** `DefaultUpcaster` has no transforms registered (no schema changes yet). Transforms are added as schema evolves.
+
 ### Projection
 
 The projection rebuilds simulation state from events:
