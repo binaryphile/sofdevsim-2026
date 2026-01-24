@@ -29,6 +29,60 @@ Sizing policy affects:
 
 ---
 
+## Conceptual Model
+
+### How State Works in This Simulation
+
+Traditional applications store state directly: when you change something, you update a variable or database record. This simulation takes a different approach borrowed from accounting and version control—we store *what happened* rather than *what is*.
+
+Think of a bank account. You could store just the current balance ($1,234), but banks don't do that. They store every transaction: deposit $500, withdraw $100, deposit $834. The balance is computed by replaying the transactions. This is **event sourcing** (see ES Guide §6).
+
+### Events: The Source of Truth
+
+An **event** is an immutable fact about something that happened: "Developer Alice was assigned to ticket TKT-42" or "Sprint 3 ended with 12 tickets completed." Events are never modified or deleted—they're historical records.
+
+The simulation stores these events in sequence. To know the current state (who's working on what, which tickets are done), we replay the events from the beginning and compute the answer. This replay process uses a **projection**—a function that takes events and produces current state.
+
+### Why This Matters
+
+Event sourcing enables several things this simulation needs:
+
+- **Shared access**: The TUI and HTTP API can both observe the same simulation by watching the same event stream
+- **Reproducibility**: Same seed + same commands = same event sequence = same outcome
+- **Debugging**: Every state change has a recorded cause
+
+### The Engine and Mutations
+
+The simulation separates *what data looks like* from *how it changes*. This follows the Actions/Calculations/Data taxonomy from functional programming (FP Guide §3).
+
+**Pure Data types** (like `Simulation`, `Ticket`, `Developer`) are immutable structures with query methods only—they describe state but never change it. When you need a modified version, you create a new copy (copy-on-write).
+
+**Engine** produces events when you invoke commands:
+
+```
+engine.Tick()  →  emits [Ticked, WorkProgressed, TicketCompleted, ...]
+```
+
+**Projection** rebuilds state by replaying events—a pure calculation:
+
+```
+projection.Apply(events)  →  current Simulation state
+```
+
+Commands flow through Engine; queries read from Projection. This separation is CQRS (ES Guide §1-2).
+
+### Reading the Domain Model
+
+With this context, the diagrams below make more sense. When you see a note like "Simulation is a pure Data type with query methods only—mutation happens via Engine," it means:
+
+1. `Simulation` holds state but has no methods that change it (immutable)
+2. To change anything, go through `Engine`, which emits events
+3. The events flow through `Projection` to produce new state
+
+Index-based lookups like `FindDeveloperIndex(id)` return -1 when not found—a Go convention that avoids nil pointer issues while signaling "not present." This is safer than returning a pointer that might be nil.
+
+---
+
 ## Domain Model
 
 ```mermaid
@@ -112,6 +166,7 @@ classDiagram
 
 ```mermaid
 stateDiagram-v2
+    direction LR
     [*] --> Research
     Research --> Sizing
     Sizing --> Planning
