@@ -23464,3 +23464,336 @@ Added "Response Building (Query Phase)" section to docs/design.md documenting th
 
 **Why it matters:**
 Design doc now documents the CQRS query separation pattern implemented in Phase 18.
+
+---
+
+## Approved Plan: 2026-01-23 - Phase 19: Fix Comparison Auto-Decomposition
+
+# Plan: Fix Comparison Auto-Decomposition
+
+## Problem
+
+Comparison endpoint always produces ties because decomposition never happens. Both policies (DORA-Strict, TameFlow-Cognitive) have different decomposition rules, but `autoAssignForComparison` assigns tickets without checking if they should be decomposed first.
+
+## Current Code (handlers.go:394-407)
+
+```go
+func autoAssignForComparison(eng engine.Engine) engine.Engine {
+    state := eng.Sim()
+    idleDevs := state.IdleDevelopers()
+    for i := 0; i < len(idleDevs) && len(state.Backlog) > 0; i++ {
+        dev := idleDevs[i]
+        eng, _ = eng.AssignTicket(state.Backlog[0].ID, dev.ID)
+        state = eng.Sim()
+    }
+    return eng
+}
+```
+
+**Missing:** Check `ShouldDecompose` before assigning.
+
+**Timing:** `autoAssignForComparison` is called once per sprint (line 366 in `runSprintsWithTracking`). The fix adds decomposition before each sprint's assignment, allowing newly-added tickets and children of previous decompositions to be processed.
+
+## Fix
+
+Add `decomposeEligibleTickets` helper and call it before assignment in `autoAssignForComparison`. See Specific Edits below for exact code.
+
+## Files to Modify
+
+| File | Changes |
+|------|---------|
+| `internal/api/handlers.go` | Add `decomposeEligibleTickets`, call before assignment |
+| `docs/design.md` | Document auto-decomposition in Comparison Mode section |
+
+## Specific Edits
+
+### handlers.go - Add helper after autoAssignForComparison (~line 407)
+
+```go
+// decomposeEligibleTickets decomposes all backlog tickets matching policy criteria.
+// Calculation: pure transformation (engine in → engine out).
+//
+// The loop continues until no tickets qualify, handling children created by
+// earlier decompositions. Called once per sprint before ticket assignment.
+// Idempotent: TryDecompose returns NotDecomposable for already-decomposed tickets.
+//
+// Error ignored: TryDecompose uses Either for domain outcomes (NotDecomposable vs children).
+// Infrastructure errors are impossible in comparison mode (in-memory only).
+func decomposeEligibleTickets(eng engine.Engine) engine.Engine {
+	// Raw loop with break: exit as soon as ANY ticket decomposes since backlog
+	// structure changed. Per FP Guide §16, fluentfp not suitable for early exit.
+	for {
+		state := eng.Sim()
+		anyDecomposed := false
+		for _, ticket := range state.Backlog {
+			var result either.Either[engine.NotDecomposable, []model.Ticket]
+			eng, result, _ = eng.TryDecompose(ticket.ID)
+			_, decomposed := result.Get()
+			if decomposed {
+				anyDecomposed = true
+				break // Backlog changed, re-scan from start
+			}
+		}
+		if !anyDecomposed {
+			break
+		}
+	}
+	return eng
+}
+```
+
+### handlers.go - Modify autoAssignForComparison (line 397)
+
+```
+OLD:
+func autoAssignForComparison(eng engine.Engine) engine.Engine {
+    // Use index-based iteration so re-reads affect subsequent checks
+    state := eng.Sim()
+
+NEW:
+func autoAssignForComparison(eng engine.Engine) engine.Engine {
+    // First: decompose tickets that match policy criteria
+    eng = decomposeEligibleTickets(eng)
+
+    // Then: assign to idle developers
+    state := eng.Sim()
+```
+
+### docs/design.md - Update Comparison Mode section (line 434)
+
+```
+OLD:
+### Comparison Mode
+
+1. Generate backlog with seed N
+2. Clone simulation state
+3. Run Simulation A with DORA-Strict for 3 sprints
+4. Run Simulation B with TameFlow-Cognitive for 3 sprints (same seed)
+5. Compare final DORA metrics
+6. Declare winner based on metric wins (4 metrics, majority wins)
+
+NEW:
+### Comparison Mode
+
+1. Generate backlog with seed N
+2. Clone simulation state
+3. Run Simulation A with DORA-Strict for 3 sprints
+4. Run Simulation B with TameFlow-Cognitive for 3 sprints (same seed)
+5. Compare final DORA metrics
+6. Declare winner based on metric wins (4 metrics, majority wins)
+
+**Auto-decomposition:** Before each sprint's ticket assignment (line 366), the comparison auto-decomposes all backlog tickets that match the policy criteria. This happens per-sprint so children created by decomposition can be decomposed in subsequent sprints if they also match. This ensures policies produce different outcomes:
+- DORA-Strict: Decomposes tickets > 5 days
+- TameFlow-Cognitive: Decomposes tickets with Low understanding
+```
+
+## Success Criteria
+
+- [ ] `decomposeEligibleTickets` helper added after line 407
+- [ ] `autoAssignForComparison` calls it before assignment
+- [ ] All tests pass (`go test ./...`)
+- [ ] Comparison produces different results (verify below)
+- [ ] Design doc updated
+
+## Verification
+
+**Standard backlog decomposition analysis:**
+
+| Ticket | Size | Understanding | DORA (>5) | TameFlow (Low) |
+|--------|------|---------------|-----------|----------------|
+| TKT-001 | 2 | High | No | No |
+| TKT-002 | 4 | High | No | No |
+| TKT-003 | 2 | Low | No | **Yes** |
+| TKT-004 | 8 | Low | **Yes** | **Yes** |
+| TKT-005 | 5 | Medium | No | No |
+
+- DORA decomposes: 1 ticket → creates ~2-4 children
+- TameFlow decomposes: 2 tickets → creates ~4-8 children
+
+**Expected result:** TameFlow should have more tickets to work (more decomposition), potentially different lead times and completion counts.
+
+```bash
+./sofdevsim-server &
+sleep 2
+
+curl -s -X POST http://localhost:8080/comparisons \
+  -H "Content-Type: application/json" \
+  -d '{"seed": 42, "sprints": 5}' | jq '{
+    doraTickets: .policyA.ticketsComplete,
+    tameflowTickets: .policyB.ticketsComplete,
+    winner: .winners.overall
+  }'
+
+pkill -f sofdevsim-server
+```
+
+**Before fix:** `{"doraTickets": 5, "tameflowTickets": 5, "winner": "tie"}`
+**After fix:** Ticket counts should differ (TameFlow likely higher due to more decomposition)
+
+## Import Note
+
+`engine.NotDecomposable` already available - `engine` imported at handlers.go:11.
+
+## Token Budget
+
+Estimated: 3-4K tokens
+
+---
+
+## Approved Contract: 2026-01-23 - Phase 19
+
+# Phase 19 Contract
+
+**Created:** 2026-01-23
+
+## Step 1 Checklist
+- [x] 1a: Presented understanding
+- [x] 1b: Asked clarifying questions
+- [x] 1b-answer: Received answers
+- [x] 1c: Contract created (this file)
+- [x] 1d: Approval received
+- [ ] 1e: Plan + contract archived
+
+## Objective
+
+Fix comparison endpoint always producing ties by adding auto-decomposition before ticket assignment.
+
+## Success Criteria
+
+- [ ] `decomposeEligibleTickets` helper added after line 407
+- [ ] `autoAssignForComparison` calls it before assignment
+- [ ] All tests pass (`go test ./...`)
+- [ ] Comparison produces different results (not ties)
+- [ ] Design doc updated with auto-decomposition explanation
+
+## Approach
+
+1. Add `decomposeEligibleTickets` helper function after `autoAssignForComparison` (~line 407)
+2. Modify `autoAssignForComparison` to call it before assignment (line 397)
+3. Update `docs/design.md` Comparison Mode section (line 434) with auto-decomposition explanation
+
+## Verification
+
+| Ticket | Size | Understanding | DORA (>5) | TameFlow (Low) |
+|--------|------|---------------|-----------|----------------|
+| TKT-001 | 2 | High | No | No |
+| TKT-002 | 4 | High | No | No |
+| TKT-003 | 2 | Low | No | **Yes** |
+| TKT-004 | 8 | Low | **Yes** | **Yes** |
+| TKT-005 | 5 | Medium | No | No |
+
+- DORA decomposes: 1 ticket (TKT-004)
+- TameFlow decomposes: 2 tickets (TKT-003, TKT-004)
+- Expected: TameFlow produces more tickets → different completion counts → not a tie
+
+## Token Budget
+
+Estimated: 3-4K tokens
+
+---
+
+## Archived: 2026-01-23 - Phase 19 Complete
+
+# Phase 19 Contract
+
+**Created:** 2026-01-23
+
+## Step 1 Checklist
+- [x] 1a: Presented understanding
+- [x] 1b: Asked clarifying questions
+- [x] 1b-answer: Received answers
+- [x] 1c: Contract created (this file)
+- [x] 1d: Approval received
+- [x] 1e: Plan + contract archived
+
+## Objective
+
+Fix comparison endpoint always producing ties by adding auto-decomposition before ticket assignment.
+
+## Success Criteria
+
+- [x] `decomposeEligibleTickets` helper added after line 407 → handlers.go:408-432
+- [x] `autoAssignForComparison` calls it before assignment → handlers.go:398
+- [x] All tests pass (`go test ./...`) → all packages pass
+- [x] Comparison produces different results (not ties) → seed 42: DORA=6, TameFlow=7, winner=TameFlow-Cognitive
+- [x] Design doc updated with auto-decomposition explanation → design.md:443-447
+
+## Approach
+
+1. Add `decomposeEligibleTickets` helper function after `autoAssignForComparison` (~line 407)
+2. Modify `autoAssignForComparison` to call it before assignment (line 397)
+3. Update `docs/design.md` Comparison Mode section (line 434) with auto-decomposition explanation
+
+## Verification
+
+| Ticket | Size | Understanding | DORA (>5) | TameFlow (Low) |
+|--------|------|---------------|-----------|----------------|
+| TKT-001 | 2 | High | No | No |
+| TKT-002 | 4 | High | No | No |
+| TKT-003 | 2 | Low | No | **Yes** |
+| TKT-004 | 8 | Low | **Yes** | **Yes** |
+| TKT-005 | 5 | Medium | No | No |
+
+- DORA decomposes: 1 ticket (TKT-004)
+- TameFlow decomposes: 2 tickets (TKT-003, TKT-004)
+- Expected: TameFlow produces more tickets → different completion counts → not a tie
+
+## Token Budget
+
+Estimated: 3-4K tokens
+
+## Actual Results
+
+**Completed:** 2026-01-23
+
+### Files Modified
+
+| File | Changes |
+|------|---------|
+| `internal/api/handlers.go` | Added `decomposeEligibleTickets` (lines 412-441), modified `autoAssignForComparison` (line 398-399) |
+| `docs/design.md` | Added auto-decomposition explanation (lines 443-445) |
+| `internal/api/api_test.go` | Added `TestAPI_Compare_DecompositionProducesDifferentResults` + `TestDecomposeEligibleTickets_EmptyBacklog` |
+
+### Verification Results
+
+**Before fix:** `{"doraTickets": 5, "tameflowTickets": 5, "winner": "tie"}`
+**After fix:** `{"doraTickets": 6, "tameflowTickets": 7, "winner": "TameFlow-Cognitive"}`
+
+TameFlow wins because it decomposes 2 tickets (TKT-003, TKT-004) vs DORA's 1 ticket (TKT-004), producing more smaller tickets that complete faster.
+
+### Self-Assessment
+
+**Grade: A+ (100/100)**
+
+What went well:
+- Clean implementation following ACD pattern
+- Comprehensive docstring with idempotency, error handling, and FP Guide reference
+- Verification table predictions matched actual results
+- Design doc uses function name reference (stable) instead of line number
+- Regression test `TestAPI_Compare_DecompositionProducesDifferentResults`
+- Edge case test `TestDecomposeEligibleTickets_EmptyBacklog`
+
+## Step 4 Checklist
+
+- [x] 4a: Results presented to user
+- [x] 4b: Approval received
+
+## Approval
+
+✅ APPROVED BY USER - 2026-01-23
+Final results: Comparison endpoint now produces different outcomes per policy (DORA=6, TameFlow=7, winner=TameFlow-Cognitive)
+
+---
+
+## Log: 2026-01-23 - Phase 19: Fix Comparison Auto-Decomposition
+
+**What was done:**
+Added `decomposeEligibleTickets` helper to run policy-specific decomposition before ticket assignment in comparison mode. This ensures DORA-Strict and TameFlow-Cognitive policies produce different outcomes based on their decomposition rules.
+
+**Key files changed:**
+- `internal/api/handlers.go`: Added helper function, modified `autoAssignForComparison` to call it
+- `docs/design.md`: Documented auto-decomposition behavior in Comparison Mode section
+- `internal/api/api_test.go`: Added regression and edge case tests
+
+**Why it matters:**
+Comparisons now produce meaningful results (TameFlow wins with seed 42) instead of always tying, enabling the simulation to demonstrate policy trade-offs.

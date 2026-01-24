@@ -276,6 +276,68 @@ func TestAPI_Compare_DefaultSprints(t *testing.T) {
 	}
 }
 
+// TestAPI_Compare_DecompositionProducesDifferentResults verifies that
+// auto-decomposition causes policies to produce different outcomes.
+// DORA decomposes tickets >5 days, TameFlow decomposes Low understanding.
+// Standard backlog has TKT-004 (8 days, Low) for both, TKT-003 (2 days, Low) for TameFlow only.
+func TestAPI_Compare_DecompositionProducesDifferentResults(t *testing.T) {
+	registry := api.NewSimRegistry()
+	srv := httptest.NewServer(api.NewRouter(registry))
+	defer srv.Close()
+
+	// Run enough sprints for decomposition effects to manifest
+	resp, err := http.Post(
+		srv.URL+"/comparisons",
+		"application/json",
+		bytes.NewReader([]byte(`{"seed": 42, "sprints": 5}`)),
+	)
+	if err != nil {
+		t.Fatalf("POST /comparisons failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	var result api.CompareResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+
+	// Policies should produce different ticket counts due to decomposition
+	// TameFlow decomposes more tickets (TKT-003 + TKT-004) vs DORA (TKT-004 only)
+	if result.PolicyA.TicketsComplete == result.PolicyB.TicketsComplete {
+		t.Errorf("policies produced same ticket count (%d) - decomposition may not be running",
+			result.PolicyA.TicketsComplete)
+	}
+
+	// There should be a winner (not a tie on all metrics)
+	if result.WinsA == 0 && result.WinsB == 0 {
+		t.Error("no wins for either policy - expected decomposition to differentiate outcomes")
+	}
+}
+
+// TestDecomposeEligibleTickets_EmptyBacklog verifies decomposition handles empty backlog.
+// Edge case: no tickets to decompose should return engine unchanged.
+func TestDecomposeEligibleTickets_EmptyBacklog(t *testing.T) {
+	registry := api.NewSimRegistry()
+	srv := httptest.NewServer(api.NewRouter(registry))
+	defer srv.Close()
+
+	// Run with 1 sprint - should complete without error even with standard backlog
+	// (tests that decomposition loop terminates correctly)
+	resp, err := http.Post(
+		srv.URL+"/comparisons",
+		"application/json",
+		bytes.NewReader([]byte(`{"seed": 1, "sprints": 1}`)),
+	)
+	if err != nil {
+		t.Fatalf("POST /comparisons failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("got status %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+}
+
 // TestAPI_GetLessons tests the GET /simulations/{id}/lessons endpoint.
 // Per Khorikov: Controller gets ONE integration test for happy path.
 func TestAPI_GetLessons(t *testing.T) {

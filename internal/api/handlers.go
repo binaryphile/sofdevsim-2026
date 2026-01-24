@@ -395,13 +395,47 @@ func runComparison(policy model.SizingPolicy, seed int64, sprints int) metrics.S
 // Calculation: pure transformation (engine in → engine out).
 // No event store, so errors are impossible (in-memory only).
 func autoAssignForComparison(eng engine.Engine) engine.Engine {
-	// Use index-based iteration so re-reads affect subsequent checks
+	// First: decompose tickets that match policy criteria
+	eng = decomposeEligibleTickets(eng)
+
+	// Then: assign to idle developers
 	state := eng.Sim()
 	idleDevs := state.IdleDevelopers()
 	for i := 0; i < len(idleDevs) && len(state.Backlog) > 0; i++ {
 		dev := idleDevs[i]
 		eng, _ = eng.AssignTicket(state.Backlog[0].ID, dev.ID)
 		state = eng.Sim() // Re-read after assignment - updates Backlog for next iteration
+	}
+	return eng
+}
+
+// decomposeEligibleTickets decomposes all backlog tickets matching policy criteria.
+// Calculation: pure transformation (engine in → engine out).
+//
+// The loop continues until no tickets qualify, handling children created by
+// earlier decompositions. Called once per sprint before ticket assignment.
+// Idempotent: TryDecompose returns NotDecomposable for already-decomposed tickets.
+//
+// Error ignored: TryDecompose uses Either for domain outcomes (NotDecomposable vs children).
+// Infrastructure errors are impossible in comparison mode (in-memory only).
+func decomposeEligibleTickets(eng engine.Engine) engine.Engine {
+	// Raw loop with break: exit as soon as ANY ticket decomposes since backlog
+	// structure changed. Per FP Guide §16, fluentfp not suitable for early exit.
+	for {
+		state := eng.Sim()
+		anyDecomposed := false
+		for _, ticket := range state.Backlog {
+			var result either.Either[engine.NotDecomposable, []model.Ticket]
+			eng, result, _ = eng.TryDecompose(ticket.ID)
+			_, decomposed := result.Get()
+			if decomposed {
+				anyDecomposed = true
+				break // Backlog changed, re-scan from start
+			}
+		}
+		if !anyDecomposed {
+			break
+		}
 	}
 	return eng
 }

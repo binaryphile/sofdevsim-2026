@@ -440,6 +440,10 @@ flowchart LR
 5. Compare final DORA metrics
 6. Declare winner based on metric wins (4 metrics, majority wins)
 
+**Auto-decomposition:** Before each sprint's ticket assignment (in `autoAssignForComparison`), the comparison auto-decomposes all backlog tickets that match the policy criteria. This happens per-sprint so children created by decomposition can be decomposed in subsequent sprints if they also match. This ensures policies produce different outcomes:
+- DORA-Strict: Decomposes tickets > 5 days
+- TameFlow-Cognitive: Decomposes tickets with Low understanding
+
 ---
 
 ## Key Design Decisions
