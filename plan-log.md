@@ -23439,3 +23439,28 @@ Extracted `respondWithSimulation` helper to separate query logic from command ha
 
 **Why it matters:**
 Improves CQRS compliance by making query phase explicit. Commands now delegate to dedicated read model builder.
+
+---
+
+## Archived: 2026-01-23 - Phase 18b Contract
+
+**Objective:** Document `respondWithSimulation` helper in docs/design.md
+
+**Success Criteria:**
+- [x] Section added after LinksFor documentation
+- [x] Pattern, components table, and exception documented
+
+✅ APPROVED BY USER - 2026-01-23
+
+---
+
+## Log: 2026-01-23 - Phase 18b Design Doc Update
+
+**What was done:**
+Added "Response Building (Query Phase)" section to docs/design.md documenting the respondWithSimulation helper pattern with ACD classification, Guide references, and verified line numbers.
+
+**Key files changed:**
+- `docs/design.md`: Added section at line 1039 with code block, components table, call sites
+
+**Why it matters:**
+Design doc now documents the CQRS query separation pattern implemented in Phase 18.

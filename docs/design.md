@@ -1036,6 +1036,36 @@ func LinksFor(state SimulationState) map[string]string {
 
 This pure function enables unit testing of link logic without HTTP. Key insight: `assign` is not nested under `SprintActive` because UC11 requires sprint planning before the sprint starts.
 
+### Response Building (Query Phase)
+
+Handlers separate command execution from query response using a dedicated helper:
+
+```go
+// respondWithSimulation writes the HAL response for a simulation instance.
+// Query: builds read model from instance state.
+// Per CQRS Guide §Query Side: queries should be clearly separated from commands.
+func respondWithSimulation(w http.ResponseWriter, inst registry.SimInstance, status int) {
+    state := ToState(inst.Engine.Sim(), inst.Tracker)
+    response := HALResponse{State: state, Links: LinksFor(state)}
+    writeJSON(w, status, response)
+}
+```
+
+**Pattern:** Commands mutate state via Engine, then delegate to this helper for the query phase. Per CQRS Guide §Query Side, queries should be clearly separated from commands. The helper builds a read model (ES Guide §8) then performs I/O - an acceptable boundary layer per FP Guide.
+
+**Components:**
+
+| Function | Classification | Purpose |
+|----------|---------------|---------|
+| `ToState()` | Calculation (pure) | Builds read model from simulation + tracker |
+| `LinksFor()` | Calculation (pure) | Computes HATEOAS links from state |
+| `writeJSON()` | Action | HTTP I/O |
+| `respondWithSimulation()` | Action | Orchestrates calculations → I/O |
+
+**Call sites:** HandleCreateSimulation (164), HandleGetSimulation (178), HandleStartSprint (207), HandleTick (244), HandleAssignTicket (294), HandleSetPolicy (508).
+
+**Exception:** HandleDecompose (529) uses `DecomposeResponse` at line 564 (includes decomposition-specific fields).
+
 ### Test Strategy (Khorikov Quadrants)
 
 | Component | Quadrant | Complexity | Collaborators | Strategy |
