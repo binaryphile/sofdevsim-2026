@@ -79,8 +79,6 @@ With this context, the diagrams below make more sense. When you see a note like 
 2. To change anything, go through `Engine`, which emits events
 3. The events flow through `Projection` to produce new state
 
-Index-based lookups like `FindDeveloperIndex(id)` return -1 when not found—a Go convention that avoids nil pointer issues while signaling "not present." This is safer than returning a pointer that might be nil.
-
 ---
 
 ## Domain Model
