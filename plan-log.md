@@ -23049,3 +23049,220 @@ Updated compliance-grading.md to reflect that all 4 "missing" edge case tests al
 **Why it matters:**
 Accurate compliance tracking ensures the grading document reflects actual codebase state.
 
+
+---
+
+## Approved Plan: 2026-01-23
+
+# Plan: Phase 16 - Engine ACD Documentation
+
+## Objective
+
+Enhance Engine struct documentation to explicitly label each field as pure (Calculation/Data) or impure (Action) per FP Guide.
+
+## Current State
+
+Engine type doc (lines 19-26) already says "orchestrates pure and impure operations" but struct field comments don't explicitly classify each field:
+
+```go
+type Engine struct {
+    proj     events.Projection   // Source of truth for event sourcing
+    variance VarianceModel       // Value type: pure calculation
+    evtGen   EventGenerator      // deterministic event generation
+    policies PolicyEngine        // Value type: pure decision logic
+    store    events.Store        // optional event store for event sourcing
+    trace    events.TraceContext // current trace context for event correlation
+}
+```
+
+## Target State
+
+Add explicit ACD labels to each field:
+
+```go
+type Engine struct {
+    proj     events.Projection   // Data: immutable state derived from events
+    variance VarianceModel       // Calculation: pure, deterministic variance
+    evtGen   EventGenerator      // Calculation: seeded RNG, deterministic per tick
+    policies PolicyEngine        // Calculation: pure policy decisions
+    store    events.Store        // Action: I/O to event store (optional)
+    trace    events.TraceContext // Data: correlation context for events
+}
+```
+
+**evtGen classification verified:** Uses `rand.New(rand.NewSource(seed + tick))` internally - creates LOCAL seeded RNG, no global state or external entropy. Same seed + same tick = same output = deterministic = Calculation.
+
+## Files to Modify
+
+| File | Changes |
+|------|---------|
+| `internal/engine/engine.go` | Update 6 struct field comments |
+| `docs/compliance-grading.md` | Mark recommendation done, update FP score |
+
+## Specific Edits
+
+### Edit 1: Engine struct field comments (engine.go:28-34)
+```
+OLD:
+type Engine struct {
+	proj     events.Projection   // Source of truth for event sourcing
+	variance VarianceModel       // Value type: pure calculation
+	evtGen   EventGenerator      // deterministic event generation
+	policies PolicyEngine        // Value type: pure decision logic
+	store    events.Store        // optional event store for event sourcing
+	trace    events.TraceContext // current trace context for event correlation
+}
+
+NEW:
+type Engine struct {
+	proj     events.Projection   // Data: immutable state derived from events
+	variance VarianceModel       // Calculation: pure, deterministic variance
+	evtGen   EventGenerator      // Calculation: seeded RNG, deterministic per tick
+	policies PolicyEngine        // Calculation: pure policy decisions
+	store    events.Store        // Action: I/O to event store (optional)
+	trace    events.TraceContext // Data: correlation context for events
+}
+```
+
+### Edit 2: Mark recommendation done (compliance-grading.md:173)
+```
+OLD: | Document Engine as "orchestrator of pure + impure" explicitly | Quick win (<1hr) | +2 points |
+NEW: | ~~Document Engine as "orchestrator of pure + impure" explicitly~~ | ~~Quick win (<1hr)~~ | ✅ DONE (2026-01-23) |
+```
+
+### Edit 3: Update FP score (compliance-grading.md:13)
+```
+OLD: | Functional Programming | A | 96/100 | Strong ACD separation; Simulation now pure Data type |
+NEW: | Functional Programming | A | 98/100 | Strong ACD separation; Engine fields explicitly labeled |
+```
+
+### Edit 4: Update detailed FP score (compliance-grading.md:127)
+```
+OLD: **Score: 88/100**
+NEW: **Score: 98/100**
+```
+
+**Score reconciliation:**
+- Detailed says 88/100, executive says 96/100 (inconsistency)
+- The +8 was from Simulation fix (2026-01-22): 88+8=96
+- This work adds +2: 96+2=98
+- Both should become 98/100
+
+## Success Criteria
+
+- [ ] All 6 Engine struct fields labeled with ACD classification
+- [ ] FP score updated: 96→98
+- [ ] Recommendation marked done in compliance doc
+
+## Token Budget
+
+Estimated: 3-5K tokens (documentation edits only)
+
+---
+
+## Approved Contract: 2026-01-23
+
+# Phase 16 Contract
+
+**Created:** 2026-01-23
+
+## Step 1 Checklist
+- [x] 1a: Presented understanding
+- [x] 1b: Asked clarifying questions
+- [x] 1b-answer: Received answers
+- [x] 1c: Contract created (this file)
+- [x] 1d: Approval received
+- [x] 1e: Plan + contract archived
+
+## Objective
+
+Enhance Engine struct documentation to explicitly label each field as pure (Calculation/Data) or impure (Action) per FP Guide.
+
+## Success Criteria
+
+- [ ] All 6 Engine struct fields labeled with ACD classification
+- [ ] FP score updated: 96→98
+- [ ] Recommendation marked done in compliance doc
+
+## Approach
+
+4 edits:
+1. Engine struct field comments (engine.go:28-34)
+2. Mark recommendation done (compliance-grading.md:173)
+3. Update executive FP score (compliance-grading.md:13)
+4. Update detailed FP score (compliance-grading.md:127)
+
+## Token Budget
+
+Estimated: 3-5K tokens
+
+---
+
+## Archived: 2026-01-23
+
+# Phase 16 Contract
+
+**Created:** 2026-01-23
+
+## Step 1 Checklist
+- [x] 1a: Presented understanding
+- [x] 1b: Asked clarifying questions
+- [x] 1b-answer: Received answers
+- [x] 1c: Contract created (this file)
+- [x] 1d: Approval received
+- [x] 1e: Plan + contract archived
+
+## Objective
+
+Enhance Engine struct documentation to explicitly label each field as pure (Calculation/Data) or impure (Action) per FP Guide.
+
+## Success Criteria
+
+- [x] All 6 Engine struct fields labeled with ACD classification
+- [x] FP score updated: 96→98 (also fixed 88→98 inconsistency)
+- [x] Recommendation marked done in compliance doc
+
+## Approach
+
+4 edits:
+1. Engine struct field comments (engine.go:28-34)
+2. Mark recommendation done (compliance-grading.md:173)
+3. Update executive FP score (compliance-grading.md:13)
+4. Update detailed FP score (compliance-grading.md:127)
+
+## Token Budget
+
+Estimated: 3-5K tokens
+
+## Actual Results
+
+**Completed:** 2026-01-23
+
+### Edits Applied
+1. ✅ Engine struct fields labeled: proj (Data), variance (Calculation), evtGen (Calculation), policies (Calculation), store (Action), trace (Data)
+2. ✅ Recommendation marked done
+3. ✅ Executive FP score: 96→98
+4. ✅ Detailed FP score: 88→98 (fixed inconsistency)
+
+## Step 4 Checklist
+- [x] 4a: Results presented to user
+- [x] 4b: Approval received
+
+## Approval
+✅ APPROVED BY USER - 2026-01-23
+Final results: Engine struct ACD documentation complete, FP score 96→98
+
+---
+
+## Log: 2026-01-23 - Phase 16 Engine ACD Documentation
+
+**What was done:**
+Added explicit ACD (Action/Calculation/Data) labels to all 6 Engine struct fields per FP Guide.
+
+**Key files changed:**
+- `internal/engine/engine.go`: Struct field comments updated with ACD labels
+- `docs/compliance-grading.md`: FP score 96→98, fixed 88 vs 96 inconsistency
+
+**Why it matters:**
+Self-documenting code makes the pure/impure boundary explicit for future maintainers.
+

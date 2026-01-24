@@ -25,12 +25,12 @@ type NotDecomposable struct {
 //
 // Value receiver: all methods return new Engine (immutable pattern per FP Guide §7).
 type Engine struct {
-	proj     events.Projection   // Source of truth for event sourcing
-	variance VarianceModel       // Value type: pure calculation
-	evtGen   EventGenerator      // deterministic event generation
-	policies PolicyEngine        // Value type: pure decision logic
-	store    events.Store        // optional event store for event sourcing
-	trace    events.TraceContext // current trace context for event correlation
+	proj     events.Projection   // Data: immutable state derived from events
+	variance VarianceModel       // Calculation: pure, deterministic variance
+	evtGen   EventGenerator      // Calculation: seeded RNG, deterministic per tick
+	policies PolicyEngine        // Calculation: pure policy decisions
+	store    events.Store        // Action: I/O to event store (optional)
+	trace    events.TraceContext // Data: correlation context for events
 }
 
 // NewEngine creates a simulation engine without event sourcing.

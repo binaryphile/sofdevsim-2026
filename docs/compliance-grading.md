@@ -10,7 +10,7 @@
 |-------|-------|-------|---------|
 | Khorikov Unit Testing | A | 99/100 | Behavior-focused tests with explicit guide references; full edge case coverage |
 | Event Sourcing | A | 96/100 | Full CQRS with optimistic concurrency; minor handler mixing |
-| Functional Programming | A | 96/100 | Strong ACD separation; Simulation now pure Data type |
+| Functional Programming | A | 98/100 | Strong ACD separation; Engine fields explicitly labeled |
 | Go Development | A | 98/100 | Value semantics conversion done; Simulation uses value receivers only |
 | **Overall** | **A** | **97/100** | Well-designed codebase with proper ACD separation |
 
@@ -124,7 +124,7 @@
 
 ### 3. Functional Programming Guide
 
-**Score: 88/100**
+**Score: 98/100**
 
 #### Strengths
 
@@ -170,7 +170,7 @@
 |----------------|--------|--------|
 | ~~**Move all Simulation mutating methods to Engine**~~ | ~~Medium (1 day)~~ | ✅ DONE (2026-01-22) |
 | ~~Make Simulation a pure Data type with only query methods~~ | ~~Medium (1 day)~~ | ✅ DONE (2026-01-22) |
-| Document Engine as "orchestrator of pure + impure" explicitly | Quick win (<1hr) | +2 points |
+| ~~Document Engine as "orchestrator of pure + impure" explicitly~~ | ~~Quick win (<1hr)~~ | ✅ DONE (2026-01-23) |
 | Consider splitting Engine into PureEngine + ImpureShell | Larger refactor | Architectural clarity |
 
 ---
