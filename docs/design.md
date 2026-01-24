@@ -840,7 +840,7 @@ type SimInstance struct {
 1. Create SimRegistry (empty, API creates simulations on demand)
 2. Start HTTP server on configurable port in goroutine
 3. Run TUI on main goroutine (Bubbletea requirement)
-4. Process exit terminates both (no graceful shutdown yet)
+4. Process exit terminates both
 
 ### Hypermedia Logic (Pure, Unit Testable)
 
@@ -912,6 +912,18 @@ func respondWithSimulation(w http.ResponseWriter, inst registry.SimInstance, sta
 
 **Controller (ONE integration test):** Full lifecycle test - create simulation, start sprint, tick until sprint ends, verify links change. HATEOAS link presence = correct behavior.
 
+### Boundary Defense (Go Dev Guide §8)
+
+HTTP middleware chain validates requests before handlers:
+
+| Middleware | Purpose |
+|------------|---------|
+| `LimitBody` | 1MB request size limit |
+| `RequireJSON` | Content-Type validation |
+| `DedupMiddleware` | Idempotency via request ID |
+
+Input validation occurs at handler entry (seed validation, ID format checks). Existence checks before mutation prevent invalid state transitions.
+
 ---
 
 ## Event Sourcing Architecture
@@ -919,6 +931,8 @@ func respondWithSimulation(w http.ResponseWriter, inst registry.SimInstance, sta
 ### Overview
 
 The simulation uses event sourcing to enable shared access between TUI and API. Instead of mutating state directly, the engine emits events. State is derived by replaying events through a projection.
+
+**Scope:** Single-aggregate per simulation instance. No cross-instance queries, no distributed transactions (sagas not needed). Event handlers are idempotent—replaying produces identical state.
 
 ```
 Commands (Tick, Assign, Decompose)
