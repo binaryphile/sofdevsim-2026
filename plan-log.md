@@ -23370,3 +23370,72 @@ Decomposed `runComparison` (40 lines) into 5 focused pure functions with consist
 
 **Why it matters:**
 Improves code clarity and Go Dev Guide compliance. Documents polymorphic ACD pattern for future reference.
+
+---
+
+## Approved Plan: 2026-01-23 - Phase 18 Read Model Extraction
+
+**Objective:** Extract `respondWithSimulation` helper to separate query logic from command handlers per CQRS Guide.
+
+**Files:** `internal/api/handlers.go`, `docs/compliance-grading.md`
+
+**Approach:**
+1. Add helper after imports with Query ACD label + CQRS/FP Guide references
+2. Refactor 7 call sites (lines 149, 168, 202, 244, 299, 518, 578)
+3. Update compliance-grading.md (lines 109-111, 124)
+
+**Success criteria:** Helper added, 7 sites refactored, tests pass, CQRS score 96→98
+
+---
+
+## Approved Contract: 2026-01-23 - Phase 18
+
+- [x] 1a: Presented understanding
+- [x] 1b: Asked clarifying questions
+- [x] 1c: Contract created
+- [x] 1d: Approval received
+- [x] 1e: Plan + contract archived
+
+---
+
+## Archived: 2026-01-23 - Phase 18 Contract
+
+# Phase 18 Contract
+
+**Created:** 2026-01-23
+
+## Objective
+
+Extract `respondWithSimulation` helper to separate query logic from command handlers per CQRS Guide.
+
+## Success Criteria
+
+- [x] `respondWithSimulation` helper added with Query ACD label
+- [x] All 6 HALResponse call sites refactored
+- [x] All tests pass
+- [x] CQRS score updated: 96→98
+
+## Actual Results
+
+**File:** `internal/api/handlers.go`
+- Added `respondWithSimulation` helper with Query ACD label, CQRS/FP Guide references
+- Refactored 6 call sites
+
+**File:** `docs/compliance-grading.md`
+- Updated CQRS score: 96→98
+
+✅ APPROVED BY USER - 2026-01-23
+
+---
+
+## Log: 2026-01-23 - Phase 18 Read Model Extraction
+
+**What was done:**
+Extracted `respondWithSimulation` helper to separate query logic from command handlers. Helper builds HAL response with HATEOAS links, documented with ACD labels and Guide references.
+
+**Key files changed:**
+- `internal/api/handlers.go`: Added helper at line 19, refactored 6 handlers
+- `docs/compliance-grading.md`: CQRS score 96→98, marked issue resolved
+
+**Why it matters:**
+Improves CQRS compliance by making query phase explicit. Commands now delegate to dedicated read model builder.

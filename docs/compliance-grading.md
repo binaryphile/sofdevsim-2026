@@ -9,7 +9,7 @@
 | Guide | Grade | Score | Summary |
 |-------|-------|-------|---------|
 | Khorikov Unit Testing | A | 99/100 | Behavior-focused tests with explicit guide references; full edge case coverage |
-| Event Sourcing | A | 96/100 | Full CQRS with optimistic concurrency; minor handler mixing |
+| Event Sourcing | A | 98/100 | Full CQRS with optimistic concurrency; explicit query separation |
 | Functional Programming | A | 98/100 | Strong ACD separation; Engine fields explicitly labeled |
 | Go Development | A | 95/100 | runComparison decomposed; value semantics complete |
 | **Overall** | **A** | **97/100** | Well-designed codebase with proper ACD separation |
@@ -67,7 +67,7 @@
 
 ### 2. CQRS/Event Sourcing Guide
 
-**Score: 96/100**
+**Score: 98/100**
 
 #### Strengths
 
@@ -106,9 +106,8 @@
 
 #### Compliance Issues
 
-**Minor** (-2 points):
-- `handlers.go:146-147`: `ToState(inst.Engine.Sim(), inst.Tracker)` - query after command in same handler
-  - Technically fine but could be cleaner with dedicated read model
+**Resolved** (2026-01-23):
+- ~~`handlers.go:146-147`: Query after command in same handler~~ → **FIXED**: Extracted `respondWithSimulation` helper with Query ACD label. Commands now delegate to explicit query phase.
 
 **Nitpick** (0 points):
 - Could add event versioning for schema evolution (currently uses upcaster pattern instead)
@@ -121,7 +120,7 @@
 
 | Recommendation | Effort | Impact |
 |----------------|--------|--------|
-| Extract read model from handler response building | Medium (1 day) | +2 points, cleaner CQRS |
+| ~~Extract read model from handler response building~~ | ~~Medium (1 day)~~ | ✅ DONE (2026-01-23) |
 | Add explicit event version field | Medium (1 day) | Future-proofing |
 
 ---

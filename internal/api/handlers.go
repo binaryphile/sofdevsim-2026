@@ -13,7 +13,22 @@ import (
 	"github.com/binaryphile/sofdevsim-2026/internal/lessons"
 	"github.com/binaryphile/sofdevsim-2026/internal/metrics"
 	"github.com/binaryphile/sofdevsim-2026/internal/model"
+	"github.com/binaryphile/sofdevsim-2026/internal/registry"
 )
+
+// respondWithSimulation writes the HAL response for a simulation instance.
+// Query: builds read model from instance state.
+// Per CQRS Guide §Query Side: queries should be clearly separated from commands.
+// Note: Contains pure calculations (ToState, LinksFor) then Action (writeJSON) -
+// acceptable I/O boundary layer per FP Guide.
+func respondWithSimulation(w http.ResponseWriter, inst registry.SimInstance, status int) {
+	state := ToState(inst.Engine.Sim(), inst.Tracker)
+	response := HALResponse{
+		State: state,
+		Links: LinksFor(state),
+	}
+	writeJSON(w, status, response)
+}
 
 // HealthResponse is returned by the /health endpoint for service identification.
 type HealthResponse struct {
@@ -146,12 +161,7 @@ func (r SimRegistry) HandleCreateSimulation(w http.ResponseWriter, req *http.Req
 	}
 
 	inst, _ := r.GetInstance(id)
-	state := ToState(inst.Engine.Sim(), inst.Tracker)
-	response := HALResponse{
-		State: state,
-		Links: LinksFor(state),
-	}
-	writeJSON(w, http.StatusCreated, response)
+	respondWithSimulation(w, inst, http.StatusCreated)
 }
 
 // HandleGetSimulation returns the current state of a simulation.
@@ -165,12 +175,7 @@ func (r SimRegistry) HandleGetSimulation(w http.ResponseWriter, req *http.Reques
 		return
 	}
 
-	state := ToState(inst.Engine.Sim(), inst.Tracker)
-	response := HALResponse{
-		State: state,
-		Links: LinksFor(state),
-	}
-	writeJSON(w, http.StatusOK, response)
+	respondWithSimulation(w, inst, http.StatusOK)
 }
 
 // HandleStartSprint starts a new sprint for the simulation.
@@ -199,12 +204,7 @@ func (r SimRegistry) HandleStartSprint(w http.ResponseWriter, req *http.Request)
 		}
 		r.SetInstance(id, inst)
 
-		state := ToState(inst.Engine.Sim(), inst.Tracker)
-		response := HALResponse{
-			State: state,
-			Links: LinksFor(state),
-		}
-		writeJSON(w, http.StatusOK, response)
+		respondWithSimulation(w, inst, http.StatusOK)
 		return
 	}
 	writeError(w, http.StatusConflict, "conflict")
@@ -241,12 +241,7 @@ func (r SimRegistry) HandleTick(w http.ResponseWriter, req *http.Request) {
 		inst.Tracker = inst.Tracker.Updated(&sim)
 		r.SetInstance(id, inst)
 
-		state := ToState(sim, inst.Tracker)
-		response := HALResponse{
-			State: state,
-			Links: LinksFor(state),
-		}
-		writeJSON(w, http.StatusOK, response)
+		respondWithSimulation(w, inst, http.StatusOK)
 		return
 	}
 	writeError(w, http.StatusConflict, "conflict")
@@ -296,12 +291,7 @@ func (r SimRegistry) HandleAssignTicket(w http.ResponseWriter, req *http.Request
 	}
 	r.SetInstance(id, inst)
 
-	state := ToState(inst.Engine.Sim(), inst.Tracker)
-	response := HALResponse{
-		State: state,
-		Links: LinksFor(state),
-	}
-	writeJSON(w, http.StatusOK, response)
+	respondWithSimulation(w, inst, http.StatusOK)
 }
 
 // HandleCompare runs two simulations with different policies and compares them.
@@ -515,12 +505,7 @@ func (r SimRegistry) HandleUpdateSimulation(w http.ResponseWriter, req *http.Req
 		}
 		r.SetInstance(id, inst)
 
-		state := ToState(inst.Engine.Sim(), inst.Tracker)
-		response := HALResponse{
-			State: state,
-			Links: LinksFor(state),
-		}
-		writeJSON(w, http.StatusOK, response)
+		respondWithSimulation(w, inst, http.StatusOK)
 		return
 	}
 	writeError(w, http.StatusConflict, "conflict")
