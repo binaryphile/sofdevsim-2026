@@ -923,9 +923,22 @@ HTTP middleware chain validates requests before handlers:
 |------------|---------|
 | `LimitBody` | 1MB request size limit |
 | `RequireJSON` | Content-Type validation |
-| `DedupMiddleware` | Caches responses by `X-Request-ID`; duplicates return cached response (5-min TTL) |
+| `DedupMiddleware` | Request deduplication (see below) |
 
 Input validation occurs at handler entry (seed validation, ID format checks). Existence checks before mutation prevent invalid state transitions.
+
+### Request Deduplication
+
+Clients may retry failed requests (network timeout, uncertain success). Without deduplication, retries could create duplicate state changes.
+
+**Mechanism:** `DedupMiddleware` caches POST responses by `X-Request-ID` header:
+
+1. Client includes `X-Request-ID: <unique-id>` header
+2. First request executes normally; response cached with 5-minute TTL
+3. Duplicate requests (same ID within TTL) return cached response without re-execution
+4. Background goroutine cleans expired entries every minute
+
+**Scope:** POST requests only (GET/PUT/DELETE are naturally idempotent or not applicable). Requests without `X-Request-ID` execute normally.
 
 ---
 
