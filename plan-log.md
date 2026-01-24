@@ -23797,3 +23797,254 @@ Added `decomposeEligibleTickets` helper to run policy-specific decomposition bef
 
 **Why it matters:**
 Comparisons now produce meaningful results (TameFlow wins with seed 42) instead of always tying, enabling the simulation to demonstrate policy trade-offs.
+
+---
+
+## Approved Plan: 2026-01-23 - Phase 20: Compliance Doc Update
+
+# Plan: Phase 20 - Compliance Doc Update
+
+## Discovery Summary
+
+Exploration revealed:
+
+1. **Quick wins already done:**
+   - Pointer receiver comments: ✅ store.go:20, registry.go:18, dedup.go:14
+   - Concurrent stress test: ✅ store_test.go:403 (1000 ops, 10 goroutines)
+
+2. **Engine refactor NOT recommended:**
+   - Pure calculations (VarianceModel, PolicyEngine) already separate from Engine
+   - Impurity (store I/O) is structural necessity for event sourcing (CQRS/ES Guide §6: "store the sequence of events")
+   - Current design correctly isolates I/O in `emit()` method per Onion Architecture (FP Guide §20)
+   - Cost/benefit doesn't justify splitting into PureEngine + EngineShell
+
+## Scope
+
+Update compliance-grading.md to:
+1. Mark completed recommendations as ✅ DONE
+2. Re-assess the FP Guide finding about Engine (current design is correct)
+3. Re-calculate scores if warranted
+
+## Files to Modify
+
+| File | Changes |
+|------|---------|
+| `docs/compliance-grading.md` | Update recommendations, re-assess Engine finding |
+
+## Specific Edits
+
+### 1. Khorikov section (line 63)
+
+Change:
+```markdown
+| Add concurrent append stress test | Medium (1 day) | +1 point, catches race |
+```
+To:
+```markdown
+| Add concurrent append stress test | Medium (1 day) | ✅ DONE: store_test.go:403 (1000 ops, 10 goroutines) |
+```
+
+**Score impact:** 99 → 100 (+1 point)
+
+### 2. FP Guide section (lines 157-168)
+
+Change "Minor (-4 points)" to "Not a smell (0 points)" with explanation:
+```markdown
+**Not a smell** (0 points):
+- `engine.go:21-28` - Engine contains both pure and impure fields
+  - **Why it's correct per ACD principles (FP Guide §3, §20):**
+    - Pure calculations (VarianceModel, PolicyEngine) are distinct types in the Domain Layer
+    - Actions (I/O via emit()) are isolated in one method at the Interaction Layer
+    - Engine orchestrates the boundary between layers per Onion Architecture (§20)
+    - The "mixing" is in the orchestrator, not the calculations themselves
+  - **Why refactor is not warranted:** Splitting into PureEngine + EngineShell would require significant API churn with marginal benefit. The current design correctly separates concerns.
+```
+
+**Score impact:** 98 → 100 (+4 points, capped at 100)
+
+### 3. Go Development section (line 230)
+
+Change:
+```markdown
+| Add `//nolint:receiver` comments to document pointer receiver choices | Quick win (<1hr) | Clarity |
+```
+To:
+```markdown
+| ~~Add `//nolint:receiver` comments~~ | ~~Quick win (<1hr)~~ | ✅ DONE: Mutex justifications documented per Go Guide §5 |
+```
+
+Existing pointer receiver comments (verified):
+- `store.go:20-21`: "Uses pointer receiver because it contains sync.RWMutex"
+- `registry.go:18-19`: "Pointer receiver required: contains sync.RWMutex (must not be copied)"
+- `dedup.go:14-15`: "Pointer receiver: contains sync.RWMutex which must not be copied after first use"
+
+Also fix line 196 - Engine uses VALUE receiver now (not pointer):
+```markdown
+- **Pointer receivers only where required**:
+  - ~~`*Engine` - mutates projection field~~ (now uses value receiver per FP Guide §7)
+  - `*MemoryStore` - has sync.RWMutex
+```
+
+**Score impact:** 95 → 97 (+2 points for pointer receiver docs)
+
+### 4. Executive Scorecard (lines 9-15)
+
+Update:
+```markdown
+| Khorikov Unit Testing | A+ | 100/100 | Behavior-focused tests; full edge case + stress coverage |
+| Event Sourcing | A | 98/100 | Full CQRS with optimistic concurrency; explicit query separation |
+| Functional Programming | A+ | 100/100 | Strong ACD separation; Engine architecture justified |
+| Go Development | A | 97/100 | Value semantics complete; pointer receivers documented |
+| **Overall** | **A+** | **99/100** | Well-designed codebase with proper ACD separation |
+```
+
+### 5. CQRS 98/100 - No Change
+
+The remaining -2 is from "Add explicit event version field" (future-proofing). This is a valid recommendation, not an error in the doc.
+
+## Success Criteria
+
+- [ ] Pointer receiver recommendation marked ✅ DONE
+- [ ] Concurrent stress test marked ✅ DONE
+- [ ] Engine "mixes pure/impure" reclassified as "not a smell"
+- [ ] Scores updated to reflect current state
+
+## Token Budget
+
+Estimated: 2K tokens
+
+---
+
+## Approved Contract: 2026-01-23 - Phase 20
+
+# Phase 20 Contract
+
+**Created:** 2026-01-23
+
+## Step 1 Checklist
+- [x] 1a: Presented understanding
+- [x] 1b: Asked clarifying questions
+- [x] 1b-answer: Received answers
+- [x] 1c: Contract created (this file)
+- [x] 1d: Approval received
+- [ ] 1e: Plan + contract archived
+
+## Objective
+
+Update compliance-grading.md to reflect that quick wins are already done and reclassify Engine architecture as correct per FP Guide.
+
+## Success Criteria
+
+- [ ] Khorikov: Concurrent stress test marked ✅ DONE (line 63)
+- [ ] FP Guide: Engine reclassified as "not a smell" with ACD justification (lines 157-168)
+- [ ] Go Guide: Pointer receiver recommendation marked ✅ DONE (line 230)
+- [ ] Go Guide: Engine pointer receiver claim corrected (line 196)
+- [ ] Executive Scorecard updated (Khorikov 100, FP 100, Go 97, Overall 99)
+
+## Approach
+
+1. Edit Khorikov recommendation table (line 63)
+2. Replace FP Guide "Minor (-4 points)" with "Not a smell (0 points)" + justification
+3. Edit Go recommendation table (line 230) + fix line 196
+4. Update Executive Scorecard scores
+
+## Token Budget
+
+Estimated: 2K tokens
+
+---
+
+## Archived: 2026-01-23
+
+# Phase 20 Contract
+
+**Created:** 2026-01-23
+
+## Step 1 Checklist
+- [x] 1a: Presented understanding
+- [x] 1b: Asked clarifying questions
+- [x] 1b-answer: Received answers
+- [x] 1c: Contract created (this file)
+- [x] 1d: Approval received
+- [x] 1e: Plan + contract archived
+
+## Objective
+
+Update compliance-grading.md to reflect that quick wins are already done and reclassify Engine architecture as correct per FP Guide.
+
+## Success Criteria
+
+- [x] Khorikov: Concurrent stress test marked ✅ DONE (line 63)
+- [x] FP Guide: Engine reclassified as "not a smell" with ACD justification (lines 157-168)
+- [x] Go Guide: Pointer receiver recommendation marked ✅ DONE (line 230)
+- [x] Go Guide: Engine pointer receiver claim corrected (line 196)
+- [x] Executive Scorecard updated (Khorikov 100, FP 100, Go 97, Overall 99)
+
+## Approach
+
+1. Edit Khorikov recommendation table (line 63)
+2. Replace FP Guide "Minor (-4 points)" with "Not a smell (0 points)" + justification
+3. Edit Go recommendation table (line 230) + fix line 196
+4. Update Executive Scorecard scores
+
+## Token Budget
+
+Estimated: 2K tokens
+
+## Actual Results
+
+**Completed:** 2026-01-23
+
+### Edits Made to compliance-grading.md
+
+1. **Executive Scorecard** (lines 9-15): Updated scores
+   - Khorikov: 99 → 100
+   - FP: 98 → 100
+   - Go: 95 → 97
+   - Overall: 97 → 99
+
+2. **Khorikov detailed score** (line 24): 99/100 → 100/100
+
+3. **Khorikov recommendation** (line 63): Marked stress test ✅ DONE
+
+4. **FP detailed score** (line 130): 98/100 → 100/100
+
+5. **FP Engine finding** (lines 157-168): Replaced "Minor (-4 points)" with "Not a smell (0 points)" + ACD/Onion justification
+
+6. **Go pointer receiver claim** (line 196): Added strikethrough noting Engine now uses value receiver
+
+7. **Go recommendation** (line 230): Marked pointer receiver docs ✅ DONE
+
+8. **Date header** (line 3): Added "Phase 20" to update note
+
+### Self-Assessment
+
+Grade: A (95/100)
+
+What went well:
+- All success criteria met
+- Doc-only changes, no code modifications needed
+
+Deductions:
+- -5: Minor line number drift from plan (actual lines shifted slightly from estimates)
+
+## Step 4 Checklist
+- [x] 4a: Results presented to user
+- [x] 4b: Approval received
+
+## Approval
+✅ APPROVED BY USER - 2026-01-23
+Final results: Compliance doc updated, scores now Khorikov 100, FP 100, Go 97, Overall 99
+
+---
+
+## Log: 2026-01-23 - Phase 20: Compliance Doc Corrections
+
+**What was done:**
+Updated compliance-grading.md to reflect that quick wins (stress test, pointer receiver docs) were already implemented, and reclassified Engine architecture as correct per ACD/Onion principles.
+
+**Key files changed:**
+- docs/compliance-grading.md: Score updates (Khorikov 100, FP 100, Go 97, Overall 99)
+
+**Why it matters:**
+Compliance grading now accurately reflects the codebase's current state at A+ (99/100).
