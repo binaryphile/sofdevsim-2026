@@ -158,7 +158,7 @@ classDiagram
     Ticket "*" -- "0..1" Ticket : parent
 ```
 
-> **Note:** Simulation is a pure Data type with query methods only. Mutation happens via Engine, which emits events that update state through Projection. Index-based lookups return -1 if not found.
+> **Note:** Simulation is a pure Data type with query methods only. Mutation happens via Engine, which emits events that update state through Projection.
 
 ### Workflow Phases
 
