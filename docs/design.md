@@ -28,7 +28,7 @@ Sizing policy affects:
 
 ## Conceptual Model
 
-**Scope:** Single-aggregate architecture. Each simulation instance is an independent aggregate—commands operate on one simulation, no cross-instance coordination needed. Event handlers are idempotent; replaying events produces identical state.
+**Scope:** Single-aggregate architecture. Each simulation instance is an independent aggregate—commands operate on one simulation, no cross-instance coordination needed.
 
 ### How State Works in This Simulation
 
@@ -843,6 +843,8 @@ type SimInstance struct {
 
 ### Hypermedia Logic (Pure, Unit Testable)
 
+**Why HATEOAS, not API Composition (ES Guide §13):** Single-aggregate scope means no cross-instance queries. Each simulation is self-contained; clients discover available actions through hypermedia links, not by composing data from multiple services.
+
 ```go
 // LinksFor is pure: state → links (unit testable)
 func LinksFor(state SimulationState) map[string]string {
@@ -924,6 +926,8 @@ HTTP middleware chain validates requests before handlers:
 | `DedupMiddleware` | Idempotency via request ID |
 
 Input validation occurs at handler entry (seed validation, ID format checks). Existence checks before mutation prevent invalid state transitions.
+
+**Idempotency:** Event handlers are idempotent—replaying events produces identical state. Request-level idempotency uses `DedupMiddleware`; event-level idempotency is guaranteed by deterministic projections (same events → same state).
 
 ---
 
