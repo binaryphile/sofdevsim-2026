@@ -940,6 +940,17 @@ Clients may retry failed requests (network timeout, uncertain success). Without 
 
 **Scope:** POST requests only (GET/PUT/DELETE are naturally idempotent or not applicable). Requests without `X-Request-ID` execute normally.
 
+**Trade-offs:**
+
+| Concern | Current Behavior | Implication |
+|---------|------------------|-------------|
+| Memory | Full response body cached per request ID | Memory grows with concurrent unique requests |
+| Cache size | Unbounded (TTL-based expiry only) | High request volume could exhaust memory |
+| Cleanup | Every 60 seconds | Expired entries linger up to 1 minute |
+| Contention | Single mutex for all operations | Could bottleneck under very high load |
+
+This is acceptable for a reference implementation with low request volume. Production would need: max cache size with LRU eviction, sharded locks, or external cache (Redis).
+
 ---
 
 ## Event Sourcing Architecture
