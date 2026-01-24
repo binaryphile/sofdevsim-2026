@@ -11,7 +11,7 @@
 | Khorikov Unit Testing | A | 99/100 | Behavior-focused tests with explicit guide references; full edge case coverage |
 | Event Sourcing | A | 96/100 | Full CQRS with optimistic concurrency; minor handler mixing |
 | Functional Programming | A | 98/100 | Strong ACD separation; Engine fields explicitly labeled |
-| Go Development | A | 98/100 | Value semantics conversion done; Simulation uses value receivers only |
+| Go Development | A | 95/100 | runComparison decomposed; value semantics complete |
 | **Overall** | **A** | **97/100** | Well-designed codebase with proper ACD separation |
 
 ---
@@ -113,6 +113,10 @@
 **Nitpick** (0 points):
 - Could add event versioning for schema evolution (currently uses upcaster pattern instead)
 
+**Not a smell** (0 points):
+- `runComparison` calls `EmitCreated` and returns metrics - appears to mix command/query
+  - **Why it's fine:** `EmitCreated` updates an in-memory projection with no store attached. Without persistence, it's a pure Calculation (same seed → same result). The "Emit" name describes the operation (emitting events to projection), not the ACD classification. When a store IS attached, the same method becomes an Action - the method is polymorphic in classification based on configuration.
+
 #### Recommendations
 
 | Recommendation | Effort | Impact |
@@ -177,7 +181,7 @@
 
 ### 4. Go Development Guide
 
-**Score: 93/100**
+**Score: 95/100**
 
 #### Strengths
 
@@ -215,20 +219,15 @@
 **Resolved** (2026-01-22):
 - ~~`model/simulation.go:58-72` - Pointer receivers on value type~~ → **FIXED**: Methods removed. Simulation now only has value receivers for query methods. Mutation happens via Engine.
 
-**Minor** (-2 points):
-- `api/handlers.go:329-363` - `runComparison` function does too much:
-  - Creates simulation
-  - Adds developers
-  - Adds tickets
-  - Runs sprints
-  - Could be decomposed into smaller pure functions
+**Resolved** (2026-01-23):
+- ~~`api/handlers.go:329-363` - `runComparison` function does too much~~ → **FIXED**: Decomposed into `addStandardTeam`, `addStandardBacklog`, `runSprintsWithTracking` pure functions with ACD labels.
 
 #### Recommendations
 
 | Recommendation | Effort | Impact |
 |----------------|--------|--------|
 | ~~**Move Simulation mutating methods to Engine**~~ | ~~Medium (1 day)~~ | ✅ DONE (2026-01-22) |
-| Decompose `runComparison` into smaller functions | Medium (1 day) | +2 points |
+| ~~Decompose `runComparison` into smaller functions~~ | ~~Medium (1 day)~~ | ✅ DONE (2026-01-23) |
 | Add `//nolint:receiver` comments to document pointer receiver choices | Quick win (<1hr) | Clarity |
 
 **Note:** ~~The Simulation fix is shared with FP Guide - one refactor, two compliance improvements.~~ Completed 2026-01-22.
@@ -242,7 +241,7 @@
 | ~~**Simulation mutating methods (FP + Go)**~~ | ~~Critical~~ | ~~Medium~~ | ✅ DONE (2026-01-22) |
 | ~~Missing edge case tests (seed=0, boundaries)~~ | ~~Minor~~ | ~~Quick~~ | ✅ DONE (2026-01-23) |
 | ~~Test names describe methods not behaviors~~ | ~~Minor~~ | ~~Quick~~ | ✅ DONE (2026-01-23) |
-| `runComparison` function too large | Minor | Medium | 🔵 Backlog |
+| ~~`runComparison` function too large~~ | ~~Minor~~ | ~~Medium~~ | ✅ DONE (2026-01-23) |
 | Read model extraction from handlers | Minor | Medium | 🔵 Backlog |
 
 **Key Insight:** ~~The Simulation structural issue is the only Critical finding.~~ **Resolved 2026-01-22:** Simulation methods moved to Engine, yielding +8 (FP) + +5 (Go) = +13 points.

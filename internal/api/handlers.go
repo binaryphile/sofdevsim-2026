@@ -347,8 +347,43 @@ func (r SimRegistry) HandleCompare(w http.ResponseWriter, req *http.Request) {
 	writeJSON(w, http.StatusOK, response)
 }
 
+// addStandardTeam adds the fixed 3-developer team for comparison runs.
+// Calculation: pure transformation (engine in → engine out).
+func addStandardTeam(eng engine.Engine) engine.Engine {
+	eng, _ = eng.AddDeveloper("dev-1", "Alice", 1.0)
+	eng, _ = eng.AddDeveloper("dev-2", "Bob", 0.8)
+	eng, _ = eng.AddDeveloper("dev-3", "Carol", 1.2)
+	return eng
+}
+
+// addStandardBacklog adds the fixed 5-ticket backlog for comparison runs.
+// Calculation: pure transformation (engine in → engine out).
+func addStandardBacklog(eng engine.Engine) engine.Engine {
+	eng, _ = eng.AddTicket(model.NewTicket("TKT-001", "Small clear", 2, model.HighUnderstanding))
+	eng, _ = eng.AddTicket(model.NewTicket("TKT-002", "Medium clear", 4, model.HighUnderstanding))
+	eng, _ = eng.AddTicket(model.NewTicket("TKT-003", "Small unclear", 2, model.LowUnderstanding))
+	eng, _ = eng.AddTicket(model.NewTicket("TKT-004", "Large unclear", 8, model.LowUnderstanding))
+	eng, _ = eng.AddTicket(model.NewTicket("TKT-005", "Medium mixed", 5, model.MediumUnderstanding))
+	return eng
+}
+
+// runSprintsWithTracking runs N sprints and returns final metrics result.
+// Calculation: pure transformation (engine in → metrics out).
+func runSprintsWithTracking(eng engine.Engine, policy model.SizingPolicy, sprints int) metrics.SimulationResult {
+	tracker := metrics.NewTracker()
+	for i := 0; i < sprints; i++ {
+		eng, _ = eng.StartSprint()
+		eng = autoAssignForComparison(eng)
+		eng, _, _ = eng.RunSprint()
+		state := eng.Sim()
+		tracker = tracker.Updated(&state)
+	}
+	state := eng.Sim()
+	return tracker.GetResult(policy, &state)
+}
+
 // runComparison runs a single simulation with the given policy.
-// No event store, so errors are impossible (in-memory only).
+// Calculation: pure transformation (policy, seed, sprints → metrics).
 func runComparison(policy model.SizingPolicy, seed int64, sprints int) metrics.SimulationResult {
 	sim := model.NewSimulation(policy, seed)
 	sim.ID = fmt.Sprintf("cmp-%d", seed)
@@ -361,39 +396,13 @@ func runComparison(policy model.SizingPolicy, seed int64, sprints int) metrics.S
 		Policy:       policy,
 	})
 
-	// Standard team setup (3 devs with varied velocities)
-	// Rationale: Fixed scenario ensures fair comparison - both policies
-	// face identical conditions. Varied velocities create realistic workload.
-	eng, _ = eng.AddDeveloper("dev-1", "Alice", 1.0)
-	eng, _ = eng.AddDeveloper("dev-2", "Bob", 0.8)
-	eng, _ = eng.AddDeveloper("dev-3", "Carol", 1.2)
-
-	// Standard backlog (5 tickets covering policy decision points)
-	// - Small+clear: Neither policy decomposes
-	// - Large+unclear: Both policies decompose
-	// - Mixed cases: Policies diverge, showing differentiation
-	eng, _ = eng.AddTicket(model.NewTicket("TKT-001", "Small clear", 2, model.HighUnderstanding))
-	eng, _ = eng.AddTicket(model.NewTicket("TKT-002", "Medium clear", 4, model.HighUnderstanding))
-	eng, _ = eng.AddTicket(model.NewTicket("TKT-003", "Small unclear", 2, model.LowUnderstanding))
-	eng, _ = eng.AddTicket(model.NewTicket("TKT-004", "Large unclear", 8, model.LowUnderstanding))
-	eng, _ = eng.AddTicket(model.NewTicket("TKT-005", "Medium mixed", 5, model.MediumUnderstanding))
-	tracker := metrics.NewTracker()
-
-	for i := 0; i < sprints; i++ {
-		eng, _ = eng.StartSprint()
-		// Auto-assign idle developers to backlog tickets
-		eng = autoAssignForComparison(eng)
-		eng, _, _ = eng.RunSprint()
-		state := eng.Sim()
-		tracker = tracker.Updated(&state)
-	}
-
-	state := eng.Sim()
-	return tracker.GetResult(policy, &state)
+	eng = addStandardTeam(eng)
+	eng = addStandardBacklog(eng)
+	return runSprintsWithTracking(eng, policy, sprints)
 }
 
 // autoAssignForComparison assigns backlog tickets to idle developers.
-// Returns updated Engine (immutable pattern).
+// Calculation: pure transformation (engine in → engine out).
 // No event store, so errors are impossible (in-memory only).
 func autoAssignForComparison(eng engine.Engine) engine.Engine {
 	// Use index-based iteration so re-reads affect subsequent checks

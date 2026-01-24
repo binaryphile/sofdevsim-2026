@@ -23266,3 +23266,107 @@ Added explicit ACD (Action/Calculation/Data) labels to all 6 Engine struct field
 **Why it matters:**
 Self-documenting code makes the pure/impure boundary explicit for future maintainers.
 
+
+---
+
+## Approved Plan: 2026-01-23 - Phase 17 runComparison Refactor
+
+### Objective
+Decompose `runComparison` function (handlers.go:352-393) into smaller pure functions per Go Development Guide.
+
+### Target State
+Extract 3 helper functions:
+- `addStandardTeam` - Calculation: pure transformation
+- `addStandardBacklog` - Calculation: pure transformation
+- `runSprintsWithTracking` - Calculation: pure transformation
+
+### Files to Modify
+- `internal/api/handlers.go` (lines 352-408)
+- `docs/compliance-grading.md` (lines 14, 180, 219, 245)
+
+### Success Criteria
+- [ ] 3 functions extracted with ACD comments
+- [ ] runComparison refactored to use helpers
+- [ ] All tests pass
+- [ ] Go score: 98→95 (error fix), 93→95 (actual improvement)
+
+---
+
+## Approved Contract: 2026-01-23 - Phase 17
+
+**Objective:** Decompose runComparison into smaller pure functions
+**Approach:** Extract 3 helpers, refactor main function, update compliance doc
+**Token Budget:** 8-12K tokens
+
+---
+
+## Archived: 2026-01-23 - Phase 17 Complete
+
+# Phase 17 Contract
+
+**Created:** 2026-01-23
+
+## Step 1 Checklist
+- [x] 1a: Presented understanding
+- [x] 1b: Asked clarifying questions (comments: minimal ACD only)
+- [x] 1c: Contract created (this file)
+- [x] 1d: Approval received
+- [x] 1e: Plan + contract archived
+
+## Objective
+
+Decompose `runComparison` function (handlers.go:352-393) into smaller pure functions per Go Development Guide.
+
+## Success Criteria
+
+- [x] `addStandardTeam` extracted with ACD comment
+- [x] `addStandardBacklog` extracted with ACD comment
+- [x] `runSprintsWithTracking` extracted with ACD comment
+- [x] `runComparison` refactored to use helpers
+- [x] All tests pass (`go test ./...`)
+- [x] Go score fixed: 98→95 (executive error), 93→95 (detailed)
+
+## Actual Results
+
+**Completed:** 2026-01-23
+
+### Edits Applied
+1. `internal/api/handlers.go`: Extracted 3 pure functions with ACD labels, refactored runComparison
+2. `docs/compliance-grading.md`: 5 edits (executive score, detailed score, compliance issue, recommendation, priority matrix)
+
+### Verification
+- All tests pass: `go test ./...` shows all packages OK
+- No behavior change (pure refactoring)
+
+## Step 4 Checklist
+- [x] 4a: Results presented to user
+- [x] 4b: Approval received
+
+## Approval
+✅ APPROVED BY USER - 2026-01-23
+Final: runComparison decomposed into 5 pure functions with consistent ACD labels. CQRS non-smell documented.
+
+## Self-Assessment
+Grade: A (97/100)
+
+What went well:
+- Clean extraction of 3 pure functions
+- ACD labels added per design decision
+- Score inconsistency fixed
+
+Deductions:
+- None significant
+
+---
+
+## Log: 2026-01-23 - Phase 17 runComparison Refactor
+
+**What was done:**
+Decomposed `runComparison` (40 lines) into 5 focused pure functions with consistent ACD labels. Added CQRS "not a smell" documentation for polymorphic ACD classification.
+
+**Key files changed:**
+- `internal/api/handlers.go`: Extracted `addStandardTeam`, `addStandardBacklog`, `runSprintsWithTracking`; added ACD labels to all 5 comparison functions
+- `docs/compliance-grading.md`: Updated Go score 98→95 (error fix), marked runComparison done, documented CQRS non-smell
+
+**Why it matters:**
+Improves code clarity and Go Dev Guide compliance. Documents polymorphic ACD pattern for future reference.
