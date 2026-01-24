@@ -46,6 +46,12 @@ type DORASnapshot struct {
 	ChangeFailRate  float64 // percentage
 }
 
+// Accessors for FluentFP method reference syntax
+func (s DORASnapshot) GetLeadTimeAvg() float64     { return s.LeadTimeAvg }
+func (s DORASnapshot) GetDeployFrequency() float64 { return s.DeployFrequency }
+func (s DORASnapshot) GetMTTR() float64            { return s.MTTR }
+func (s DORASnapshot) GetChangeFailRate() float64  { return s.ChangeFailRate }
+
 // NewDORAMetrics creates an initialized metrics tracker
 func NewDORAMetrics() DORAMetrics {
 	return DORAMetrics{

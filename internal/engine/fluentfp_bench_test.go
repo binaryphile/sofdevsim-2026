@@ -162,6 +162,12 @@ type DORASnapshot struct {
 	ChangeFailRate  float64
 }
 
+// Accessors for FluentFP method expression syntax.
+func (s DORASnapshot) GetLeadTimeAvg() float64     { return s.LeadTimeAvg }
+func (s DORASnapshot) GetDeployFrequency() float64 { return s.DeployFrequency }
+func (s DORASnapshot) GetMTTR() float64            { return s.MTTR }
+func (s DORASnapshot) GetChangeFailRate() float64  { return s.ChangeFailRate }
+
 // generateDORASnapshots creates test data for multi-field benchmarks.
 func generateDORASnapshots(n int) []DORASnapshot {
 	snapshots := make([]DORASnapshot, n)
@@ -184,10 +190,10 @@ func BenchmarkFluentFP_Unzip4(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_, _, _, _ = slice.Unzip4(snapshots,
-			func(s DORASnapshot) float64 { return s.LeadTimeAvg },
-			func(s DORASnapshot) float64 { return s.DeployFrequency },
-			func(s DORASnapshot) float64 { return s.MTTR },
-			func(s DORASnapshot) float64 { return s.ChangeFailRate },
+			DORASnapshot.GetLeadTimeAvg,
+			DORASnapshot.GetDeployFrequency,
+			DORASnapshot.GetMTTR,
+			DORASnapshot.GetChangeFailRate,
 		)
 	}
 }

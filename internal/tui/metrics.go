@@ -59,12 +59,12 @@ func (a *App) doraPanel() string {
 		mttrAvg = dora.MTTRAvgDays()
 		cfrPct = dora.ChangeFailRatePct()
 
-		// Extract values for sparklines
+		// Extract values for sparklines using method expressions
 		leadTimes, deployFreqs, mttrs, cfrs := slice.Unzip4(dora.History,
-			func(h metrics.DORASnapshot) float64 { return h.LeadTimeAvg },
-			func(h metrics.DORASnapshot) float64 { return h.DeployFrequency },
-			func(h metrics.DORASnapshot) float64 { return h.MTTR },
-			func(h metrics.DORASnapshot) float64 { return h.ChangeFailRate },
+			metrics.DORASnapshot.GetLeadTimeAvg,
+			metrics.DORASnapshot.GetDeployFrequency,
+			metrics.DORASnapshot.GetMTTR,
+			metrics.DORASnapshot.GetChangeFailRate,
 		)
 
 		leadTimeSparkline = a.sparkline(leadTimes)

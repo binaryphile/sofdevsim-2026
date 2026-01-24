@@ -536,6 +536,28 @@ func (u *User) IsActive() bool { return u.Active }
 - Eliminates nil receiver panics (the "billion dollar mistake")
 - Makes value semantics explicit
 
+**Adding accessor methods for FluentFP:** When a type lacks methods for field extraction (common with data types), add accessor methods to enable method expressions:
+
+```go
+// DORASnapshot is a pure data type - add accessors for FluentFP
+type DORASnapshot struct {
+    LeadTimeAvg     float64
+    DeployFrequency float64
+}
+
+// Accessors for FluentFP method expression syntax
+func (s DORASnapshot) GetLeadTimeAvg() float64     { return s.LeadTimeAvg }
+func (s DORASnapshot) GetDeployFrequency() float64 { return s.DeployFrequency }
+
+// Now Unzip4 uses method expressions instead of lambdas
+leadTimes, freqs := slice.Unzip2(history,
+    DORASnapshot.GetLeadTimeAvg,
+    DORASnapshot.GetDeployFrequency,
+)
+```
+
+**When to add accessors:** Add `Get[FieldName]` methods when the type is used in FluentFP operations (ToFloat64, Unzip, etc.) more than once. Don't add accessors speculatively.
+
 #### Named Functions (when method expressions don't apply)
 
 When you need custom logic or the type lacks an appropriate method. **Single-expression predicates go on one line:**
