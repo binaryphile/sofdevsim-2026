@@ -944,12 +944,15 @@ Clients may retry failed requests (network timeout, uncertain success). Without 
 
 | Concern | Current Behavior | Implication |
 |---------|------------------|-------------|
-| Memory | Full response body cached per request ID | Memory grows with concurrent unique requests |
+| Memory | Response buffered + cached (2× allocation) | 1MB response = 2MB memory per request |
 | Cache size | Unbounded (TTL-based expiry only) | High request volume could exhaust memory |
-| Cleanup | Every 60 seconds | Expired entries linger up to 1 minute |
-| Contention | Single mutex for all operations | Could bottleneck under very high load |
+| Cleanup | Every 60 seconds | Expired entries linger up to ~2 minutes worst case |
+| Contention | Single mutex for all operations | Cleanup blocks request processing |
+| Streaming | Not supported (response fully buffered) | Large responses must fit in memory |
 
 This is acceptable for a reference implementation with low request volume. Production would need: max cache size with LRU eviction, sharded locks, or external cache (Redis).
+
+**Benchmarking:** No benchmarks exist for this middleware. Hot path validation would measure: cache hit latency (<1μs target), cache miss overhead, memory growth under load, mutex contention at high concurrency.
 
 ---
 
