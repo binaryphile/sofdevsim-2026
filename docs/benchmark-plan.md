@@ -10,81 +10,20 @@ Benchmarks serve to:
 3. Detect performance regressions in CI
 4. Document expected performance characteristics
 
-## Hot-Path Analysis
-
-### Simulation Tick (called every day of simulation)
-
-The `Tick()` function orchestrates one simulation day. Its complexity is:
-
-```
-O(d + t + c + i)
-```
-
-Where:
-- d = developers (currently working)
-- t = active tickets
-- c = completed tickets
-- i = open incidents
-
-### Critical Bottleneck: FindActiveTicketIndex
-
-```go
-// simulation.go:68-75
-func (s Simulation) FindActiveTicketIndex(id string) int {
-    for i := range s.ActiveTickets {
-        if s.ActiveTickets[i].ID == id {
-            return i
-        }
-    }
-    return -1
-}
-```
-
-**Complexity:** O(n) linear search per call
-**Called:** Once per working developer per tick
-**Impact:** With 30 devs × 100 tickets × 100 days = 300,000 searches
-
-This is the primary candidate for future optimization (hash map).
-
-### FluentFP Usage in Hot Paths
-
-| Pattern | Location | Called Per |
-|---------|----------|------------|
-| `slice.From().KeepIf().Len()` | engine.go:145-148 | Tick |
-| `slice.From().ToFloat64()` | fever.go:86 | Tick |
-| `slice.Fold()` | dora.go:90, 129 | Tick |
-
 ## Benchmark Categories
 
-### 1. Engine Benchmarks
+### 1. Engine Hot Paths
 
 **File:** `internal/engine/benchmark_test.go`
 
-| Benchmark | What It Measures | Scaling Factor |
-|-----------|-----------------|----------------|
-| `BenchmarkTick` | Full tick execution | devs × tickets |
-| `BenchmarkFindActiveTicketIndex` | Linear search | active tickets |
-| `BenchmarkVarianceCalculate` | RNG + math | constant |
+| Benchmark | What It Measures | Baseline |
+|-----------|-----------------|----------|
+| `BenchmarkTick` | Full tick execution | 19μs |
+| `BenchmarkTick_LargeSimulation` | Tick with 30 devs, 200 tickets | 21μs |
+| `BenchmarkFindActiveTicketIndex` | Linear search (100 tickets) | 153ns |
+| `BenchmarkVarianceCalculate` | RNG + math | 9μs |
 
-```go
-func BenchmarkTick(b *testing.B) {
-    sim := setupBenchmarkSimulation(10, 50) // 10 devs, 50 tickets
-    eng := NewEngine(sim)
-    b.ResetTimer()
-    for i := 0; i < b.N; i++ {
-        eng.Tick()
-    }
-}
-
-func BenchmarkFindActiveTicketIndex(b *testing.B) {
-    sim := setupBenchmarkSimulation(0, 100)
-    targetID := sim.ActiveTickets[50].ID
-    b.ResetTimer()
-    for i := 0; i < b.N; i++ {
-        sim.FindActiveTicketIndex(targetID)
-    }
-}
-```
+**Critical Bottleneck:** `FindActiveTicketIndex` is O(n) linear search, called once per working developer per tick. Future optimization: hash map.
 
 ### 2. FluentFP vs Loop Comparisons
 
@@ -97,58 +36,68 @@ func BenchmarkFindActiveTicketIndex(b *testing.B) {
 | `BenchmarkFluentFP_Fold` | `BenchmarkLoop_Accumulate` | Reduction |
 | `BenchmarkFluentFP_Unzip4` | `BenchmarkLoop_FourPass` | Multi-field extraction |
 
-```go
-func BenchmarkFluentFP_KeepIfLen(b *testing.B) {
-    tickets := generateTickets(100)
-    cutoff := 50
-    b.ResetTimer()
-    for i := 0; i < b.N; i++ {
-        _ = slice.From(tickets).
-            KeepIf(func(t Ticket) bool { return t.CompletedTick >= cutoff }).
-            Len()
-    }
-}
+**Expected:** FluentFP overhead ≤ 3× for single operations (acceptable for clarity benefits).
 
-func BenchmarkLoop_FilterCount(b *testing.B) {
-    tickets := generateTickets(100)
-    cutoff := 50
-    b.ResetTimer()
-    for i := 0; i < b.N; i++ {
-        count := 0
-        for _, t := range tickets {
-            if t.CompletedTick >= cutoff {
-                count++
-            }
-        }
-        _ = count
-    }
-}
+### 3. Event Sourcing
+
+**File:** `internal/events/projection_test.go`, `internal/events/upcasting_test.go`
+
+| Benchmark | What It Measures | Target | Baseline |
+|-----------|-----------------|--------|----------|
+| `BenchmarkProjection_Apply_SingleEvent` | Single event application | < 1μs | 45ns |
+| `BenchmarkProjection_ReplayFull` | Replay 1000 events | < 1ms | 36μs |
+| `BenchmarkUpcaster_Apply_NoTransform` | Map lookup (miss) | < 250ns | 215ns |
+| `BenchmarkUpcaster_Apply_WithTransform` | v1→v2 transform | < 500ns | 483ns |
+| `BenchmarkUpcaster_Apply_TransitiveChain` | v1→v2→v3 chain | < 1μs | 740ns |
+
+### 4. TUI Client
+
+**File:** `internal/tui/client_benchmark_test.go`
+
+| Benchmark | What It Measures | Baseline |
+|-----------|-----------------|----------|
+| `BenchmarkClient_CreateSimulation` | HTTP round-trip + simulation creation | 124μs |
+| `BenchmarkClient_Tick` | HTTP round-trip + tick execution | 402μs |
+| `BenchmarkClient_Assign` | HTTP round-trip + ticket assignment | 173μs |
+
+**Target:** < 1ms for all local operations.
+
+### 5. API Middleware (NOT YET IMPLEMENTED)
+
+**File:** `internal/api/dedup_bench_test.go` (to be created)
+
+| Benchmark | What It Measures | Target |
+|-----------|-----------------|--------|
+| `BenchmarkDedup_CacheHit` | Return cached response | < 1μs |
+| `BenchmarkDedup_CacheMiss` | Execute + cache response | handler time + < 10μs |
+| `BenchmarkDedup_Contention` | Concurrent cache access | measure lock wait |
+| `BenchmarkDedup_MemoryGrowth` | Memory per cached response | track allocations |
+
+## Running Benchmarks
+
+```bash
+# All benchmarks
+go test -bench=. -benchmem ./...
+
+# Engine only
+go test -bench=. -benchmem ./internal/engine/
+
+# Event sourcing only
+go test -bench=. -benchmem ./internal/events/
+
+# FluentFP comparisons
+go test -bench=FluentFP -benchmem ./internal/engine/
+
+# With CPU profiling
+go test -bench=BenchmarkTick -cpuprofile=cpu.prof ./internal/engine/
 ```
 
-## Expected Results
+## Reading Benchmark Output
 
-Per FluentFP documentation:
-- Single-operation chains: ~equal to loops
-- Multi-operation chains: 2-3× overhead due to intermediate allocations
-
-**Acceptable thresholds:**
-- FluentFP overhead ≤ 3× for clarity benefits
-- Hot path absolute time ≤ 10μs per tick
-
-**Sample output format:**
 ```
-goos: linux
-goarch: amd64
-pkg: github.com/binaryphile/sofdevsim-2026/internal/engine
-cpu: 12th Gen Intel(R) Core(TM) i7-1265U
-BenchmarkTick-8                      10000        112345 ns/op      8192 B/op       24 allocs/op
-BenchmarkFindActiveTicketIndex-8   1000000          1234 ns/op         0 B/op        0 allocs/op
-BenchmarkFluentFP_KeepIfLen-8       500000          2456 ns/op      1024 B/op        3 allocs/op
-BenchmarkLoop_FilterCount-8        1000000          1123 ns/op         0 B/op        0 allocs/op
-PASS
+BenchmarkTick-8    10000    112345 ns/op    8192 B/op    24 allocs/op
 ```
 
-**Reading the output:**
 | Column | Meaning |
 |--------|---------|
 | `-8` suffix | GOMAXPROCS (CPU cores used) |
@@ -157,50 +106,12 @@ PASS
 | `B/op` | Bytes allocated per operation |
 | `allocs/op` | Heap allocations per operation |
 
-## Running Benchmarks
-
-```bash
-# All benchmarks
-go test -bench=. -benchmem ./internal/engine/
-
-# Just FluentFP comparisons
-go test -bench=FluentFP -benchmem ./internal/engine/
-
-# With CPU profiling
-go test -bench=BenchmarkTick -cpuprofile=cpu.prof ./internal/engine/
-```
-
 ## Tracking in CLAUDE.md
 
-After each significant change, update the Benchmarks section in CLAUDE.md:
-
-```markdown
-## Benchmarks
-
-**Baseline (DATE):**
-```
-BenchmarkTick-8                    XXXX ns/op    XXXX B/op    XX allocs/op
-```
-
-**After [change description]:**
-```
-BenchmarkTick-8                    XXXX ns/op    XXXX B/op    XX allocs/op
-```
-
-Note: [Explanation of any regression/improvement]
-```
+After significant changes, update the Benchmarks section in CLAUDE.md with before/after comparisons.
 
 ## Future Optimization Candidates
 
-1. **Replace FindActiveTicketIndex with map lookup**
-   - Current: O(n) per lookup
-   - After: O(1) with `map[string]int` index
-   - Impact: 10-100× improvement for large simulations
-
-2. **Cache completed ticket counts**
-   - Currently scanned in `updateBuffer()`
-   - Could be incremented on completion
-
-3. **Batch event generation**
-   - Currently generates slice per call
-   - Could pre-allocate or pool
+1. **Replace FindActiveTicketIndex with map lookup** - O(n) → O(1)
+2. **DedupMiddleware benchmarks** - validate cache performance claims
+3. **Projection replay streaming** - memory for large event streams
