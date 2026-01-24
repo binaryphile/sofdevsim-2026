@@ -137,10 +137,10 @@ type HALResponse struct {
 // Tracker may be nil for simulations without metrics tracking.
 func ToState(sim model.Simulation, tracker metrics.Tracker) SimulationState {
 	// Convert backlog tickets
-	backlog := slice.MapTo[TicketState](sim.Backlog).To(ToTicketState)
+	backlog := slice.MapTo[TicketState](sim.Backlog).Map(ToTicketState)
 
 	// Convert developers
-	developers := slice.MapTo[DeveloperState](sim.Developers).To(ToDeveloperState)
+	developers := slice.MapTo[DeveloperState](sim.Developers).Map(ToDeveloperState)
 
 	// Convert active tickets with assigned developer info
 	activeTickets := make([]TicketState, len(sim.ActiveTickets))
@@ -157,7 +157,7 @@ func ToState(sim model.Simulation, tracker metrics.Tracker) SimulationState {
 	}
 
 	// Convert completed tickets
-	completedTickets := slice.MapTo[TicketState](sim.CompletedTickets).To(ToTicketState)
+	completedTickets := slice.MapTo[TicketState](sim.CompletedTickets).Map(ToTicketState)
 
 	// Compute metrics from tracker (safe even for zero tracker - returns zero metrics)
 	result := tracker.GetResult(sim.SizingPolicy, &sim)

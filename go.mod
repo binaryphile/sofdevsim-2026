@@ -4,7 +4,7 @@ go 1.25.5
 
 require (
 	github.com/NimbleMarkets/ntcharts v0.3.1
-	github.com/binaryphile/fluentfp v0.11.0
+	github.com/binaryphile/fluentfp v0.13.0
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/google/go-cmp v0.7.0
