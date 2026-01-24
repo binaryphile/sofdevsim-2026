@@ -4,14 +4,11 @@
 
 ### What This Simulation Does
 
-The Software Development Simulation models an 8-phase ticket workflow to test competing theories about optimal ticket sizing:
+The Software Development Simulation models an 8-phase ticket workflow with configurable sizing policies. It produces DORA metrics (lead time, deployment frequency, change failure rate) for policy comparison.
 
-- **DORA Research** suggests that batch size matters: tickets taking longer than one week correlate with worse delivery outcomes
-- **TameFlow** argues that cognitive load (understanding level) is the real discriminant: uncertain work causes variance regardless of size
+### Domain Context
 
-This simulation lets you run controlled experiments to see which approach produces better DORA metrics.
-
-### The Hypothesis
+The simulation tests competing theories about optimal ticket sizing:
 
 | Policy | Rule | Theory |
 |--------|------|--------|
@@ -472,7 +469,7 @@ flowchart TD
     M -->|No| O[Done]
 ```
 
-> **Note:** All state changes happen through events. The Projection applies each event to rebuild simulation state.
+> **Note:** All state changes happen through events. The Projection applies each event to rebuild simulation state. The tick loop itself is an Action (advances simulation time); calculations within it (phase effort, variance bounds) are pure.
 
 ### Phase Transition Logic
 
