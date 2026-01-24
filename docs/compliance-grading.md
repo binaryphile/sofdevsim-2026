@@ -1,6 +1,6 @@
 # sofdevsim-2026 Compliance Grading
 
-**Graded:** 2026-01-21 (Updated: 2026-01-23, Phase 20)
+**Graded:** 2026-01-21 (Updated: 2026-01-24, Phase 21)
 **Project:** binaryphile/sofdevsim-2026
 **Files reviewed:** 33 test files, 45 source files
 
@@ -9,10 +9,10 @@
 | Guide | Grade | Score | Summary |
 |-------|-------|-------|---------|
 | Khorikov Unit Testing | A+ | 100/100 | Behavior-focused tests; full edge case + stress coverage |
-| Event Sourcing | A | 98/100 | Full CQRS with optimistic concurrency; explicit query separation |
+| Event Sourcing | A+ | 100/100 | Full CQRS with optimistic concurrency; event versioning complete |
 | Functional Programming | A+ | 100/100 | Strong ACD separation; Engine architecture justified |
 | Go Development | A | 97/100 | Value semantics complete; pointer receivers documented |
-| **Overall** | **A+** | **99/100** | Well-designed codebase with proper ACD separation |
+| **Overall** | **A+** | **100/100** | Full compliance across all guides |
 
 ---
 
@@ -67,7 +67,7 @@
 
 ### 2. CQRS/Event Sourcing Guide
 
-**Score: 98/100**
+**Score: 100/100**
 
 #### Strengths
 
@@ -109,8 +109,8 @@
 **Resolved** (2026-01-23):
 - ~~`handlers.go:146-147`: Query after command in same handler~~ → **FIXED**: Extracted `respondWithSimulation` helper with Query ACD label. Commands now delegate to explicit query phase.
 
-**Nitpick** (0 points):
-- Could add event versioning for schema evolution (currently uses upcaster pattern instead)
+**Resolved** (2026-01-24):
+- ~~Could add event versioning for schema evolution~~ → **FIXED**: Added Version field to Header, EventVersion() method, upcaster uses "Type:vN" key format with cycle detection
 
 **Not a smell** (0 points):
 - `runComparison` calls `EmitCreated` and returns metrics - appears to mix command/query
@@ -121,7 +121,7 @@
 | Recommendation | Effort | Impact |
 |----------------|--------|--------|
 | ~~Extract read model from handler response building~~ | ~~Medium (1 day)~~ | ✅ DONE (2026-01-23) |
-| Add explicit event version field | Medium (1 day) | Future-proofing |
+| ~~Add explicit event version field~~ | ~~Medium (1 day)~~ | ✅ DONE (2026-01-24) |
 
 ---
 
