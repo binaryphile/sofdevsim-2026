@@ -1103,6 +1103,35 @@ func (u Upcaster) Apply(evt Event) Event {
 
 **Current state:** `DefaultUpcaster` has no transforms registered (no schema changes yet). Transforms are added as schema evolves.
 
+### Request Tracing
+
+Events carry OpenTelemetry-style tracing fields for correlating events from the same HTTP request:
+
+```go
+type TraceContext struct {
+    TraceID      string // correlates all events from same request
+    SpanID       string // this operation's span
+    ParentSpanID string // parent span (empty if root)
+}
+```
+
+**How it works:**
+
+1. HTTP handler creates `TraceContext` at request start via `NewTraceContext()`
+2. Engine receives trace context and applies it to all emitted events via `ApplyTrace()`
+3. Child operations create nested spans via `tc.NewChildSpan()`
+4. All events from one request share the same `TraceID`
+
+**Use cases:**
+
+| Field | Purpose |
+|-------|---------|
+| `TraceID` | Filter all events from one API call (debugging, audit) |
+| `SpanID` | Identify specific operation for timing analysis |
+| `ParentSpanID` | Reconstruct call hierarchy (which operation triggered which) |
+
+**Example:** A single `/tick` request emits multiple events (Ticked, WorkProgressed, TicketCompleted). All share the same TraceID, enabling queries like "show me everything that happened in request X."
+
 ### Projection
 
 The projection rebuilds simulation state from events:
