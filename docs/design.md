@@ -923,11 +923,9 @@ HTTP middleware chain validates requests before handlers:
 |------------|---------|
 | `LimitBody` | 1MB request size limit |
 | `RequireJSON` | Content-Type validation |
-| `DedupMiddleware` | Idempotency via request ID |
+| `DedupMiddleware` | Rejects duplicate requests (same request ID) |
 
 Input validation occurs at handler entry (seed validation, ID format checks). Existence checks before mutation prevent invalid state transitions.
-
-**Idempotency:** Event handlers are idempotent—replaying events produces identical state. Request-level idempotency uses `DedupMiddleware`; event-level idempotency is guaranteed by deterministic projections (same events → same state).
 
 ---
 
