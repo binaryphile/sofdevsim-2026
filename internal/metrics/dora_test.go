@@ -10,7 +10,7 @@ import (
 
 // Test DORA metrics calculation from simulation state
 func TestDORAMetrics_AggregatesTicketsAndIncidents(t *testing.T) {
-	sim := model.NewSimulation(model.PolicyNone, 12345)
+	sim := model.NewSimulation("test", model.PolicyNone, 12345)
 	sim.CurrentTick = 10
 
 	// Add completed tickets with known lead times (using ticks - 1 tick = 1 day)
@@ -56,7 +56,7 @@ func TestDORAMetrics_AggregatesTicketsAndIncidents(t *testing.T) {
 // This reproduces TKT-003: when simulation runs fast, time.Now() values are
 // nearly identical but tick values differ
 func TestDORAMetrics_LeadTime_UsesTicksNotWallClock(t *testing.T) {
-	sim := model.NewSimulation(model.PolicyNone, 12345)
+	sim := model.NewSimulation("test", model.PolicyNone, 12345)
 	sim.CurrentTick = 20
 
 	// Simulate fast execution: StartedAt and CompletedAt are the same instant
@@ -83,7 +83,7 @@ func TestDORAMetrics_LeadTime_UsesTicksNotWallClock(t *testing.T) {
 
 // Test that tickets starting at tick 0 are included in lead time calculation
 func TestDORAMetrics_LeadTime_IncludesTicketsStartingAtZero(t *testing.T) {
-	sim := model.NewSimulation(model.PolicyNone, 12345)
+	sim := model.NewSimulation("test", model.PolicyNone, 12345)
 	sim.CurrentTick = 10
 
 	sim.CompletedTickets = []model.Ticket{
@@ -105,7 +105,7 @@ func TestDORAMetrics_LeadTime_IncludesTicketsStartingAtZero(t *testing.T) {
 
 // Test that history is appended for sparklines
 func TestDORAMetrics_History(t *testing.T) {
-	sim := model.NewSimulation(model.PolicyNone, 12345)
+	sim := model.NewSimulation("test", model.PolicyNone, 12345)
 	dora := metrics.NewDORAMetrics()
 
 	// Update multiple times

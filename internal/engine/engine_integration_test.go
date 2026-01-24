@@ -20,8 +20,7 @@ func TestEngine_FullSimulationRun(t *testing.T) {
 
 	for _, policy := range policies {
 		t.Run(policy.String(), func(t *testing.T) {
-			sim := model.NewSimulation(policy, 12345)
-			sim.ID = "test-full-run"
+			sim := model.NewSimulation("test-full-run", policy, 12345)
 
 			eng := engine.NewEngine(sim.Seed)
 			eng, _ = eng.EmitCreated(sim.ID, sim.CurrentTick, events.SimConfig{
@@ -123,8 +122,7 @@ func TestEngine_TryDecompose_Either(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			sim := model.NewSimulation(tt.policy, 12345)
-			sim.ID = "test-decompose"
+			sim := model.NewSimulation("test-decompose", tt.policy, 12345)
 
 			eng := engine.NewEngine(sim.Seed)
 			eng, _ = eng.EmitCreated(sim.ID, sim.CurrentTick, events.SimConfig{
@@ -183,8 +181,7 @@ func TestEngine_TryDecompose_Either(t *testing.T) {
 // Integration test: WIP tracking during sprint
 // Verifies SprintWIPUpdated events are emitted with correct WIP values
 func TestEngine_WIPTracking(t *testing.T) {
-	sim := model.NewSimulation(model.PolicyNone, 12345)
-	sim.ID = "wip-test"
+	sim := model.NewSimulation("wip-test", model.PolicyNone, 12345)
 
 	// Use event store to verify WIP tracking via events
 	store := events.NewMemoryStore()
@@ -239,8 +236,7 @@ func TestEngine_Reproducibility(t *testing.T) {
 	seed := int64(42)
 
 	runSimulation := func() model.Simulation {
-		sim := model.NewSimulation(model.PolicyDORAStrict, seed)
-		sim.ID = "repro-test"
+		sim := model.NewSimulation("repro-test", model.PolicyDORAStrict, seed)
 
 		eng := engine.NewEngine(sim.Seed)
 		eng, _ = eng.EmitCreated(sim.ID, sim.CurrentTick, events.SimConfig{
@@ -273,8 +269,7 @@ func TestEngine_Reproducibility(t *testing.T) {
 // Integration test: sprint ends exactly on boundary tick
 // Per Khorikov: edge case test for off-by-one boundary conditions
 func TestEngine_SprintEndsExactlyOnBoundary(t *testing.T) {
-	sim := model.NewSimulation(model.PolicyNone, 12345)
-	sim.ID = "boundary-test"
+	sim := model.NewSimulation("boundary-test", model.PolicyNone, 12345)
 
 	eng := engine.NewEngine(sim.Seed)
 	eng, _ = eng.EmitCreated(sim.ID, sim.CurrentTick, events.SimConfig{
@@ -326,9 +321,9 @@ func TestEngine_SprintEndsExactlyOnBoundary(t *testing.T) {
 // Per FP Guide §7: operations return new values, original unchanged.
 // This test expects the new signature: Tick() (Engine, []model.Event)
 func TestEngine_Tick_ReturnsNewEngine(t *testing.T) {
-	sim := model.NewSimulation(model.PolicyNone, 42)
+	sim := model.NewSimulation("test-immutable", model.PolicyNone, 42)
 	eng := engine.NewEngine(sim.Seed)
-	eng, _ = eng.EmitCreated("test-immutable", 0, events.SimConfig{
+	eng, _ = eng.EmitCreated(sim.ID, 0, events.SimConfig{
 		TeamSize:     1,
 		SprintLength: 10,
 		Seed:         sim.Seed,

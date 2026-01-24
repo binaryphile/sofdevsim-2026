@@ -89,7 +89,7 @@ func TestEngine_EmitsTicketAssignedEvent(t *testing.T) {
 	store := events.NewMemoryStore()
 	sim := createTestSimulation()
 	eng := NewEngineWithStore(sim.Seed, store)
-	eng, _ = eng.EmitLoadedState(*sim) // Syncs all sim state (including developers) to projection
+	eng, _ = eng.EmitLoadedState(sim) // Syncs all sim state (including developers) to projection
 
 	// Add a ticket through engine (emits TicketCreated event)
 	eng, _ = eng.AddTicket(model.Ticket{
@@ -134,7 +134,7 @@ func TestEngine_EmitsTicketCompletedEvent(t *testing.T) {
 	sim.Developers[0] = sim.Developers[0].WithTicket("TKT-001")
 
 	eng := NewEngineWithStore(sim.Seed, store)
-	eng, _ = eng.EmitLoadedState(*sim) // Sync all state including ActiveTickets to projection
+	eng, _ = eng.EmitLoadedState(sim) // Sync all state including ActiveTickets to projection
 
 	eng, _, _ = eng.Tick()
 
@@ -315,8 +315,7 @@ func TestEngine_SimReturnsProjectionState(t *testing.T) {
 
 func TestEngine_AddDeveloperEmitsEvent(t *testing.T) {
 	store := events.NewMemoryStore()
-	sim := model.NewSimulation(model.PolicyNone, 42)
-	sim.ID = "test-sim"
+	sim := model.NewSimulation("test-sim", model.PolicyNone, 42)
 	eng := NewEngineWithStore(sim.Seed, store)
 	eng = emitCreatedFromSim(t, eng, sim)
 
@@ -356,8 +355,7 @@ func TestEngine_AddDeveloperEmitsEvent(t *testing.T) {
 
 func TestEngine_AddTicketEmitsEvent(t *testing.T) {
 	store := events.NewMemoryStore()
-	sim := model.NewSimulation(model.PolicyNone, 42)
-	sim.ID = "test-sim"
+	sim := model.NewSimulation("test-sim", model.PolicyNone, 42)
 	eng := NewEngineWithStore(sim.Seed, store)
 	eng = emitCreatedFromSim(t, eng, sim)
 
@@ -406,7 +404,7 @@ func TestEngine_EmitsWorkProgressedEvent(t *testing.T) {
 	sim.Developers[0] = sim.Developers[0].WithTicket("TKT-001")
 
 	eng := NewEngineWithStore(sim.Seed, store)
-	eng, _ = eng.EmitLoadedState(*sim) // Sync all state including ActiveTickets to projection
+	eng, _ = eng.EmitLoadedState(sim) // Sync all state including ActiveTickets to projection
 
 	eng, _, _ = eng.Tick()
 
@@ -446,7 +444,7 @@ func TestEngine_EmitsTicketPhaseChangedEvent(t *testing.T) {
 	sim.Developers[0] = sim.Developers[0].WithTicket("TKT-001")
 
 	eng := NewEngineWithStore(sim.Seed, store)
-	eng, _ = eng.EmitLoadedState(*sim) // Sync all state including ActiveTickets to projection
+	eng, _ = eng.EmitLoadedState(sim) // Sync all state including ActiveTickets to projection
 
 	eng, _, _ = eng.Tick()
 
@@ -515,8 +513,7 @@ func TestEngine_EmitsSprintEndedEvent(t *testing.T) {
 
 func TestEngine_SetPolicyEmitsEvent(t *testing.T) {
 	store := events.NewMemoryStore()
-	sim := model.NewSimulation(model.PolicyNone, 42)
-	sim.ID = "test-sim"
+	sim := model.NewSimulation("test-sim", model.PolicyNone, 42)
 	eng := NewEngineWithStore(sim.Seed, store)
 	eng = emitCreatedFromSim(t, eng, sim)
 
@@ -619,9 +616,8 @@ func TestEngine_ToUIEvent(t *testing.T) {
 }
 
 // createTestSimulation creates a minimal simulation for testing.
-func createTestSimulation() *model.Simulation {
-	sim := model.NewSimulation(model.PolicyNone, 42)
-	sim.ID = "test-sim"
+func createTestSimulation() model.Simulation {
+	sim := model.NewSimulation("test-sim", model.PolicyNone, 42)
 	sim.Developers = []model.Developer{
 		{ID: "DEV-001", Name: "Test Dev", Velocity: 1.0},
 	}
@@ -630,7 +626,7 @@ func createTestSimulation() *model.Simulation {
 
 // emitCreatedFromSim emits SimulationCreated event from sim state.
 // Returns the updated Engine (immutable pattern).
-func emitCreatedFromSim(t *testing.T, eng Engine, sim *model.Simulation) Engine {
+func emitCreatedFromSim(t *testing.T, eng Engine, sim model.Simulation) Engine {
 	t.Helper()
 	eng, err := eng.EmitCreated(sim.ID, sim.CurrentTick, events.SimConfig{
 		TeamSize:     len(sim.Developers),
@@ -728,14 +724,14 @@ func TestEmitLoadedState_AppliesOnce(t *testing.T) {
 	// Caller is responsible for calling only once per engine.
 	// Store-level concurrency check prevents duplicate persistence.
 
-	sim := model.NewSimulation(model.PolicyDORAStrict, 42)
+	sim := model.NewSimulation("test", model.PolicyDORAStrict, 42)
 	sim.Developers = append(sim.Developers, model.NewDeveloper("dev-1", "Alice", 1.0))
 	sim.Developers = append(sim.Developers, model.NewDeveloper("dev-2", "Bob", 0.8))
 
 	eng := NewEngine(sim.Seed)
 
 	// First call - applies events
-	eng, _ = eng.EmitLoadedState(*sim)
+	eng, _ = eng.EmitLoadedState(sim)
 	version1 := eng.proj.Version()
 	devCount1 := len(eng.Sim().Developers)
 

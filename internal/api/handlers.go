@@ -238,7 +238,7 @@ func (r SimRegistry) HandleTick(w http.ResponseWriter, req *http.Request) {
 
 		// SprintEnded event clears sprint in projection automatically
 		sim = inst.Engine.Sim()
-		inst.Tracker = inst.Tracker.Updated(&sim)
+		inst.Tracker = inst.Tracker.Updated(sim)
 		r.SetInstance(id, inst)
 
 		respondWithSimulation(w, inst, http.StatusOK)
@@ -366,17 +366,17 @@ func runSprintsWithTracking(eng engine.Engine, policy model.SizingPolicy, sprint
 		eng = autoAssignForComparison(eng)
 		eng, _, _ = eng.RunSprint()
 		state := eng.Sim()
-		tracker = tracker.Updated(&state)
+		tracker = tracker.Updated(state)
 	}
 	state := eng.Sim()
-	return tracker.GetResult(policy, &state)
+	return tracker.GetResult(policy, state)
 }
 
 // runComparison runs a single simulation with the given policy.
 // Calculation: pure transformation (policy, seed, sprints → metrics).
 func runComparison(policy model.SizingPolicy, seed int64, sprints int) metrics.SimulationResult {
-	sim := model.NewSimulation(policy, seed)
-	sim.ID = fmt.Sprintf("cmp-%d", seed)
+	simID := fmt.Sprintf("cmp-%d", seed)
+	sim := model.NewSimulation(simID, policy, seed)
 
 	eng := engine.NewEngine(sim.Seed)
 	eng, _ = eng.EmitCreated(sim.ID, sim.CurrentTick, events.SimConfig{

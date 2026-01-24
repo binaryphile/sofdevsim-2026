@@ -56,18 +56,23 @@ func discoverServer(port int) bool {
 }
 
 // EmbeddedServer manages an embedded API server instance.
-//
-// Pointer receiver: wraps *http.Server; Shutdown() requires the same instance
-// that called ListenAndServe() to properly close active connections.
+// Value receivers work because the *http.Server field is already a pointer -
+// copying the struct copies the pointer, which still refers to the same instance.
 type EmbeddedServer struct {
 	server   *http.Server
 	registry api.SimRegistry
 	port     int
 }
 
+// IsZero returns true if the server is uninitialized.
+// Used for optional return: zero value means "no embedded server".
+func (e EmbeddedServer) IsZero() bool {
+	return e.server == nil
+}
+
 // startEmbeddedServer starts an embedded API server on the given port.
 // Returns an EmbeddedServer for later shutdown.
-func startEmbeddedServer(port int) (*EmbeddedServer, error) {
+func startEmbeddedServer(port int) (EmbeddedServer, error) {
 	registry := api.NewSimRegistry()
 	router := api.NewRouter(registry)
 
@@ -80,7 +85,7 @@ func startEmbeddedServer(port int) (*EmbeddedServer, error) {
 	// Check if port is available
 	listener, err := net.Listen("tcp", addr)
 	if err != nil {
-		return nil, fmt.Errorf("port %d in use: %w", port, err)
+		return EmbeddedServer{}, fmt.Errorf("port %d in use: %w", port, err)
 	}
 
 	// Start server in goroutine
@@ -88,7 +93,7 @@ func startEmbeddedServer(port int) (*EmbeddedServer, error) {
 		server.Serve(listener)
 	}()
 
-	return &EmbeddedServer{
+	return EmbeddedServer{
 		server:   server,
 		registry: registry,
 		port:     port,
@@ -96,19 +101,19 @@ func startEmbeddedServer(port int) (*EmbeddedServer, error) {
 }
 
 // Shutdown gracefully shuts down the embedded server.
-func (e *EmbeddedServer) Shutdown() error {
+func (e EmbeddedServer) Shutdown() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
 	return e.server.Shutdown(ctx)
 }
 
 // Registry returns the server's registry for shared access.
-func (e *EmbeddedServer) Registry() api.SimRegistry {
+func (e EmbeddedServer) Registry() api.SimRegistry {
 	return e.registry
 }
 
 // Port returns the server's port.
-func (e *EmbeddedServer) Port() int {
+func (e EmbeddedServer) Port() int {
 	return e.port
 }
 
@@ -125,25 +130,26 @@ func waitForServer(port int, timeout time.Duration) error {
 }
 
 // DiscoverOrStart checks for an existing server and starts one if needed.
-// Returns the base URL and an optional EmbeddedServer (nil if connected to existing).
-func DiscoverOrStart(port int) (string, *EmbeddedServer, error) {
+// Returns the base URL and an EmbeddedServer. Use embedded.IsZero() to check
+// if we connected to an existing server vs started a new one.
+func DiscoverOrStart(port int) (string, EmbeddedServer, error) {
 	baseURL := fmt.Sprintf("http://localhost:%d", port)
 
 	// Check for existing server
 	if discoverServer(port) {
-		return baseURL, nil, nil
+		return baseURL, EmbeddedServer{}, nil
 	}
 
 	// Try to start embedded server
 	embedded, err := startEmbeddedServer(port)
 	if err != nil {
-		return "", nil, fmt.Errorf("port %d in use by another service. Try: sofdevsim -port %d", port, port+1)
+		return "", EmbeddedServer{}, fmt.Errorf("port %d in use by another service. Try: sofdevsim -port %d", port, port+1)
 	}
 
 	// Wait for server to be ready
 	if err := waitForServer(port, 5*time.Second); err != nil {
 		embedded.Shutdown()
-		return "", nil, err
+		return "", EmbeddedServer{}, err
 	}
 
 	return baseURL, embedded, nil

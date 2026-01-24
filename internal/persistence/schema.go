@@ -68,7 +68,7 @@ type PersistableSimulation struct {
 }
 
 // ToPersistable converts a model.Simulation to a gob-safe PersistableSimulation.
-func ToPersistable(sim *model.Simulation) PersistableSimulation {
+func ToPersistable(sim model.Simulation) PersistableSimulation {
 	var sprintPtr *model.Sprint
 	if sprint, ok := sim.CurrentSprintOption.Get(); ok {
 		sprintPtr = &sprint
@@ -92,13 +92,13 @@ func ToPersistable(sim *model.Simulation) PersistableSimulation {
 }
 
 // FromPersistable converts a PersistableSimulation back to a model.Simulation.
-func FromPersistable(ps PersistableSimulation) *model.Simulation {
+func FromPersistable(ps PersistableSimulation) model.Simulation {
 	var sprintOption option.Basic[model.Sprint]
 	if ps.CurrentSprint != nil {
 		sprintOption = option.Of(*ps.CurrentSprint)
 	}
 
-	return &model.Simulation{
+	return model.Simulation{
 		CurrentTick:          ps.CurrentTick,
 		CurrentSprintOption:  sprintOption,
 		SprintNumber:         ps.SprintNumber,

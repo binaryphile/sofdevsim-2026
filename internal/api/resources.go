@@ -160,7 +160,7 @@ func ToState(sim model.Simulation, tracker metrics.Tracker) SimulationState {
 	completedTickets := slice.MapTo[TicketState](sim.CompletedTickets).Map(ToTicketState)
 
 	// Compute metrics from tracker (safe even for zero tracker - returns zero metrics)
-	result := tracker.GetResult(sim.SizingPolicy, &sim)
+	result := tracker.GetResult(sim.SizingPolicy, sim)
 
 	// Convert DORA history for sparklines
 	var history []DORAHistoryPoint

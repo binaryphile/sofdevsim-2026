@@ -12,8 +12,7 @@ func TestSharedAccess_TUISimulationAccessibleViaAPI(t *testing.T) {
 	registry := NewSimRegistry()
 
 	// Simulate TUI creating a simulation via RegisterSimulation
-	sim := model.NewSimulation(model.PolicyDORAStrict, 42)
-	sim.ID = "sim-42"
+	sim := model.NewSimulation("sim-42", model.PolicyDORAStrict, 42)
 	sim.Developers = append(sim.Developers, model.NewDeveloper("dev-1", "Alice", 1.0))
 	tracker := metrics.NewTracker()
 
@@ -25,8 +24,8 @@ func TestSharedAccess_TUISimulationAccessibleViaAPI(t *testing.T) {
 		t.Fatal("Simulation not found in registry after TUI registration")
 	}
 
-	// Verify it's the same simulation
-	if inst.Sim != sim {
+	// Verify it's the same simulation (by ID since Simulation is now a value type)
+	if inst.Sim.ID != sim.ID {
 		t.Error("Registry returned different simulation instance")
 	}
 
@@ -69,8 +68,7 @@ func TestSharedAccess_APIChangesVisibleToTUI(t *testing.T) {
 	registry := NewSimRegistry()
 
 	// TUI registers simulation
-	sim := model.NewSimulation(model.PolicyDORAStrict, 42)
-	sim.ID = "sim-42"
+	sim := model.NewSimulation("sim-42", model.PolicyDORAStrict, 42)
 	sim.Developers = append(sim.Developers, model.NewDeveloper("dev-1", "Alice", 1.0))
 	sim.Backlog = append(sim.Backlog, model.NewTicket("TKT-001", "Test", 3, model.HighUnderstanding))
 	tracker := metrics.NewTracker()
@@ -105,8 +103,7 @@ func TestSharedAccess_BothCanSubscribe(t *testing.T) {
 	registry := NewSimRegistry()
 
 	// TUI registers simulation
-	sim := model.NewSimulation(model.PolicyDORAStrict, 42)
-	sim.ID = "sim-42"
+	sim := model.NewSimulation("sim-42", model.PolicyDORAStrict, 42)
 	sim.Developers = append(sim.Developers, model.NewDeveloper("dev-1", "Alice", 1.0))
 	tracker := metrics.NewTracker()
 
@@ -147,8 +144,7 @@ func TestSharedAccess_SimulationCreatedHasCorrectTeamSize(t *testing.T) {
 	registry := NewSimRegistry()
 
 	// TUI creates simulation with team BEFORE registering
-	sim := model.NewSimulation(model.PolicyDORAStrict, 42)
-	sim.ID = "sim-42"
+	sim := model.NewSimulation("sim-42", model.PolicyDORAStrict, 42)
 	sim.Developers = append(sim.Developers, model.NewDeveloper("dev-1", "Alice", 1.0))
 	sim.Developers = append(sim.Developers, model.NewDeveloper("dev-2", "Bob", 0.8))
 	sim.Developers = append(sim.Developers, model.NewDeveloper("dev-3", "Carol", 1.2))

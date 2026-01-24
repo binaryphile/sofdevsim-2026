@@ -20,7 +20,7 @@ func NewTracker() Tracker {
 }
 
 // Updated recalculates all metrics from simulation state and returns the updated value
-func (t Tracker) Updated(sim *model.Simulation) Tracker {
+func (t Tracker) Updated(sim model.Simulation) Tracker {
 	t.DORA = t.DORA.Updated(sim)
 	if sprint, ok := sim.CurrentSprintOption.Get(); ok {
 		t.Fever = t.Fever.Updated(sprint)
@@ -29,7 +29,7 @@ func (t Tracker) Updated(sim *model.Simulation) Tracker {
 }
 
 // GetResult extracts a simulation result for comparison
-func (t Tracker) GetResult(policy model.SizingPolicy, sim *model.Simulation) SimulationResult {
+func (t Tracker) GetResult(policy model.SizingPolicy, sim model.Simulation) SimulationResult {
 	// Calculate average fever status from history
 	avgFever := 0.0
 	if len(t.Fever.History) > 0 {

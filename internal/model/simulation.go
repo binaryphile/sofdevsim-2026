@@ -36,9 +36,11 @@ type Simulation struct {
 	Seed int64
 }
 
-// NewSimulation creates a simulation with default configuration
-func NewSimulation(policy SizingPolicy, seed int64) *Simulation {
-	return &Simulation{
+// NewSimulation creates a simulation with default configuration.
+// Returns value type for consistency with Simulation's value semantics.
+func NewSimulation(id string, policy SizingPolicy, seed int64) Simulation {
+	return Simulation{
+		ID:                id,
 		CurrentTick:       0,
 		SprintNumber:      0,
 		Developers:        make([]Developer, 0),

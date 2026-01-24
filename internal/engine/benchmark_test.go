@@ -8,8 +8,8 @@ import (
 )
 
 // setupBenchmarkSimulation creates a simulation with specified developers and tickets.
-func setupBenchmarkSimulation(numDevs, numTickets int) *model.Simulation {
-	sim := model.NewSimulation(model.PolicyDORAStrict, 12345)
+func setupBenchmarkSimulation(numDevs, numTickets int) model.Simulation {
+	sim := model.NewSimulation("bench", model.PolicyDORAStrict, 12345)
 
 	for i := 0; i < numDevs; i++ {
 		sim.Developers = append(sim.Developers, model.NewDeveloper(
@@ -72,7 +72,7 @@ func nameFor(n int) string {
 func BenchmarkTick(b *testing.B) {
 	sim := setupBenchmarkSimulation(10, 50)
 	eng := engine.NewEngine(sim.Seed)
-	eng.EmitLoadedState(*sim)
+	eng.EmitLoadedState(sim)
 
 	// Assign some tickets to make tick do real work
 	state := eng.Sim()
@@ -94,7 +94,7 @@ func BenchmarkTick(b *testing.B) {
 func BenchmarkTick_LargeSimulation(b *testing.B) {
 	sim := setupBenchmarkSimulation(30, 200)
 	eng := engine.NewEngine(sim.Seed)
-	eng.EmitLoadedState(*sim)
+	eng.EmitLoadedState(sim)
 
 	// Assign tickets
 	state := eng.Sim()
@@ -173,7 +173,7 @@ func BenchmarkRunSprint(b *testing.B) {
 		b.StopTimer()
 		sim := setupBenchmarkSimulation(5, 20)
 		eng := engine.NewEngine(sim.Seed)
-		eng.EmitLoadedState(*sim)
+		eng.EmitLoadedState(sim)
 
 		// Assign tickets
 		state := eng.Sim()

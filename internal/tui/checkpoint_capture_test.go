@@ -45,7 +45,7 @@ func TestCaptureAllCheckpoints(t *testing.T) {
 	for sim.CurrentTick < 5 {
 		eng.Engine.Tick()
 		sim = eng.Engine.Sim()
-		eng.Tracker = eng.Tracker.Updated(&sim)
+		eng.Tracker = eng.Tracker.Updated(sim)
 	}
 	printStateWithEngine(eng, "Day 5")
 	printFeverWithEngine(eng)
@@ -60,7 +60,7 @@ func TestCaptureAllCheckpoints(t *testing.T) {
 	for sim.CurrentTick < 10 {
 		eng.Engine.Tick()
 		sim = eng.Engine.Sim()
-		eng.Tracker = eng.Tracker.Updated(&sim)
+		eng.Tracker = eng.Tracker.Updated(sim)
 	}
 	printStateWithEngine(eng, "Day 10")
 	printCompletedWithEngine(eng)
@@ -146,7 +146,7 @@ func printCompletedWithEngine(eng EngineMode) {
 
 func printMetricsWithEngine(eng EngineMode) {
 	sim := eng.Engine.Sim()
-	result := eng.Tracker.GetResult(sim.SizingPolicy, &sim)
+	result := eng.Tracker.GetResult(sim.SizingPolicy, sim)
 	m := result.FinalMetrics
 	fmt.Println("\n  DORA Metrics:")
 	fmt.Printf("    Lead Time: %.2f days\n", m.LeadTimeAvgDays())

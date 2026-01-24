@@ -50,6 +50,34 @@ The immutable pattern has costs:
 
 These are acceptable for a reference implementation that prioritizes correctness.
 
+### Value Semantics for Model Types
+
+`model.Simulation` and other data types use **value semantics throughout**:
+
+```go
+// Constructor returns value, ID at construction (no mutation after)
+func NewSimulation(id string, policy SizingPolicy, seed int64) Simulation
+
+// All receivers are value receivers
+func (s Simulation) FindDeveloperIndex(id string) int
+
+// APIs accept and return values
+func Save(path, name string, sim model.Simulation, ...) error
+func Load(path string) (model.Simulation, Tracker, error)
+func (t Tracker) Updated(sim model.Simulation) Tracker
+```
+
+**Why value semantics:**
+- Copying a struct with pointer fields (e.g., `*http.Server`) copies the pointer—still refers to same instance
+- Eliminates accidental aliasing bugs
+- Enables safe concurrent reads without locks
+- Aligns with FP Guide §7 immutability principles
+
+**When pointers are required:**
+- Types containing `sync.Mutex` (e.g., `SimRegistry`)
+- Framework requirements (e.g., Bubble Tea's `*App`)
+- Profiled hot paths where copy cost matters (>10MB structs)
+
 ## Development Environment
 
 - **Language**: Go

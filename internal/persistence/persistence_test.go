@@ -19,7 +19,7 @@ import (
 // with all state intact.
 func TestSaveLoad_RoundTrip(t *testing.T) {
 	// Arrange: create a simulation with some state
-	sim := model.NewSimulation(model.PolicyDORAStrict, 12345)
+	sim := model.NewSimulation("test-save", model.PolicyDORAStrict, 12345)
 	sim.Developers = append(sim.Developers, model.NewDeveloper("dev-001", "Alice", 1.0))
 	sim.Backlog = append(sim.Backlog, model.NewTicket("TKT-001", "Test ticket", 5.0, model.HighUnderstanding))
 	sim.CurrentTick = 42
@@ -67,7 +67,7 @@ func TestSaveLoad_RoundTrip(t *testing.T) {
 
 // TestSaveFile_IncludesVersion verifies that saved files contain a schema version.
 func TestSaveFile_IncludesVersion(t *testing.T) {
-	sim := model.NewSimulation(model.PolicyNone, 1)
+	sim := model.NewSimulation("version-test", model.PolicyNone, 1)
 	tracker := metrics.NewTracker()
 
 	tmpDir := t.TempDir()
@@ -91,7 +91,7 @@ func TestSaveFile_IncludesVersion(t *testing.T) {
 
 // TestSaveFile_IncludesTimestamp verifies that saved files contain a timestamp.
 func TestSaveFile_IncludesTimestamp(t *testing.T) {
-	sim := model.NewSimulation(model.PolicyNone, 1)
+	sim := model.NewSimulation("timestamp-test", model.PolicyNone, 1)
 	tracker := metrics.NewTracker()
 
 	before := time.Now()
@@ -122,7 +122,7 @@ func TestSaveFile_IncludesTimestamp(t *testing.T) {
 
 // TestSave_CreatesFile verifies that Save creates a file on disk.
 func TestSave_CreatesFile(t *testing.T) {
-	sim := model.NewSimulation(model.PolicyNone, 1)
+	sim := model.NewSimulation("create-test", model.PolicyNone, 1)
 	tracker := metrics.NewTracker()
 
 	tmpDir := t.TempDir()
@@ -146,7 +146,7 @@ func TestSave_CreatesFile(t *testing.T) {
 // TestLoad_RestoresState verifies that Load restores simulation state correctly.
 func TestLoad_RestoresState(t *testing.T) {
 	// Create simulation with meaningful state
-	sim := model.NewSimulation(model.PolicyTameFlowCognitive, 99999)
+	sim := model.NewSimulation("restore-test", model.PolicyTameFlowCognitive, 99999)
 	sim.Developers = append(sim.Developers, model.NewDeveloper("dev-001", "Alice", 1.0))
 	sim.Developers = append(sim.Developers, model.NewDeveloper("dev-002", "Bob", 0.8))
 
@@ -214,7 +214,7 @@ func TestLoad_NonexistentFile(t *testing.T) {
 
 // TestListSaves_ReturnsFiles verifies that ListSaves finds save files in a directory.
 func TestListSaves_ReturnsFiles(t *testing.T) {
-	sim := model.NewSimulation(model.PolicyNone, 1)
+	sim := model.NewSimulation("list-test", model.PolicyNone, 1)
 	tracker := metrics.NewTracker()
 
 	tmpDir := t.TempDir()

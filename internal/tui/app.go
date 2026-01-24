@@ -121,8 +121,7 @@ func NewAppWithRegistry(seed int64, reg *registry.SimRegistry) *App {
 	}
 
 	simID := fmt.Sprintf("sim-%d", seed)
-	sim := model.NewSimulation(model.PolicyDORAStrict, seed)
-	sim.ID = simID
+	sim := model.NewSimulation(simID, model.PolicyDORAStrict, seed)
 
 	tracker := metrics.NewTracker()
 
@@ -270,7 +269,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, nil // Client mode - ignore
 		}
 		sim := eng.Engine.Sim()
-		eng.Tracker = eng.Tracker.Updated(&sim)
+		eng.Tracker = eng.Tracker.Updated(sim)
 		a.mode = either.Left[EngineMode, ClientMode](eng)
 		// Show status for significant events
 		switch events.Event(msg).EventType() {
@@ -303,7 +302,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			// Get current state from projection
 			sim := eng.Engine.Sim()
-			eng.Tracker = eng.Tracker.Updated(&sim)
+			eng.Tracker = eng.Tracker.Updated(sim)
 			a.mode = either.Left[EngineMode, ClientMode](eng)
 
 			// Check if sprint ended (SprintEnded event already cleared it in projection)
@@ -491,7 +490,7 @@ func (a *App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			a.statusExpiry = time.Now().Add(3 * time.Second)
 			return a, nil
 		}
-		exporter := export.New(&sim, eng.Tracker, a.comparisonResult)
+		exporter := export.New(sim, eng.Tracker, a.comparisonResult)
 		result, err := exporter.Export()
 		if err != nil {
 			a.statusMessage = fmt.Sprintf("Export failed: %v", err)
@@ -513,7 +512,7 @@ func (a *App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		sim := eng.Engine.Sim()
 		saveName := fmt.Sprintf("sim-%d-%s", sim.Seed, time.Now().Format("150405"))
 		savePath := persistence.GenerateSavePath(persistence.DefaultSavesDir(), saveName)
-		err := persistence.Save(savePath, saveName, &sim, eng.Tracker)
+		err := persistence.Save(savePath, saveName, sim, eng.Tracker)
 		if err != nil {
 			a.statusMessage = fmt.Sprintf("Save failed: %v", err)
 			a.statusExpiry = time.Now().Add(5 * time.Second)
@@ -568,7 +567,7 @@ func (a *App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			newStore = events.NewMemoryStore()
 			newEngine = engine.NewEngineWithStore(sim.Seed, newStore)
 			// Emit events to populate projection from loaded state
-			newEngine = must.Get(newEngine.EmitLoadedState(*sim))
+			newEngine = must.Get(newEngine.EmitLoadedState(sim))
 		}
 
 		// Re-subscribe to new simulation's events
@@ -625,8 +624,8 @@ func (a *App) runComparison() {
 	// Get results and compare
 	stateA := engA.Sim()
 	stateB := engB.Sim()
-	resultA := trackerA.GetResult(model.PolicyDORAStrict, &stateA)
-	resultB := trackerB.GetResult(model.PolicyTameFlowCognitive, &stateB)
+	resultA := trackerA.GetResult(model.PolicyDORAStrict, stateA)
+	resultB := trackerB.GetResult(model.PolicyTameFlowCognitive, stateB)
 
 	comparison := metrics.Compare(resultA, resultB, seed)
 	a.comparisonResult = &comparison
@@ -634,8 +633,8 @@ func (a *App) runComparison() {
 
 // createSimulationEngine creates a fresh engine with identical setup
 func (a *App) createSimulationEngine(policy model.SizingPolicy, seed int64) engine.Engine {
-	sim := model.NewSimulation(policy, seed)
-	sim.ID = fmt.Sprintf("cmp-%d-%s", seed, policy)
+	simID := fmt.Sprintf("cmp-%d-%s", seed, policy)
+	sim := model.NewSimulation(simID, policy, seed)
 
 	eng := engine.NewEngine(sim.Seed)
 	eng = must.Get(eng.EmitCreated(sim.ID, sim.CurrentTick, events.SimConfig{
@@ -693,7 +692,7 @@ func (a *App) runSprintWithAutoAssign(eng engine.Engine, tracker metrics.Tracker
 	for eng.Sim().CurrentTick < sprint.EndDay {
 		eng, _ = must.Get2(eng.Tick())
 		state = eng.Sim()
-		tracker = tracker.Updated(&state)
+		tracker = tracker.Updated(state)
 
 		// Re-assign idle developers mid-sprint
 		for i := 0; i < len(state.Developers); i++ {

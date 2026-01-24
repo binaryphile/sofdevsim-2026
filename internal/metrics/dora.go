@@ -62,7 +62,7 @@ func NewDORAMetrics() DORAMetrics {
 }
 
 // Updated recalculates all DORA metrics from simulation state and returns the updated value
-func (m DORAMetrics) Updated(sim *model.Simulation) DORAMetrics {
+func (m DORAMetrics) Updated(sim model.Simulation) DORAMetrics {
 	m = m.updatedLeadTime(sim)
 	m = m.updatedDeployFrequency(sim)
 	m = m.updatedMTTR(sim)
@@ -71,7 +71,7 @@ func (m DORAMetrics) Updated(sim *model.Simulation) DORAMetrics {
 	return m
 }
 
-func (m DORAMetrics) updatedLeadTime(sim *model.Simulation) DORAMetrics {
+func (m DORAMetrics) updatedLeadTime(sim model.Simulation) DORAMetrics {
 	m.LeadTimes = m.LeadTimes[:0]
 
 	for _, ticket := range sim.CompletedTickets {
@@ -106,7 +106,7 @@ func (m DORAMetrics) updatedLeadTime(sim *model.Simulation) DORAMetrics {
 	return m
 }
 
-func (m DORAMetrics) updatedDeployFrequency(sim *model.Simulation) DORAMetrics {
+func (m DORAMetrics) updatedDeployFrequency(sim model.Simulation) DORAMetrics {
 	// Count deploys in last 7 days (using simulation ticks)
 	cutoff := sim.CurrentTick - 7
 	// completedAfterCutoff returns true if ticket was completed after the cutoff tick.
@@ -123,7 +123,7 @@ func (m DORAMetrics) updatedDeployFrequency(sim *model.Simulation) DORAMetrics {
 	return m
 }
 
-func (m DORAMetrics) updatedMTTR(sim *model.Simulation) DORAMetrics {
+func (m DORAMetrics) updatedMTTR(sim model.Simulation) DORAMetrics {
 	m.MTTRs = m.MTTRs[:0]
 
 	for _, inc := range sim.ResolvedIncidents {
@@ -143,7 +143,7 @@ func (m DORAMetrics) updatedMTTR(sim *model.Simulation) DORAMetrics {
 	return m
 }
 
-func (m DORAMetrics) updatedChangeFailRate(sim *model.Simulation) DORAMetrics {
+func (m DORAMetrics) updatedChangeFailRate(sim model.Simulation) DORAMetrics {
 	m.TotalDeploys = len(sim.CompletedTickets)
 	m.TotalIncidents = len(sim.OpenIncidents) + len(sim.ResolvedIncidents)
 

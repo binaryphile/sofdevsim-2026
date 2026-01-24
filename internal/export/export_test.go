@@ -103,7 +103,7 @@ func TestIsWithinExpected(t *testing.T) {
 
 // Integration test: happy path - export creates all expected files with valid structure
 func TestExporter_Export_HappyPath(t *testing.T) {
-	sim := model.NewSimulation(model.PolicyDORAStrict, 12345)
+	sim := model.NewSimulation("export-test", model.PolicyDORAStrict, 12345)
 	sim.Developers = append(sim.Developers, model.NewDeveloper("dev-1", "Alice", 1.0))
 	sim.SprintNumber = 1 // Direct state setup for test (StartSprint removed)
 
@@ -163,7 +163,7 @@ func TestExporter_Export_HappyPath(t *testing.T) {
 
 // Integration test: edge case - comparison.csv created when comparison provided
 func TestExporter_Export_WithComparison(t *testing.T) {
-	sim := model.NewSimulation(model.PolicyDORAStrict, 12345)
+	sim := model.NewSimulation("comparison-test", model.PolicyDORAStrict, 12345)
 
 	// Need completed ticket for export
 	ticket := model.NewTicket("TKT-001", "Test", 2, model.HighUnderstanding)

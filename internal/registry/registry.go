@@ -48,9 +48,10 @@ func (r *SimRegistry) IsZero() bool {
 // SimInstance owns a simulation.
 // Engine uses value semantics (immutable pattern per FP Guide §7).
 // After any Engine operation, store new Engine via SetInstance.
+// State comes from engine.Sim() (projection); Sim field is for backward compat only.
 type SimInstance struct {
-	Sim     *model.Simulation
-	Engine  engine.Engine // Value type: immutable operations return new Engine
+	Sim     model.Simulation // Value type for consistency; state from engine.Sim()
+	Engine  engine.Engine    // Value type: immutable operations return new Engine
 	Tracker metrics.Tracker
 }
 
@@ -68,8 +69,7 @@ func (r *SimRegistry) CreateSimulation(seed int64, policy model.SizingPolicy) (s
 		return "", fmt.Errorf("simulation %s: %w", id, ErrAlreadyExists)
 	}
 
-	sim := model.NewSimulation(policy, seed)
-	sim.ID = id // Set ID for event sourcing
+	sim := model.NewSimulation(id, policy, seed)
 
 	var err error
 	eng := engine.NewEngineWithStore(sim.Seed, r.store)
@@ -123,10 +123,10 @@ func (r *SimRegistry) CreateSimulation(seed int64, policy model.SizingPolicy) (s
 // RegisterSimulation registers an existing simulation with the shared event store.
 // Returns the engine configured to emit to the shared store, and any error.
 // Use this to share simulations between TUI and API.
-func (r *SimRegistry) RegisterSimulation(sim *model.Simulation, tracker metrics.Tracker) (engine.Engine, error) {
+func (r *SimRegistry) RegisterSimulation(sim model.Simulation, tracker metrics.Tracker) (engine.Engine, error) {
 	eng := engine.NewEngineWithStore(sim.Seed, r.store)
 	var err error
-	if eng, err = eng.EmitLoadedState(*sim); err != nil {
+	if eng, err = eng.EmitLoadedState(sim); err != nil {
 		return eng, fmt.Errorf("emit loaded state: %w", err)
 	}
 
@@ -142,7 +142,7 @@ func (r *SimRegistry) RegisterSimulation(sim *model.Simulation, tracker metrics.
 }
 
 // GetInstance returns simulation instance using comma-ok pattern.
-// SimInstance contains pointers, so mutations via engine affect original.
+// State should be read via engine.Sim() (projection), not inst.Sim.
 func (r *SimRegistry) GetInstance(id string) (SimInstance, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
