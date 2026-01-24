@@ -1167,12 +1167,3 @@ internal/
     └── handlers.go   # Replay and project
 ```
 
-### Migration Strategy
-
-1. Define event types (no breaking changes)
-2. Implement EventStore with in-memory storage
-3. Implement Projection
-4. Modify engine to emit events (alongside existing mutations)
-5. Wire TUI to subscribe
-6. Wire API to replay
-7. Remove direct state mutations (events become source of truth)
