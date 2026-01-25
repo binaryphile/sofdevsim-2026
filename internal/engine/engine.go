@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/binaryphile/fluentfp/either"
+	"github.com/binaryphile/fluentfp/option"
 	"github.com/binaryphile/fluentfp/slice"
 	"github.com/binaryphile/sofdevsim-2026/internal/events"
 	"github.com/binaryphile/sofdevsim-2026/internal/model"
@@ -25,12 +26,12 @@ type NotDecomposable struct {
 //
 // Value receiver: all methods return new Engine (immutable pattern per FP Guide §7).
 type Engine struct {
-	proj     events.Projection   // Data: immutable state derived from events
-	variance VarianceModel       // Calculation: pure, deterministic variance
-	evtGen   EventGenerator      // Calculation: seeded RNG, deterministic per tick
-	policies PolicyEngine        // Calculation: pure policy decisions
-	store    events.Store        // Action: I/O to event store (optional)
-	trace    events.TraceContext // Data: correlation context for events
+	proj     events.Projection              // Data: immutable state derived from events
+	variance VarianceModel                  // Calculation: pure, deterministic variance
+	evtGen   EventGenerator                 // Calculation: seeded RNG, deterministic per tick
+	policies PolicyEngine                   // Calculation: pure policy decisions
+	storeOption option.Basic[events.Store]  // Action: I/O to event store (optional)
+	trace    events.TraceContext            // Data: correlation context for events
 }
 
 // NewEngine creates a simulation engine without event sourcing.
@@ -52,7 +53,7 @@ func NewEngineWithStore(seed int64, store events.Store) Engine {
 		variance: NewVarianceModel(seed),
 		evtGen:   NewEventGenerator(seed),
 		policies: NewPolicyEngine(seed),
-		store:    store,
+		storeOption: option.Of(store),
 	}
 }
 
@@ -113,8 +114,8 @@ func (e Engine) emit(evt events.Event) (Engine, error) {
 	newProj := e.proj.Apply(evt)
 
 	// Only append to store if configured
-	if e.store != nil {
-		if err := e.store.Append(evt.SimulationID(), expectedVersion, evt); err != nil {
+	if store, ok := e.storeOption.Get(); ok {
+		if err := store.Append(evt.SimulationID(), expectedVersion, evt); err != nil {
 			// Concurrency conflict - return error for retry
 			return e, err
 		}
@@ -131,7 +132,7 @@ func (e Engine) withProj(proj events.Projection) Engine {
 		variance: e.variance,
 		evtGen:   e.evtGen,
 		policies: e.policies,
-		store:    e.store,
+		storeOption: e.storeOption,
 		trace:    e.trace,
 	}
 }
