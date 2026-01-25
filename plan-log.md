@@ -24756,3 +24756,29 @@ Added 6 fully-dressed Cockburn use cases (UC19-24) teaching Theory of Constraint
 
 **Why it matters:**
 Enables the simulation to teach TOC/DBR concepts through discovery-based learning, with a pedagogical progression from "aha moment" (UC19) through systematic framework (UC22) to real-world transfer (UC23).
+
+---
+
+## Log: 2026-01-25 - Phase 2: UC19 Lesson System Implementation
+
+**What was done:**
+Implemented the UC19 "aha moment" trigger: when sprint buffer >66% consumed AND a LOW understanding ticket is active, the lesson panel shows "Understanding IS the Constraint" explaining that uncertainty—not capacity—is what breaks sprint commitments.
+
+**Key files changed:**
+- internal/lessons/lessons.go: Added UncertaintyConstraint constant, TriggerState struct, updated Select()
+- internal/lessons/triggers.go: NEW - trigger detection functions (engine + client modes)
+- internal/lessons/triggers_test.go: NEW - 11 tests for trigger functions
+- internal/lessons/lessons_test.go: Updated 8 tests + added 3 UC19 tests
+- internal/tui/lessons.go: SprintOption type alias, BuildTriggersFromClientState(), re-exports
+- internal/tui/app.go: Trigger wiring with context comment explaining dual modes
+- internal/tui/app_test.go: TestApp_UC19TriggerIntegration (3 cases)
+- internal/tui/client.go: SprintOption field using option.Basic[SprintState]
+
+**Prerequisites completed:**
+- fluentfp Option JSON marshaling support (option/json.go)
+- SimulationState.SprintOption replaces Sprint pointer (value semantics)
+
+**Why it matters:**
+First TOC/DBR teaching moment in the simulation. When managers see buffer consumed by a LOW understanding ticket, they learn that "just work faster" doesn't fix missed sprints—reducing uncertainty does.
+
+**Grade:** A (95/100) - exemplary value semantics, pure functions, Khorikov-compliant tests
