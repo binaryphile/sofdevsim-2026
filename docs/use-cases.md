@@ -65,6 +65,8 @@ flowchart TB
 
 **Automated Test Agent** - Claude or script verifying simulation behavior via HTTP API
 
+**Manager** - Software development manager learning TOC/DBR concepts through simulation
+
 ### Secondary Actors
 
 None (self-contained simulation, no external services)
@@ -150,7 +152,20 @@ None (self-contained simulation, no external services)
 |---|------|-------|--------------|---------------------|
 | 18 | Learn simulation concepts through guided interaction | Blue | Yes - understand variance/DORA/policies | Team Lead - informed decisions; Researcher - validate teaching |
 
-**Use Cases Written:** Goals 1-12, 14-18 (Blue level)
+**Primary Actor:** Manager (software development manager)
+
+| # | Goal | Level | "Lunch Test" | Stakeholder Interest | Prereq |
+|---|------|-------|--------------|---------------------|--------|
+| 19 | Recognize that understanding IS the constraint | Blue | Yes (5 min) | Researcher: validate key insight | Buffer red on LOW ticket |
+| 20 | Identify the constraint in a simulated team | Blue | Yes (5-10 min) | Team Lead: capacity decisions | UC19 + 2 sprints |
+| 21 | Understand exploitation vs elevation tradeoff | Blue | Yes (5-10 min) | Team Lead: prioritize investments | UC19 + decomposition used |
+| 22 | Apply Five Focusing Steps to simulation data | Blue | Yes (10-15 min) | Educator: teach TOC systematically | UC20 + UC21 + 3 sprints |
+| 23 | Generate actionable questions for real team | Blue | Yes (5 min) | Manager: bridge to practice | UC22 + comparison run |
+| 24 | Share simulation insights with team | Blue | Yes (3 min) | Team Lead: spread learning | Any simulation run |
+
+*Pedagogical Order:* UC19 → UC20/UC21 (parallel) → UC22 → UC23; UC24 anytime
+
+**Use Cases Written:** Goals 1-12, 14-24 (Blue level)
 
 ---
 
@@ -643,6 +658,273 @@ This use case requires event sourcing architecture:
 
 - TUI: Dedicated "Lessons" panel toggled with 'h' key; shows contextual how/what content
 - API: Teaching content available via GET endpoint (for external UI building their own lessons panel)
+
+---
+
+### UC19: Recognize Understanding as the Constraint (Aha Moment)
+
+**Primary Actor:** Manager (software development manager)
+
+**Goal in Context:** Experience the key insight that uncertainty, not capacity, determines delivery predictability.
+
+**Scope:** Software Development Simulation
+
+**Level:** User Goal (Blue)
+
+**Stakeholders and Interests:**
+
+- *Manager:* Wants to understand why estimates fail
+- *Researcher:* Wants to validate that simulation transfers key TOC insight
+
+**Trigger:** Buffer consumption reaches red zone (>66%) on a LOW understanding ticket
+
+**Preconditions:**
+
+- First sprint in progress or completed
+- Lessons panel enabled ('h' key)
+
+**Postconditions (Guarantees):**
+
+- *Success:* Manager experiences "aha moment": "Uncertainty, not capacity, is my bottleneck"
+- *Failure:* Simulation state unchanged; manager can retry
+
+**Main Success Scenario:**
+
+1. Manager watches a LOW understanding ticket blow past its estimate
+2. Buffer consumption reaches red zone (>66%)
+3. System triggers lesson immediately: "Buffer consumed! LOW understanding = ±50% variance"
+4. Manager sees the math: 3-day estimate → actual 1.5-4.5 days possible
+5. Lesson continues: "Your constraint isn't the phase—it's what you don't know yet"
+6. Manager connects: "This is why my real team's estimates fail"
+
+**Extensions:**
+
+- 2a. *Buffer stays green:* Lesson defers until red zone reached
+- 3a. *Manager has already seen this lesson:* Show incident correlation variant
+- *a. *Lessons disabled:* No lesson shown; manager discovers pattern independently
+
+---
+
+### UC20: Identify the Constraint
+
+**Primary Actor:** Manager
+
+**Goal in Context:** Learn to distinguish symptoms (queue depth) from root cause (understanding variance).
+
+**Scope:** Software Development Simulation
+
+**Level:** User Goal (Blue)
+
+**Stakeholders and Interests:**
+
+- *Team Lead:* Wants to make informed capacity decisions
+
+**Trigger:** Phase queue exceeds 2× average queue depth AND UC19 lesson seen
+
+**Preconditions:**
+
+- UC19 completed (aha moment experienced)
+- At least 2 sprints completed
+- Lessons panel enabled
+
+**Postconditions (Guarantees):**
+
+- *Success:* Manager can articulate: "Queue depth shows symptoms; variance shows root cause"
+- *Failure:* Simulation state unchanged; manager can retry
+
+**Main Success Scenario:**
+
+1. Manager views Execution or Metrics after 2+ sprints
+2. Manager notices some phases have longer queues
+3. System detects queue imbalance (any phase > 2× average queue depth)
+4. System displays "Constraint Hunt" lesson
+5. Lesson shows queue depths alongside variance by understanding level
+6. Manager sees: HIGH queue depth correlates with LOW understanding tickets
+7. Manager recognizes: the constraint is uncertainty, not the phase itself
+
+**Extensions:**
+
+- 3a. *No queue imbalance yet:* Lesson defers
+- *a. *Lessons disabled:* No lesson shown; manager discovers pattern independently
+
+---
+
+### UC21: Understand Exploitation vs Elevation
+
+**Primary Actor:** Manager
+
+**Goal in Context:** Learn when decomposition helps vs hurts based on exploitation-first principle.
+
+**Scope:** Software Development Simulation
+
+**Level:** User Goal (Blue)
+
+**Stakeholders and Interests:**
+
+- *Team Lead:* Wants to prioritize improvement investments correctly
+
+**Trigger:** Decomposed ticket's children completed AND any child actual/estimate ratio > 1.3
+
+**Preconditions:**
+
+- UC19 completed (aha moment)
+- Manager has decomposed at least one ticket
+- Child tickets have completed
+
+**Postconditions (Guarantees):**
+
+- *Success:* Manager understands: "Exploitation = get more from constraint; Elevation = add capacity"
+- *Failure:* Decomposition recorded; manager can observe outcomes in future sprints
+
+**Main Success Scenario:**
+
+1. Manager decomposes a LOW understanding ticket
+2. System tracks outcome of child tickets
+3. When children complete, system compares child variance to parent estimate
+4. Children also had high variance (actual/estimate ratio > 1.3 for any child)
+5. Lesson triggers: "Splitting didn't fix uncertainty"
+6. Manager sees: decomposition without understanding improvement is elevation without exploitation
+7. Lesson explains: "Exploit first (improve understanding), then consider elevation"
+
+**Extensions:**
+
+- 4a. *Children had LOW variance (all ratios < 1.2):* Lesson: "Decomposition worked! Understanding improved during split."
+- 4b. *Mixed results:* Lesson shows which children succeeded and why
+- *a. *Lessons disabled:* No lesson shown; manager discovers pattern independently
+
+---
+
+### UC22: Apply Five Focusing Steps
+
+**Primary Actor:** Manager
+
+**Goal in Context:** Learn and apply the TOC Five Focusing Steps framework to simulation data.
+
+**Scope:** Software Development Simulation
+
+**Level:** User Goal (Blue)
+
+**Stakeholders and Interests:**
+
+- *Educator:* Wants to teach TOC systematically with concrete examples
+
+**Trigger:** 3+ sprints completed AND UC20 + UC21 lessons seen
+
+**Preconditions:**
+
+- UC20 and UC21 completed (constraint identified, exploit/elevate understood)
+- Manager has completed 3+ sprints
+- Metrics view has data to analyze
+
+**Postconditions (Guarantees):**
+
+- *Success:* Manager can recite the 5FS: Identify, Exploit, Subordinate, Elevate, Repeat
+- *Failure:* Simulation data preserved; manager can return to Metrics view
+
+**Main Success Scenario:**
+
+1. Manager views Metrics after 3+ sprints
+2. System detects sufficient data for pattern recognition
+3. System displays 5FS lesson with IDENTIFY step: "Your data shows understanding is the constraint"
+4. Manager reads EXPLOIT step: "TameFlow policy maxes understanding before committing"
+5. Manager reads SUBORDINATE step: "Other phases wait for understanding to stabilize"
+6. Manager reads ELEVATE step: "Decomposition adds capacity only after exploitation"
+7. Manager reads REPEAT step: "Run another sprint—did the constraint move?"
+8. Manager sees 5FS mapped to their actual simulation run
+
+**Extensions:**
+
+- 2a. *Data insufficient (< 3 sprints):* Lesson defers, suggests more sprints
+- *a. *Lessons disabled:* No lesson shown; manager discovers pattern independently
+
+---
+
+### UC23: Generate Actionable Questions
+
+**Primary Actor:** Manager
+
+**Goal in Context:** Leave the simulation with concrete questions to ask their real team Monday morning.
+
+**Scope:** Software Development Simulation
+
+**Level:** User Goal (Blue)
+
+**Stakeholders and Interests:**
+
+- *Manager:* Wants to bridge simulation learning to real practice
+
+**Trigger:** Comparison view opened AND UC22 lesson seen
+
+**Preconditions:**
+
+- Manager has completed comparison mode run
+- Manager has seen multiple lessons
+
+**Postconditions (Guarantees):**
+
+- *Success:* Manager leaves with 3 specific questions to ask their real team Monday
+- *Failure:* Comparison data preserved; manager can return to view
+
+**Main Success Scenario:**
+
+1. Manager views comparison results (DORA vs TameFlow)
+2. System displays "Manager Scorecard" with Predictability, Throughput, Quality, Team Health
+3. System shows first transfer question: "Which tickets surprised you last sprint? What did they have in common?"
+4. System shows second transfer question: "Was it SIZE or UNCERTAINTY that caused the surprise?"
+5. System shows third transfer question: "Where does your team invest time before committing to estimates?"
+6. Manager mentally maps questions to their real team context
+
+**Extensions:**
+
+- 2a. *Only one policy run:* Scorecard shows single-policy results with comparison prompt
+- *a. *Lessons disabled:* Scorecard shows metrics only, no transfer questions
+
+---
+
+### UC24: Share Simulation Insights with Team
+
+**Primary Actor:** Manager
+
+**Goal in Context:** Export simulation learnings as an HTML report to share with team.
+
+**Scope:** Software Development Simulation
+
+**Level:** User Goal (Blue)
+
+**Stakeholders and Interests:**
+
+- *Team Lead:* Wants to spread learning across team without everyone running simulation
+
+**Trigger:** Manager invokes `--export-html` flag or presses 'e' in TUI
+
+**Preconditions:**
+
+- Manager has run at least one simulation
+
+**Postconditions (Guarantees):**
+
+- *Success:* Manager has an HTML file they can email/Slack to team
+- *Failure:* Simulation state unchanged; export can be retried
+
+**Main Success Scenario:**
+
+1. Manager completes simulation session
+2. Manager invokes export command (CLI flag or TUI key 'e')
+3. System prompts for output path (default: `./simulation-report-{timestamp}.html`)
+4. System generates HTML report with simulation parameters header (seed, developers, policy)
+5. System adds DORA metrics summary section with sparklines for each metric
+6. System adds buffer consumption history section with color-coded timeline
+7. System adds lessons section listing each triggered lesson with key insight
+8. System adds transfer questions section with the 3 Monday morning questions
+9. System saves report to path from step 3
+10. Manager shares file via email/Slack/wiki
+
+**Extensions:**
+
+- 3a. *Path not writable:* Error with suggestion, re-prompt
+- 7a. *No lessons triggered:* Report shows metrics only with "Run with 'h' to enable lessons" prompt
+
+**Note:** UC24 has no lesson—it's a sharing mechanism, not a teaching moment.
 
 ---
 

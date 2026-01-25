@@ -380,7 +380,7 @@ Contextual teaching that adapts to current view and simulation state. Press 'h' 
 │                                │ • Tip 1          │
 │                                │ • Tip 2          │
 │                                │                  │
-│                                │ Progress: 3/8    │
+│                                │ Progress: 3/13   │
 └────────────────────────────────┴──────────────────┘
 ```
 
@@ -405,9 +405,15 @@ Contextual teaching that adapts to current view and simulation state. Press 'h' 
 | Metrics | — | DORA metrics (4 metrics + direction) |
 | Comparison | Has results | Policy comparison (DORA vs TameFlow) |
 | Comparison | No results | Comparison intro (how to run) |
+| Execution | Buffer >66% + LOW ticket | UncertaintyConstraint (aha moment) |
+| Metrics | Phase queue >2× avg | ConstraintHunt (find the constraint) |
+| Metrics | Child ratio >1.3 | ExploitFirst (exploit before elevate) |
+| Metrics | 3+ sprints + prereqs | FiveFocusing (5FS framework) |
+| Comparison | UC22 seen | ManagerTakeaways (Monday questions) |
 
-**8 Teaching Concepts:**
+**13 Teaching Concepts:**
 
+*Original 8 (UC13):*
 1. **Orientation** — Simulation intro, understanding→variance insight
 2. **Understanding** — Understanding levels and their variance bounds
 3. **Fever Chart** — Buffer consumption and traffic-light zones
@@ -416,6 +422,29 @@ Contextual teaching that adapts to current view and simulation state. Press 'h' 
 6. **Policy Comparison** — DORA-Strict vs TameFlow-Cognitive
 7. **Variance Expected** — Per-ticket variance prediction
 8. **Variance Analysis** — Post-sprint actual vs estimated
+
+*TOC/DBR Extension (UC19-23):*
+9. **UncertaintyConstraint** — "Understanding IS the Constraint" (UC19 aha moment)
+10. **ConstraintHunt** — "Finding the Constraint" (UC20 symptom vs cause)
+11. **ExploitFirst** — "Exploit Before Elevate" (UC21 decomposition lesson)
+12. **FiveFocusing** — "The Five Focusing Steps" (UC22 TOC framework)
+13. **ManagerTakeaways** — "Monday Morning Questions" (UC23 transfer to practice)
+
+**Lesson Dependencies (pedagogical order):**
+
+```
+UncertaintyConstraint (first, Sprint 1)
+        ↓
+   ┌────┴────┐
+   ↓         ↓
+ConstraintHunt  ExploitFirst (parallel, after UC19)
+   ↓         ↓
+   └────┬────┘
+        ↓
+   FiveFocusing (after UC20 + UC21)
+        ↓
+  ManagerTakeaways (after UC22 + comparison)
+```
 
 **API Endpoint:**
 
@@ -429,7 +458,7 @@ Contextual teaching that adapts to current view and simulation state. Press 'h' 
     "content": "...",
     "tips": ["Tab switches views", "Space pauses/resumes"]
   },
-  "progress": "0/8 concepts",
+  "progress": "0/13 concepts",
   "_links": {
     "self": "/simulations/sim-1/lessons",
     "simulation": "/simulations/sim-1"

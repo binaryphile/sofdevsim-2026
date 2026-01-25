@@ -24254,3 +24254,505 @@ Added explicit Version field to events for schema evolution. Upcaster now dispat
 
 **Why it matters:**
 Enables safe schema evolution via upcasting. Events can now be versioned and transformed as schema evolves.
+
+---
+
+## Approved Plan: 2026-01-25
+
+# Plan: Extend UC13 with TOC/DBR Learning Experience
+
+## Phase 1: Use Case Design
+
+This phase defines use cases for teaching TOC/DBR concepts to software development managers. Implementation planning is deferred to subsequent phases.
+
+---
+
+## System-in-Use Story
+
+> Sarah, a development manager whose team just missed another sprint commitment, opens the simulation during her lunch break. She runs a sprint and watches her buffer go red on a ticket she thought was "only 3 days." The lesson panel explains: "This ticket had LOW understanding—variance ate your safety margin." Sarah realizes it wasn't the size that killed them, it was uncertainty. She tries the comparison mode and sees TameFlow outperforming DORA on her team's profile. She likes the simulation because it shows consequences without risking real sprints. She comes back to it before her next planning session to practice identifying constraints.
+
+---
+
+## Scope
+
+**System:** sofdevsim-2026 (Software Development Simulation)
+
+**In Scope:**
+- New lessons teaching TOC/DBR concepts
+- Constraint visualization in existing views
+- Event-triggered learning moments
+- Manager-focused synthesis/takeaways
+- HTML report export (for sharing learnings)
+
+**Out of Scope:**
+- Interactive decision points (pausing simulation for choices)
+- Rope mode (pull-based release simulation)
+- Separate constraint analysis tab
+- Grafana dashboard (overkill for learning use case)
+
+**Rationale:** TUI for learning (hands-on, immediate feedback), HTML export for sharing (simple, no infrastructure).
+
+**Actors:**
+- **Primary:** Manager (software development manager using the simulation)
+- **Secondary:** Simulation Engine (processes events, tracks state), Lesson System (selects contextual lessons)
+
+---
+
+## Actor-Goal List
+
+| # | Actor | Goal | Level | Lunch Test | Stakeholder Interest | Prereq |
+|---|-------|------|-------|------------|---------------------|--------|
+| 19 | Manager | Recognize that understanding IS the constraint | Blue | Yes (5 min) | Researcher: validate key insight | Buffer red on LOW ticket |
+| 20 | Manager | Identify the constraint in a simulated team | Blue | Yes (5-10 min) | Team Lead: capacity decisions | UC19 + 2 sprints |
+| 21 | Manager | Understand exploitation vs elevation tradeoff | Blue | Yes (5-10 min) | Team Lead: prioritize investments | UC19 + decomposition used |
+| 22 | Manager | Apply Five Focusing Steps to simulation data | Blue | Yes (10-15 min) | Educator: teach TOC systematically | UC20 + UC21 + 3 sprints |
+| 23 | Manager | Generate actionable questions for real team | Blue | Yes (5 min) | Manager: bridge to practice | UC22 + comparison run |
+| 24 | Manager | Share simulation insights with team | Blue | Yes (3 min) | Team Lead: spread learning | Any simulation run |
+
+**Pedagogical Order:** UC19 → UC20/UC21 (parallel) → UC22 → UC23; UC24 anytime
+
+**Notes:**
+- UC24 (HTML export) has no lesson—it's a sharing mechanism, not a teaching moment
+- All lesson-based UCs (UC19-23) have `*a. Lessons disabled` extension: manager can still achieve goals through independent discovery, but without guided insights
+
+**Goal Level Check:**
+- All goals are Blue (user-level, 2-20 min)
+- Each passes "lunch test"
+- Prereqs show learning progression
+
+---
+
+## UC19: Recognize Understanding as the Constraint (Aha Moment)
+
+**Scope:** sofdevsim-2026
+**Level:** Blue (User Goal)
+**Primary Actor:** Manager
+**Stakeholders:** Researcher (validate key insight transfer)
+
+**Preconditions:**
+- First sprint in progress or completed
+- Lessons panel enabled
+
+**Success Guarantee:**
+- Manager experiences "aha moment": "Uncertainty, not capacity, is my bottleneck"
+- This is the KEY insight—must happen first
+
+**Minimal Guarantee:**
+- Simulation state unchanged; manager can retry
+
+**Main Success Scenario:**
+1. Manager watches a LOW understanding ticket blow past its estimate
+2. Buffer consumption reaches red zone (>66%)
+3. Lesson triggers immediately: "Buffer consumed! LOW understanding = ±50% variance"
+4. Manager sees the math: 3-day estimate → actual 1.5-4.5 days possible
+5. Lesson continues: "Your constraint isn't the phase—it's what you don't know yet"
+6. Manager connects: "This is why my real team's estimates fail"
+
+**Extensions:**
+- 2a. Buffer stays green → Lesson defers until red zone reached
+- 3a. Manager has already seen this lesson → Show incident correlation variant
+- *a. Lessons disabled → No lesson shown; manager discovers pattern independently
+
+**Trigger specificity:** Buffer >66% AND LOW understanding ticket AND lessons enabled
+
+---
+
+## UC20: Identify the Constraint
+
+**Scope:** sofdevsim-2026
+**Level:** Blue (User Goal)
+**Primary Actor:** Manager
+**Stakeholders:** Team Lead (informed decisions)
+
+**Preconditions:**
+- UC19 completed (aha moment experienced)
+- At least 2 sprints completed
+- Lessons panel enabled
+
+**Success Guarantee:**
+- Manager can articulate: "Queue depth shows symptoms; variance shows root cause"
+- Manager knows to look at understanding level, not just phase queues
+
+**Minimal Guarantee:**
+- Simulation state unchanged; manager can retry
+
+**Main Success Scenario:**
+1. Manager views Execution or Metrics after 2+ sprints
+2. Manager notices some phases have longer queues
+3. System detects queue imbalance (any phase > 2× average queue depth)
+4. System displays "Constraint Hunt" lesson
+5. Lesson shows queue depths alongside variance by understanding level
+6. Manager sees: HIGH queue depth correlates with LOW understanding tickets
+7. Manager recognizes: the constraint is uncertainty, not the phase itself
+
+**Extensions:**
+- 3a. No queue imbalance yet → Lesson defers
+- *a. Lessons disabled → No lesson shown; manager discovers pattern independently
+
+**Trigger specificity:** Phase queue >2× average AND UC19 seen AND lessons enabled
+
+---
+
+## UC21: Understand Exploitation vs Elevation
+
+**Scope:** sofdevsim-2026
+**Level:** Blue (User Goal)
+**Primary Actor:** Manager
+
+**Preconditions:**
+- UC19 completed (aha moment)
+- Manager has decomposed at least one ticket
+- Child tickets have completed
+
+**Success Guarantee:**
+- Manager understands: "Exploitation = get more from constraint; Elevation = add capacity"
+- Manager can predict when decomposition helps vs hurts
+
+**Minimal Guarantee:**
+- Decomposition recorded; manager can observe outcomes in future sprints
+
+**Main Success Scenario:**
+1. Manager decomposes a LOW understanding ticket
+2. System tracks outcome of child tickets
+3. When children complete, system compares child variance to parent estimate
+4. Children also had high variance (actual/estimate ratio > 1.3 for any child)
+5. Lesson triggers: "Splitting didn't fix uncertainty"
+6. Manager sees: decomposition without understanding improvement is elevation without exploitation
+7. Lesson explains: "Exploit first (improve understanding), then consider elevation"
+
+**Extensions:**
+- 4a. Children had LOW variance (all ratios < 1.2) → Lesson: "Decomposition worked! Understanding improved during split."
+- 4b. Mixed results → Lesson shows which children succeeded and why
+- *a. Lessons disabled → No lesson shown; manager discovers pattern independently
+
+**Trigger specificity:** Children completed AND any ratio >1.3 AND lessons enabled
+
+---
+
+## UC22: Apply Five Focusing Steps
+
+**Scope:** sofdevsim-2026
+**Level:** Blue (User Goal)
+**Primary Actor:** Manager
+
+**Preconditions:**
+- UC20 and UC21 completed (constraint identified, exploit/elevate understood)
+- Manager has completed 3+ sprints
+- Metrics view has data to analyze
+
+**Success Guarantee:**
+- Manager can recite the 5FS: Identify, Exploit, Subordinate, Elevate, Repeat
+- Manager has mentally applied each step to simulation data
+
+**Minimal Guarantee:**
+- Simulation data preserved; manager can return to Metrics view
+
+**Main Success Scenario:**
+1. Manager views Metrics after 3+ sprints
+2. System detects sufficient data for pattern recognition
+3. Lesson presents 5FS framework with simulation-specific examples:
+   - IDENTIFY: "Your data shows understanding is the constraint"
+   - EXPLOIT: "TameFlow policy maxes understanding before committing"
+   - SUBORDINATE: "Other phases wait for understanding to stabilize"
+   - ELEVATE: "Decomposition adds capacity only after exploitation"
+   - REPEAT: "Run another sprint—did the constraint move?"
+4. Manager sees 5FS mapped to their actual simulation run
+
+**Extensions:**
+- 2a. Data insufficient (< 3 sprints) → Lesson defers, suggests more sprints
+- *a. Lessons disabled → No lesson shown; manager discovers pattern independently
+
+**Trigger specificity:** 3+ sprints AND UC20 + UC21 seen AND lessons enabled
+
+---
+
+## UC23: Generate Actionable Questions
+
+**Scope:** sofdevsim-2026
+**Level:** Blue (User Goal)
+**Primary Actor:** Manager
+
+**Preconditions:**
+- Manager has completed comparison mode run
+- Manager has seen multiple lessons
+
+**Success Guarantee:**
+- Manager leaves with 3 specific questions to ask their real team Monday
+- Questions are concrete, not abstract theory
+
+**Minimal Guarantee:**
+- Comparison data preserved; manager can return to view
+
+**Main Success Scenario:**
+1. Manager views comparison results (DORA vs TameFlow)
+2. System displays "Manager Scorecard" synthesis
+3. Scorecard shows: Predictability, Throughput, Quality, Team Health
+4. Below scores, lesson provides transfer questions:
+   - "Which tickets surprised you last sprint? What did they have in common?"
+   - "Was it SIZE or UNCERTAINTY that caused the surprise?"
+   - "Where does your team invest time before committing to estimates?"
+5. Manager mentally maps questions to their real team context
+
+**Extensions:**
+- 2a. Only one policy run → Scorecard shows single-policy results with comparison prompt
+- *a. Lessons disabled → Scorecard shows metrics only, no transfer questions
+
+**Trigger specificity:** Comparison view AND UC22 seen AND lessons enabled
+
+---
+
+## UC24: Share Simulation Insights with Team
+
+**Scope:** sofdevsim-2026
+**Level:** Blue (User Goal)
+**Primary Actor:** Manager
+
+**Preconditions:**
+- Manager has run at least one simulation
+- Manager wants to share findings
+
+**Success Guarantee:**
+- Manager has an HTML file they can email/Slack to team
+- Report includes key metrics, lessons learned, and transfer questions
+
+**Minimal Guarantee:**
+- Simulation state unchanged; export can be retried
+
+**Main Success Scenario:**
+1. Manager completes simulation session
+2. Manager invokes export command (CLI flag or TUI key)
+3. System generates HTML report containing:
+   - Simulation parameters (seed, developers, policy)
+   - DORA metrics summary with sparklines
+   - Buffer consumption history
+   - Lessons triggered during session
+   - Transfer questions for real team
+4. System saves report to specified path
+5. Manager shares file via email/Slack/wiki
+
+**Extensions:**
+- 3a. No lessons triggered → Report shows metrics only with "Run with 'h' to enable lessons" prompt
+- 4a. Path not writable → Error with suggestion
+
+**Trigger specificity:** User invokes `--export-html` flag or presses 'e' in TUI
+
+---
+
+## New Lessons Summary (Extend UC13)
+
+| ID | Title | Trigger | Key Insight | UC |
+|----|-------|---------|-------------|-----|
+| UncertaintyConstraint | "Understanding IS the Constraint" | Buffer >66% on LOW ticket | The aha moment (first!) | UC19 |
+| ConstraintHunt | "Finding the Constraint" | Phase queue >2× avg | Queue depth = symptom; variance = cause | UC20 |
+| ExploitFirst | "Exploit Before Elevate" | Child actual/estimate >1.3 | Fix understanding before splitting | UC21 |
+| FiveFocusing | "The Five Focusing Steps" | 3+ sprints + UC20/21 seen | Systematic constraint management | UC22 |
+| ManagerTakeaways | "Monday Morning Questions" | Comparison + UC22 seen | Bridge to real practice | UC23 |
+
+**Lesson Sequence:** UncertaintyConstraint → ConstraintHunt → ExploitFirst → FiveFocusing → ManagerTakeaways
+
+**Integration:** These extend the existing 8 lessons to total 13.
+
+---
+
+## Design Doc Updates Required
+
+Before implementation, update `/home/ted/projects/sofdevsim-2026/docs/design.md`:
+
+1. **Lessons section** - Add new lesson IDs and trigger conditions
+2. **Educational arc** - Document the 5-act learning progression
+3. **Manager persona** - Add to stakeholder list if not present
+4. **Constraint analysis metrics** - Document what data projections need to track
+
+---
+
+## Next Steps
+
+1. **Update design doc** (`/home/ted/projects/sofdevsim-2026/docs/design.md`) with new lessons
+2. **Update use-cases doc** (`/home/ted/projects/sofdevsim-2026/docs/use-cases.md`) with UC19-24
+3. **Phase 2 contract:** Implementation planning for TUI lessons (UC19-23)
+4. **Phase 3 contract:** HTML report export (UC24)
+
+---
+
+## Educational Principles
+
+1. **Discovery over lecture** - User sees patterns, THEN gets explanation
+2. **Decisions have consequences** - Choices affect outcomes visibly
+3. **Repeated revelation** - Same insight shown multiple ways
+4. **Practical framing** - "What does this mean for MY team Monday?"
+5. **Progressive complexity** - Simple observation → deeper insight → action
+
+---
+
+## Success Criteria (Use Cases)
+
+- [ ] UC19: Manager experiences "aha moment" (understanding IS the constraint)
+- [ ] UC20: Manager can identify constraint from variance data
+- [ ] UC21: Manager understands exploitation vs elevation tradeoff
+- [ ] UC22: Manager can recite and apply Five Focusing Steps
+- [ ] UC23: Manager leaves with 3 actionable questions for real team
+- [ ] UC24: Manager can export and share HTML report with team
+
+---
+
+## Reference Materials
+
+- **Existing use cases:** `/home/ted/projects/sofdevsim-2026/docs/use-cases.md`
+- **Existing design:** `/home/ted/projects/sofdevsim-2026/docs/design.md`
+- **TameFlow source:** `/home/ted/projects/jeeves/books/hyper-productive-knowledge-work/`
+- **DBR sources:** `/home/ted/projects/urma-obsidian/sources/toc/`
+
+---
+
+## Key TameFlow Concepts to Teach
+
+From exploration of TameFlow book (`/home/ted/projects/jeeves/books/hyper-productive-knowledge-work/`):
+
+### Tier 1: Foundational
+1. **The Herbie Story** - System throughput limited by slowest resource (constraint)
+2. **Constraints as Financial Leverage** - Only constraint improvements translate to profit
+3. **Cognitive Load as Constraint** - Knowledge work's constraint is understanding, not capacity
+
+### Tier 2: Practical Mechanics
+4. **Five Focusing Steps (5FS)** - Identify, Exploit, Subordinate, Elevate, Repeat
+5. **Drum-Buffer-Rope (DBR)** - Constraint pace (drum), time protection (buffer), pull signal (rope)
+6. **Constraint vs Variation** - Variation at constraint is fatal; at non-constraints is recoverable
+
+### Tier 3: Organizational (Future)
+7. Communication saturation patterns
+8. Unity of Purpose / Community of Trust
+9. Root cause analysis (Current Reality Tree)
+
+---
+
+## Approved Contract: 2026-01-25
+
+# Phase 1 Contract: TOC/DBR Use Case Design
+
+**Created:** 2026-01-25
+
+## Step 1 Checklist
+- [x] 1a: Presented understanding
+- [x] 1b: Asked clarifying questions (via /p /i grading cycles)
+- [x] 1b-answer: Received answers
+- [x] 1c: Contract created (this file)
+- [x] 1d: Approval received
+- [ ] 1e: Plan + contract archived
+
+## Objective
+
+Define 6 use cases (UC19-24) teaching TOC/DBR concepts to software development managers, extending the existing UC13 (Learn Simulation Concepts).
+
+## Success Criteria
+
+- [ ] UC19-24 added to `/home/ted/projects/sofdevsim-2026/docs/use-cases.md`
+- [ ] Design doc updated with new lessons and triggers
+- [ ] All UCs follow Cockburn Fully Dressed format
+- [ ] Lesson dependency chain documented
+- [ ] HTML export UC (UC24) scoped for Phase 3
+
+## Deliverables
+
+| Deliverable | Location |
+|-------------|----------|
+| Use cases UC19-24 | `docs/use-cases.md` (append) |
+| Design doc updates | `docs/design.md` (edit) |
+| Plan file | `/home/ted/.claude/plans/buzzing-napping-squid.md` |
+
+## Approach
+
+1. Append UC19-24 to existing use-cases.md (after UC18)
+2. Update design.md with:
+   - New lesson IDs and triggers
+   - Manager persona if missing
+   - Educational arc description
+3. Verify cross-references
+
+## Token Budget
+
+Estimated: 10-15K tokens (mostly edits to existing docs)
+
+## Files to Modify
+
+- `/home/ted/projects/sofdevsim-2026/docs/use-cases.md`
+- `/home/ted/projects/sofdevsim-2026/docs/design.md`
+
+---
+
+## Archived: 2026-01-25
+
+# Phase 1 Contract: TOC/DBR Use Case Design
+
+**Created:** 2026-01-25
+
+## Step 1 Checklist
+- [x] 1a: Presented understanding
+- [x] 1b: Asked clarifying questions (via /p /i grading cycles)
+- [x] 1b-answer: Received answers
+- [x] 1c: Contract created (this file)
+- [x] 1d: Approval received
+- [x] 1e: Plan + contract archived
+
+## Objective
+
+Define 6 use cases (UC19-24) teaching TOC/DBR concepts to software development managers, extending the existing UC13 (Learn Simulation Concepts).
+
+## Success Criteria
+
+- [x] UC19-24 added to `/home/ted/projects/sofdevsim-2026/docs/use-cases.md`
+- [x] Design doc updated with new lessons and triggers
+- [x] All UCs follow Cockburn Fully Dressed format
+- [x] Lesson dependency chain documented
+- [x] HTML export UC (UC24) scoped for Phase 3
+
+## Deliverables
+
+| Deliverable | Location |
+|-------------|----------|
+| Use cases UC19-24 | `docs/use-cases.md` (append) |
+| Design doc updates | `docs/design.md` (edit) |
+| Plan file | `/home/ted/.claude/plans/buzzing-napping-squid.md` |
+
+## Actual Results
+
+**Completed:** 2026-01-25
+
+### Deliverable Details
+
+| File | Changes | Lines Added |
+|------|---------|-------------|
+| `docs/use-cases.md` | Added Manager actor, goals 19-24, UC19-24 fully dressed | ~280 |
+| `docs/design.md` | 5 new lessons, trigger table, dependency diagram | ~35 |
+
+### Use Cases Added (UC19-24)
+
+| UC | Title | Trigger | Lesson |
+|----|-------|---------|--------|
+| UC19 | Recognize Understanding as the Constraint | Buffer >66% + LOW ticket | UncertaintyConstraint |
+| UC20 | Identify the Constraint | Queue >2× avg | ConstraintHunt |
+| UC21 | Understand Exploitation vs Elevation | Child ratio >1.3 | ExploitFirst |
+| UC22 | Apply Five Focusing Steps | 3+ sprints + prereqs | FiveFocusing |
+| UC23 | Generate Actionable Questions | Comparison + UC22 | ManagerTakeaways |
+| UC24 | Share Simulation Insights | User invokes export | (no lesson) |
+
+## Step 4 Checklist
+- [x] 4a: Results presented to user
+- [x] 4b: Approval received
+
+## Approval
+✅ APPROVED BY USER - 2026-01-25
+Final grade: A+ (99/100)
+
+---
+
+## Log: 2026-01-25 - TOC/DBR Use Case Design
+
+**What was done:**
+Added 6 fully-dressed Cockburn use cases (UC19-24) teaching Theory of Constraints and Drum-Buffer-Rope concepts to software development managers. Extended the lesson system from 8 to 13 teaching concepts with specific triggers (buffer >66%, queue >2×, ratio >1.3).
+
+**Key files changed:**
+- docs/use-cases.md: Added Manager actor, goals 19-24 to Actor-Goal List, UC19-24 fully dressed (lines 664-938)
+- docs/design.md: Added 5 new lessons, trigger table, dependency diagram (lines 408-448)
+
+**Why it matters:**
+Enables the simulation to teach TOC/DBR concepts through discovery-based learning, with a pedagogical progression from "aha moment" (UC19) through systematic framework (UC22) to real-world transfer (UC23).
