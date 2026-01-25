@@ -71,7 +71,48 @@ func TestSelect(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := Select(tt.view, tt.state, tt.hasActiveSprint, tt.hasComparisonResult)
+			got := Select(tt.view, tt.state, tt.hasActiveSprint, tt.hasComparisonResult, TriggerState{})
+			if got.ID != tt.want {
+				t.Errorf("Select() = %v, want %v", got.ID, tt.want)
+			}
+		})
+	}
+}
+
+// TestSelect_UC19_UncertaintyConstraint tests the aha moment trigger.
+func TestSelect_UC19_UncertaintyConstraint(t *testing.T) {
+	tests := []struct {
+		name     string
+		view     ViewContext
+		state    State
+		triggers TriggerState
+		want     LessonID
+	}{
+		{
+			name:     "triggers on red buffer + low ticket",
+			view:     ViewExecution,
+			state:    State{SeenMap: map[LessonID]bool{Orientation: true}},
+			triggers: TriggerState{HasRedBufferWithLowTicket: true},
+			want:     UncertaintyConstraint,
+		},
+		{
+			name:     "does not trigger if already seen",
+			view:     ViewExecution,
+			state:    State{SeenMap: map[LessonID]bool{Orientation: true, UncertaintyConstraint: true}},
+			triggers: TriggerState{HasRedBufferWithLowTicket: true},
+			want:     FeverChart, // Falls through to view-based selection
+		},
+		{
+			name:     "does not trigger without red buffer",
+			view:     ViewExecution,
+			state:    State{SeenMap: map[LessonID]bool{Orientation: true}},
+			triggers: TriggerState{HasRedBufferWithLowTicket: false},
+			want:     FeverChart,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := Select(tt.view, tt.state, true, false, tt.triggers)
 			if got.ID != tt.want {
 				t.Errorf("Select() = %v, want %v", got.ID, tt.want)
 			}

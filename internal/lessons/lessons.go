@@ -6,18 +6,19 @@ package lessons
 type LessonID string
 
 const (
-	Orientation      LessonID = "orientation"
-	Understanding    LessonID = "understanding"
-	FeverChart       LessonID = "fever-chart"
-	DORAMetrics      LessonID = "dora-metrics"
-	PolicyComparison LessonID = "policy-comparison"
-	VarianceExpected LessonID = "variance-expected"
-	PhaseProgress    LessonID = "phase-progress"
-	VarianceAnalysis LessonID = "variance-analysis"
+	Orientation           LessonID = "orientation"
+	Understanding         LessonID = "understanding"
+	FeverChart            LessonID = "fever-chart"
+	DORAMetrics           LessonID = "dora-metrics"
+	PolicyComparison      LessonID = "policy-comparison"
+	VarianceExpected      LessonID = "variance-expected"
+	PhaseProgress         LessonID = "phase-progress"
+	VarianceAnalysis      LessonID = "variance-analysis"
+	UncertaintyConstraint LessonID = "uncertainty-constraint" // UC19
 )
 
 // TotalLessons is the number of unique teaching concepts.
-const TotalLessons = 8
+const TotalLessons = 9
 
 // Lesson contains teaching content for one concept.
 type Lesson struct {
@@ -64,12 +65,24 @@ const (
 	ViewComparison
 )
 
+// TriggerState holds event-based triggers for contextual lessons.
+// Triggers override view-based selection when their conditions are met.
+// Each trigger fires at most once per session (Select checks SeenMap).
+type TriggerState struct {
+	HasRedBufferWithLowTicket bool // UC19: buffer >66% consumed + LOW understanding ticket
+}
+
 // Select chooses the appropriate lesson based on current context.
-// Pure function: (view, state, hasActiveSprint, hasComparison) → Lesson
-func Select(view ViewContext, state State, hasActiveSprint bool, hasComparisonResult bool) Lesson {
+// Pure function: (view, state, hasActiveSprint, hasComparison, triggers) → Lesson
+func Select(view ViewContext, state State, hasActiveSprint bool, hasComparisonResult bool, triggers TriggerState) Lesson {
 	// First time: orientation
 	if !state.SeenMap[Orientation] {
 		return OrientationLesson()
+	}
+
+	// UC19: Aha moment - understanding IS the constraint
+	if triggers.HasRedBufferWithLowTicket && !state.SeenMap[UncertaintyConstraint] {
+		return UncertaintyConstraintLesson()
 	}
 
 	switch view {
@@ -293,6 +306,27 @@ This validates the variance model.`,
 		Tips: []string{
 			"Review completed tickets in Metrics",
 			"Look for patterns in outliers",
+		},
+	}
+}
+
+func UncertaintyConstraintLesson() Lesson {
+	return Lesson{
+		ID:    UncertaintyConstraint,
+		Title: "Understanding IS the Constraint",
+		Content: `Buffer consumed! This LOW understanding ticket caused the variance.
+
+KEY INSIGHT: Your constraint isn't capacity—it's what you don't know yet.
+
+LOW understanding (±50% variance):
+  3-day estimate → actual 1.5-6.0 days possible
+
+The buffer protects the commitment, but uncertainty eats it.
+This is why "just work faster" doesn't fix missed sprints.`,
+		Tips: []string{
+			"Watch which tickets consume buffer",
+			"HIGH understanding = predictable",
+			"Decomposition can improve understanding",
 		},
 	}
 }

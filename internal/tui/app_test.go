@@ -7,6 +7,7 @@ import (
 
 	"github.com/binaryphile/fluentfp/either"
 	"github.com/binaryphile/fluentfp/must"
+	"github.com/binaryphile/fluentfp/option"
 	"github.com/binaryphile/sofdevsim-2026/internal/api"
 	"github.com/binaryphile/sofdevsim-2026/internal/registry"
 	tea "github.com/charmbracelet/bubbletea"
@@ -266,4 +267,75 @@ func TestApp_HasClientMode(t *testing.T) {
 	if cli.SimID == "" {
 		t.Error("Expected cli.SimID to be non-empty")
 	}
+}
+
+// TestApp_UC19TriggerIntegration verifies trigger wiring between app.go and lessons package.
+// This tests the full integration: client mode state → trigger detection → lesson selection.
+func TestApp_UC19TriggerIntegration(t *testing.T) {
+	reg := api.NewSimRegistry()
+	srv := httptest.NewServer(api.NewRouter(reg))
+	defer srv.Close()
+
+	client := NewClient(srv.URL)
+	createResp, err := client.CreateSimulation(42, "dora-strict")
+	if err != nil {
+		t.Fatalf("CreateSimulation failed: %v", err)
+	}
+
+	app := NewAppWithClient(client, createResp.Simulation)
+	app.lessonState = app.lessonState.WithVisible(true)
+	app.lessonState = app.lessonState.WithSeen(LessonOrientation) // Past orientation
+
+	t.Run("UC19 triggers on red buffer with LOW ticket", func(t *testing.T) {
+		// Setup: simulate red buffer (>66% consumed) with LOW understanding ticket
+		app.state.SprintOption = option.Of(SprintState{
+			BufferDays:     3.0,
+			BufferConsumed: 2.5, // 83% consumed = red
+		})
+		app.state.ActiveTickets = []TicketState{
+			{Understanding: "LOW"},
+		}
+
+		// Uses same BuildTriggersFromClientState as app.go View()
+		triggers := BuildTriggersFromClientState(app.state.SprintOption, app.state.ActiveTickets)
+		lesson := SelectLesson(ViewExecution, app.lessonState, true, false, triggers)
+
+		if lesson.ID != LessonUncertaintyConstraint {
+			t.Errorf("Expected UncertaintyConstraint lesson, got %s", lesson.ID)
+		}
+	})
+
+	t.Run("UC19 does not trigger when buffer is green", func(t *testing.T) {
+		app.state.SprintOption = option.Of(SprintState{
+			BufferDays:     3.0,
+			BufferConsumed: 0.5, // 17% consumed = green
+		})
+		app.state.ActiveTickets = []TicketState{
+			{Understanding: "LOW"},
+		}
+
+		triggers := BuildTriggersFromClientState(app.state.SprintOption, app.state.ActiveTickets)
+		lesson := SelectLesson(ViewExecution, app.lessonState, true, false, triggers)
+
+		if lesson.ID == LessonUncertaintyConstraint {
+			t.Error("Should not trigger UncertaintyConstraint when buffer is green")
+		}
+	})
+
+	t.Run("UC19 does not trigger without LOW ticket", func(t *testing.T) {
+		app.state.SprintOption = option.Of(SprintState{
+			BufferDays:     3.0,
+			BufferConsumed: 2.5, // red
+		})
+		app.state.ActiveTickets = []TicketState{
+			{Understanding: "HIGH"},
+		}
+
+		triggers := BuildTriggersFromClientState(app.state.SprintOption, app.state.ActiveTickets)
+		lesson := SelectLesson(ViewExecution, app.lessonState, true, false, triggers)
+
+		if lesson.ID == LessonUncertaintyConstraint {
+			t.Error("Should not trigger UncertaintyConstraint without LOW ticket")
+		}
+	})
 }

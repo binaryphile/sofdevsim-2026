@@ -11,6 +11,7 @@ import (
 	"github.com/binaryphile/fluentfp/option"
 	"github.com/binaryphile/sofdevsim-2026/internal/engine"
 	"github.com/binaryphile/sofdevsim-2026/internal/events"
+	"github.com/binaryphile/sofdevsim-2026/internal/lessons"
 	"github.com/binaryphile/sofdevsim-2026/internal/export"
 	"github.com/binaryphile/sofdevsim-2026/internal/metrics"
 	"github.com/binaryphile/sofdevsim-2026/internal/model"
@@ -815,14 +816,20 @@ func (a *App) View() string {
 	// Compose with lessons panel when visible
 	if a.lessonState.Visible {
 		var hasActiveSprint bool
+		var triggers TriggerState
+		// Trigger detection differs between client and engine modes:
+		// - Client mode uses primitives (strings) to avoid import cycles (lessons can't import tui)
+		// - Engine mode uses model types directly for type safety
 		if _, isClient := a.mode.Get(); isClient {
 			hasActiveSprint = a.state.SprintActive
+			triggers = BuildTriggersFromClientState(a.state.SprintOption, a.state.ActiveTickets)
 		} else {
 			eng, _ := a.mode.GetLeft()
 			sim := eng.Engine.Sim()
 			_, hasActiveSprint = sim.CurrentSprintOption.Get()
+			triggers.HasRedBufferWithLowTicket = lessons.HasRedBufferWithLowTicket(eng.Tracker.Fever.Status, sim.ActiveTickets)
 		}
-		lesson := SelectLesson(a.currentView, a.lessonState, hasActiveSprint, a.comparisonResult.IsOk())
+		lesson := SelectLesson(a.currentView, a.lessonState, hasActiveSprint, a.comparisonResult.IsOk(), triggers)
 		a.lessonState = a.lessonState.WithSeen(lesson.ID)
 		lessonPanel := a.lessonsPanel(lesson)
 		content = lipgloss.JoinHorizontal(lipgloss.Top,

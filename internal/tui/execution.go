@@ -34,10 +34,10 @@ func (a *App) executionView() string {
 func (a *App) sprintProgress() string {
 	if _, isClient := a.mode.Get(); isClient {
 		// Client mode: use HTTP state
-		if !a.state.SprintActive || a.state.Sprint == nil {
+		sprint, ok := a.state.SprintOption.Get()
+		if !ok {
 			return MutedStyle.Render("No active sprint")
 		}
-		sprint := a.state.Sprint
 		daysElapsed := a.state.CurrentTick - sprint.StartDay
 		progress := 0.0
 		if sprint.DurationDays > 0 {
@@ -172,15 +172,12 @@ func (a *App) feverPanel() string {
 
 	if _, isClient := a.mode.Get(); isClient {
 		// Client mode: use HTTP state
-		if !a.state.SprintActive || a.state.Sprint == nil {
+		sprint, ok := a.state.SprintOption.Get()
+		if !ok {
 			return lipgloss.JoinVertical(lipgloss.Left, title, MutedStyle.Render("No active sprint"))
 		}
-		sprint := a.state.Sprint
 
-		pctUsed := 0.0
-		if sprint.BufferDays > 0 {
-			pctUsed = (sprint.BufferConsumed / sprint.BufferDays) * 100
-		}
+		pctUsed := (sprint.BufferConsumed / sprint.BufferDays) * 100
 
 		bar := RenderProgressBar(pctUsed/100, 20)
 		statusStyle := FeverColor(pctUsed)

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/binaryphile/fluentfp/option"
 	"github.com/google/uuid"
 )
 
@@ -88,9 +89,9 @@ type SimulationState struct {
 	ID                   string           `json:"id"`
 	Seed                 int64            `json:"seed"`
 	CurrentTick          int              `json:"currentTick"`
-	SprintActive         bool             `json:"sprintActive"`
-	Sprint               *SprintState     `json:"sprint,omitempty"`
-	SprintNumber         int              `json:"sprintNumber"`
+	SprintActive         bool                       `json:"sprintActive"`
+	SprintOption         option.Basic[SprintState]  `json:"sprint"`
+	SprintNumber         int                        `json:"sprintNumber"`
 	SizingPolicy         string           `json:"sizingPolicy"`
 	BacklogCount         int              `json:"backlogCount"`
 	ActiveTicketCount    int              `json:"activeTicketCount"`
