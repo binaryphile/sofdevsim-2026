@@ -8,7 +8,8 @@ import (
 )
 
 func (a *App) comparisonView() string {
-	if a.comparisonResult == nil {
+	// Guard: early return if no comparison result
+	if !a.comparisonResult.IsOk() {
 		return BoxStyle.Width(a.width - 2).Render(
 			lipgloss.JoinVertical(lipgloss.Left,
 				TitleStyle.Render("Policy Comparison"),
@@ -21,7 +22,8 @@ func (a *App) comparisonView() string {
 		)
 	}
 
-	result := a.comparisonResult
+	// Safe: guard establishes invariant
+	result := a.comparisonResult.MustGet()
 	title := TitleStyle.Render("Policy Comparison Results")
 
 	// Header info

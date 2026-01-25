@@ -8,6 +8,7 @@ import (
 
 	"github.com/binaryphile/fluentfp/either"
 	"github.com/binaryphile/fluentfp/must"
+	"github.com/binaryphile/fluentfp/option"
 	"github.com/binaryphile/sofdevsim-2026/internal/engine"
 	"github.com/binaryphile/sofdevsim-2026/internal/events"
 	"github.com/binaryphile/sofdevsim-2026/internal/export"
@@ -75,7 +76,7 @@ type App struct {
 	modelEvents []model.Event
 
 	// Comparison mode
-	comparisonResult *metrics.ComparisonResult
+	comparisonResult option.Basic[metrics.ComparisonResult]
 	comparisonSeed   int64
 
 	// Lessons panel
@@ -490,7 +491,8 @@ func (a *App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			a.statusExpiry = time.Now().Add(3 * time.Second)
 			return a, nil
 		}
-		exporter := export.New(sim, eng.Tracker, a.comparisonResult)
+		// ToOpt() converts Option to *T at boundary - nil if no comparison run yet
+		exporter := export.New(sim, eng.Tracker, a.comparisonResult.ToOpt())
 		result, err := exporter.Export()
 		if err != nil {
 			a.statusMessage = fmt.Sprintf("Export failed: %v", err)
@@ -628,7 +630,7 @@ func (a *App) runComparison() {
 	resultB := trackerB.GetResult(model.PolicyTameFlowCognitive, stateB)
 
 	comparison := metrics.Compare(resultA, resultB, seed)
-	a.comparisonResult = &comparison
+	a.comparisonResult = option.Of(comparison)
 }
 
 // createSimulationEngine creates a fresh engine with identical setup
@@ -687,7 +689,7 @@ func (a *App) runSprintWithAutoAssign(eng engine.Engine, tracker metrics.Tracker
 		}
 	}
 
-	// Run the sprint (sprint guaranteed active after StartSprint)
+	// Invariant: StartSprint() guarantees CurrentSprintOption.IsOk() - safe to MustGet
 	sprint := eng.Sim().CurrentSprintOption.MustGet()
 	for eng.Sim().CurrentTick < sprint.EndDay {
 		eng, _ = must.Get2(eng.Tick())
@@ -820,7 +822,7 @@ func (a *App) View() string {
 			sim := eng.Engine.Sim()
 			_, hasActiveSprint = sim.CurrentSprintOption.Get()
 		}
-		lesson := SelectLesson(a.currentView, a.lessonState, hasActiveSprint, a.comparisonResult != nil)
+		lesson := SelectLesson(a.currentView, a.lessonState, hasActiveSprint, a.comparisonResult.IsOk())
 		a.lessonState = a.lessonState.WithSeen(lesson.ID)
 		lessonPanel := a.lessonsPanel(lesson)
 		content = lipgloss.JoinHorizontal(lipgloss.Top,
