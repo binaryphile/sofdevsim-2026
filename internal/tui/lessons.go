@@ -6,6 +6,8 @@ import (
 
 	"github.com/binaryphile/fluentfp/option"
 	"github.com/binaryphile/sofdevsim-2026/internal/lessons"
+	"github.com/binaryphile/sofdevsim-2026/internal/metrics"
+	"github.com/binaryphile/sofdevsim-2026/internal/model"
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -17,7 +19,17 @@ type (
 )
 
 // SprintOption is a type alias for optional sprint state.
+// Per FP Guide §14: Option types for "value may not exist" semantics.
+// Sprint is absent between sprints or before first sprint starts.
 type SprintOption = option.Basic[SprintState]
+
+// ComparisonOption is a type alias for optional comparison result.
+// Per FP Guide §14: Option types for "value may not exist" semantics.
+// Comparison result is absent until user runs comparison mode.
+type ComparisonOption = option.Basic[metrics.ComparisonResult]
+
+// ComparisonSummary re-exports lessons.ComparisonSummary for TUI use.
+type ComparisonSummary = lessons.ComparisonSummary
 
 // Re-export constants.
 const (
@@ -32,6 +44,8 @@ const (
 	LessonUncertaintyConstraint = lessons.UncertaintyConstraint
 	LessonConstraintHunt        = lessons.ConstraintHunt
 	LessonExploitFirst          = lessons.ExploitFirst
+	LessonFiveFocusing          = lessons.FiveFocusing
+	LessonManagerTakeaways      = lessons.ManagerTakeaways
 	TotalLessons                = lessons.TotalLessons
 )
 
@@ -72,6 +86,9 @@ const BufferRedThreshold = 66
 // Used by both app.go and tests to avoid duplicating trigger logic.
 func BuildTriggersFromClientState(state SimulationState) TriggerState {
 	var triggers TriggerState
+
+	// UC22: Sprint count for Five Focusing Steps
+	triggers.SprintCount = state.SprintNumber
 
 	// UC19: Red buffer with LOW ticket
 	state.SprintOption.Call(func(sprint SprintState) {
@@ -152,9 +169,49 @@ func HasHighChildVarianceFromTickets(completedTickets []TicketState) bool {
 	return false
 }
 
+// BuildComparisonSummary converts option.Basic[metrics.ComparisonResult] to lessons.ComparisonSummary.
+// Calculation: ComparisonOption → ComparisonSummary
+// Returns empty ComparisonSummary{} when option is not-ok (boundary defense).
+func BuildComparisonSummary(opt ComparisonOption) ComparisonSummary {
+	if !opt.IsOk() {
+		return ComparisonSummary{}
+	}
+
+	result, _ := opt.Get()
+
+	// Determine winner policy string
+	var winnerPolicy string
+	switch result.OverallWinner {
+	case model.PolicyDORAStrict:
+		winnerPolicy = lessons.WinnerDORAStrict
+	case model.PolicyTameFlowCognitive:
+		winnerPolicy = lessons.WinnerTameFlowCognitive
+	default:
+		winnerPolicy = lessons.WinnerTie
+	}
+
+	// Convert lead time from Duration to days (float64)
+	leadTimeA := result.ResultsA.FinalMetrics.LeadTimeAvg.Hours() / 24
+	leadTimeB := result.ResultsB.FinalMetrics.LeadTimeAvg.Hours() / 24
+
+	return ComparisonSummary{
+		HasResult:     true,
+		WinnerPolicy:  winnerPolicy,
+		LeadTimeA:     leadTimeA,
+		LeadTimeB:     leadTimeB,
+		LeadTimeDelta: leadTimeA - leadTimeB,
+		CFRA:          result.ResultsA.FinalMetrics.ChangeFailRate,
+		CFRB:          result.ResultsB.FinalMetrics.ChangeFailRate,
+		CFRDelta:      result.ResultsA.FinalMetrics.ChangeFailRate - result.ResultsB.FinalMetrics.ChangeFailRate,
+		WinsA:         result.WinsA,
+		WinsB:         result.WinsB,
+	}
+}
+
 // SelectLesson wraps lessons.Select for TUI use.
-func SelectLesson(view View, state LessonState, hasActiveSprint bool, hasComparisonResult bool, triggers TriggerState) Lesson {
-	return lessons.Select(toViewContext(view), state, hasActiveSprint, hasComparisonResult, triggers)
+// Calculation: (View, LessonState, bool, bool, TriggerState, ComparisonSummary) → Lesson
+func SelectLesson(view View, state LessonState, hasActiveSprint bool, hasComparisonResult bool, triggers TriggerState, comparison ComparisonSummary) Lesson {
+	return lessons.Select(toViewContext(view), state, hasActiveSprint, hasComparisonResult, triggers, comparison)
 }
 
 // lessonsPanel renders the lesson panel with current lesson content.

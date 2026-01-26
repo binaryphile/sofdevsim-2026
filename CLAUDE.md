@@ -1255,3 +1255,12 @@ assigned := events.NewTicketAssigned("sim-1", 1, "t-1", "dev-1", time.Now()).
 | `CausedByID` | ID of event that caused this event |
 
 **Future:** Wire `SetTrace` into API request handlers and `WithCausedBy` into Engine operations that trigger cascading events.
+
+### Lesson System Benchmarks (2026-01-25)
+
+```
+BenchmarkGenerateMondayQuestions-8   299670504   3.882 ns/op   0 B/op   0 allocs/op
+BenchmarkExperimentSummary-8         370579515   3.170 ns/op   0 B/op   0 allocs/op
+```
+
+Both pure calculation functions achieve **zero allocations** - string literals returned directly from switch statements, no runtime string construction.

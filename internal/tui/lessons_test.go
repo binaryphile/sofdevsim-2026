@@ -58,6 +58,34 @@ func TestHasHighChildVarianceFromTickets(t *testing.T) {
 	}
 }
 
+// TestBuildComparisonSummary tests conversion from metrics.ComparisonResult to lessons.ComparisonSummary.
+func TestBuildComparisonSummary(t *testing.T) {
+	t.Run("returns empty summary when option is not ok", func(t *testing.T) {
+		opt := ComparisonOption{} // not-ok option
+		got := BuildComparisonSummary(opt)
+
+		if got.HasResult {
+			t.Error("expected HasResult to be false for not-ok option")
+		}
+	})
+
+	// Integration test with real ComparisonResult is in app_test.go
+	// This is a unit test of the boundary behavior
+}
+
+// TestBuildTriggersFromClientState_SprintCount tests SprintCount is included in triggers.
+func TestBuildTriggersFromClientState_SprintCount(t *testing.T) {
+	state := SimulationState{
+		SprintNumber: 5,
+	}
+
+	got := BuildTriggersFromClientState(state)
+
+	if got.SprintCount != 5 {
+		t.Errorf("SprintCount = %d, want 5", got.SprintCount)
+	}
+}
+
 // TestClientModeTriggers_JSONRoundTrip verifies triggers work with JSON-deserialized TicketState.
 // This catches field naming mismatches between api and tui packages.
 func TestClientModeTriggers_JSONRoundTrip(t *testing.T) {

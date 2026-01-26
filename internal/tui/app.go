@@ -11,7 +11,6 @@ import (
 	"github.com/binaryphile/fluentfp/option"
 	"github.com/binaryphile/sofdevsim-2026/internal/engine"
 	"github.com/binaryphile/sofdevsim-2026/internal/events"
-	"github.com/binaryphile/sofdevsim-2026/internal/lessons"
 	"github.com/binaryphile/sofdevsim-2026/internal/export"
 	"github.com/binaryphile/sofdevsim-2026/internal/metrics"
 	"github.com/binaryphile/sofdevsim-2026/internal/model"
@@ -819,7 +818,7 @@ func (a *App) View() string {
 		var triggers TriggerState
 		// Trigger detection differs between client and engine modes:
 		// - Client mode uses primitives (strings) to avoid import cycles (lessons can't import tui)
-		// - Engine mode uses model types directly for type safety
+		// - Engine mode uses CQRS TriggerProjection for state-based triggers + event detection
 		if _, isClient := a.mode.Get(); isClient {
 			hasActiveSprint = a.state.SprintActive
 			triggers = BuildTriggersFromClientState(a.state)
@@ -827,11 +826,12 @@ func (a *App) View() string {
 			eng, _ := a.mode.GetLeft()
 			sim := eng.Engine.Sim()
 			_, hasActiveSprint = sim.CurrentSprintOption.Get()
-			triggers.HasRedBufferWithLowTicket = lessons.HasRedBufferWithLowTicket(eng.Tracker.Fever.Status, sim.ActiveTickets)
-			triggers.HasQueueImbalance = lessons.HasQueueImbalance(sim.ActiveTickets)
-			triggers.HasHighChildVariance = lessons.HasHighChildVariance(sim.CompletedTickets)
+			// Use CQRS projection for SprintCount + event detection for UC19/20/21
+			triggers = BuildTriggerStateFromEngine(sim, eng.Tracker.Fever.Status, sim.ActiveTickets, sim.CompletedTickets)
 		}
-		lesson := SelectLesson(a.currentView, a.lessonState, hasActiveSprint, a.comparisonResult.IsOk(), triggers)
+		// Build comparison summary for UC23 dynamic lesson content
+		comparison := BuildComparisonSummary(a.comparisonResult)
+		lesson := SelectLesson(a.currentView, a.lessonState, hasActiveSprint, a.comparisonResult.IsOk(), triggers, comparison)
 		a.lessonState = a.lessonState.WithSeen(lesson.ID)
 		lessonPanel := a.lessonsPanel(lesson)
 		content = lipgloss.JoinHorizontal(lipgloss.Top,

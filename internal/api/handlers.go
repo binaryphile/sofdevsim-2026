@@ -630,7 +630,8 @@ func (r SimRegistry) HandleGetLessons(w http.ResponseWriter, req *http.Request) 
 	}
 
 	// API is stateless - always show orientation for fresh consumers
-	lesson := lessons.Select(view, lessons.State{}, hasActiveSprint, false, lessons.TriggerState{})
+	// ComparisonSummary{} passed for backwards compatibility (API doesn't track session state)
+	lesson := lessons.Select(view, lessons.State{}, hasActiveSprint, false, lessons.TriggerState{}, lessons.ComparisonSummary{})
 
 	writeJSON(w, http.StatusOK, LessonsResponse{
 		CurrentLesson: LessonResponse{

@@ -26177,3 +26177,271 @@ Implemented ConstraintHunt (UC20) and ExploitFirst (UC21) lessons with supportin
 
 **Why it matters:**
 Teaches the core TOC insight: queue buildup is a symptom, uncertainty is the root cause. When decomposition doesn't help (children still have high variance), the lesson explains exploit-before-elevate.
+
+---
+
+## Approved Plan: 2026-01-25 - Phase 4
+
+### Objective
+Implement UC22 (FiveFocusing) and UC23 (ManagerTakeaways) synthesis lessons with CQRS-compliant trigger projection.
+
+### Approach
+16-step TDD implementation:
+1. Add lesson IDs and constants
+2. Add ComparisonSummary type
+3. Add SprintCount to TriggerState
+4. Update Select() signature and add trigger checks
+5. Add FiveFocusingLesson() (static)
+6. Add ManagerTakeawaysLesson(ComparisonSummary) (dynamic)
+7. Add question generation helpers + winner constants
+8. Add BuildComparisonSummary()
+9. Update BuildTriggersFromClientState()
+10. Update SelectLesson() wrapper
+11. Create TriggerProjection (CQRS read model)
+12. Update app.go View() with projection
+13. Update API handler
+14. Update existing tests + add UC22/UC23 tests
+15. Add TriggerProjection tests
+16. Update TUI re-exports
+
+### Success Criteria
+- FiveFocusing and ManagerTakeaways lesson constants added
+- TotalLessons updated to 13
+- ComparisonSummary type with primitive fields
+- Winner policy constants (WinnerDORAStrict, WinnerTameFlowCognitive, WinnerTie)
+- TriggerState.SprintCount field added
+- TriggerProjection read model created (CQRS pattern)
+- Select() accepts ComparisonSummary parameter
+- UC22 triggers on 3+ sprints AND (UC20 OR UC21) seen
+- UC23 generates dynamic questions with actual metrics
+- All 10 call sites updated to new signature
+- Benchmarks for generateMondayQuestions and experimentSummary
+- ACD classification on 7 new public functions
+- All tests pass
+
+---
+
+## Approved Contract: 2026-01-25 - Phase 4
+
+**Created:** 2026-01-25
+
+### Step 1 Checklist
+- [x] 1a: Presented understanding
+- [x] 1b: Asked clarifying questions
+- [x] 1b-answer: Received answers
+- [x] 1c: Contract created
+- [x] 1d: Approval received
+- [x] 1e: Plan + contract archived
+
+### Compliance Checklist
+#### Go Development Guide
+- Benchmarks: BenchmarkGenerateMondayQuestions, BenchmarkExperimentSummary
+- Magic strings: Winner policy constants defined
+- Boundary defense: BuildComparisonSummary handles not-ok option
+- Test naming: TestFunction_Scenario_ExpectedBehavior
+
+#### Functional Programming Guide
+- ACD classification: 7 functions labeled
+- Function documentation: generateMondayQuestions explained
+- Option boundary: Empty ComparisonSummary{} when not-ok
+
+#### CQRS/Event Sourcing Guide
+- Read model: TriggerProjection computes SprintCount
+- Idempotency: Select() via SeenMap checks
+- Ephemeral state: ComparisonSummary is transient UI state
+
+### Token Budget
+Estimated: 40-60K tokens
+
+---
+
+## Archived: 2026-01-25 - Phase 4 Complete
+
+# Phase 4 Contract
+
+**Created:** 2026-01-25
+
+## Step 1 Checklist
+- [x] 1a: Presented understanding
+- [x] 1b: Asked clarifying questions
+- [x] 1b-answer: Received answers
+- [x] 1c: Contract created (this file)
+- [x] 1d: Approval received
+- [x] 1e: Plan + contract archived
+
+## Objective
+Implement UC22 (FiveFocusing) and UC23 (ManagerTakeaways) synthesis lessons with CQRS-compliant trigger projection.
+
+## Success Criteria
+- [x] `FiveFocusing` and `ManagerTakeaways` lesson constants added
+- [x] `TotalLessons` updated to 13
+- [x] `ComparisonSummary` type with primitive fields
+- [x] Winner policy constants (`WinnerDORAStrict`, `WinnerTameFlowCognitive`, `WinnerTie`)
+- [x] `TriggerState.SprintCount` field added
+- [x] `TriggerProjection` read model created (CQRS pattern)
+- [x] `Select()` accepts ComparisonSummary parameter
+- [x] UC22 triggers on 3+ sprints AND (UC20 OR UC21) seen
+- [x] UC23 generates dynamic questions with actual metrics
+- [x] All 10 call sites updated to new signature
+- [x] Benchmarks for `generateMondayQuestions` and `experimentSummary`
+- [x] ACD classification on 7 new public functions
+- [x] `go test ./internal/lessons/...` passes
+- [x] `go test ./internal/tui/...` passes
+- [x] `go test ./internal/api/...` passes
+
+## Approach
+16-step TDD implementation:
+1. Add lesson IDs and constants
+2. Add ComparisonSummary type
+3. Add SprintCount to TriggerState
+4. Update Select() signature and add trigger checks
+5. Add FiveFocusingLesson() (static)
+6. Add ManagerTakeawaysLesson(ComparisonSummary) (dynamic)
+7. Add question generation helpers + winner constants
+8. Add BuildComparisonSummary()
+9. Update BuildTriggersFromClientState()
+10. Update SelectLesson() wrapper
+11. Create TriggerProjection (CQRS read model)
+12. Update app.go View() with projection
+13. Update API handler
+14. Update existing tests + add UC22/UC23 tests
+15. Add TriggerProjection tests
+16. Update TUI re-exports
+
+## Compliance Checklist
+### Go Development Guide
+- [x] Benchmarks: `BenchmarkGenerateMondayQuestions`, `BenchmarkExperimentSummary`
+- [x] Magic strings: Winner policy constants defined
+- [x] Boundary defense: `BuildComparisonSummary` handles not-ok option
+- [x] Test naming: `TestFunction_Scenario_ExpectedBehavior`
+
+### Functional Programming Guide
+- [x] ACD classification: 7 functions labeled
+- [x] Function documentation: `generateMondayQuestions` explained
+- [x] Option boundary: Empty ComparisonSummary{} when not-ok
+
+### CQRS/Event Sourcing Guide
+- [x] Read model: TriggerProjection computes SprintCount
+- [x] Idempotency: Select() via SeenMap checks
+- [x] Ephemeral state: ComparisonSummary is transient UI state
+
+## Token Budget
+Estimated: 40-60K tokens
+
+## Actual Results
+
+**Completed:** 2026-01-25
+
+### Files Modified/Created
+
+| File | Action | Lines Changed |
+|------|--------|---------------|
+| `internal/lessons/lessons.go` | Modified | +95 (constants, types, Select(), lessons, helpers) |
+| `internal/lessons/lessons_test.go` | Modified | +135 (UC22/UC23 tests, benchmarks) |
+| `internal/tui/lessons.go` | Modified | +50 (BuildComparisonSummary, SelectLesson, re-exports) |
+| `internal/tui/lessons_test.go` | Modified | +20 (BuildComparisonSummary, SprintCount tests) |
+| `internal/tui/triggers.go` | Created | +55 (TriggerProjection CQRS read model) |
+| `internal/tui/triggers_test.go` | Created | +65 (TriggerProjection tests) |
+| `internal/tui/app.go` | Modified | +5 (use projection, pass ComparisonSummary) |
+| `internal/tui/app_test.go` | Modified | +7 (update SelectLesson calls) |
+| `internal/api/handlers.go` | Modified | +1 (pass ComparisonSummary{}) |
+| **Total** | | ~433 |
+
+### Benchmark Results
+```
+BenchmarkGenerateMondayQuestions-8   299670504   3.882 ns/op   0 B/op   0 allocs/op
+BenchmarkExperimentSummary-8         370579515   3.170 ns/op   0 B/op   0 allocs/op
+```
+
+### Test Results
+```
+ok  github.com/binaryphile/sofdevsim-2026/internal/lessons   0.003s
+ok  github.com/binaryphile/sofdevsim-2026/internal/tui       0.083s
+ok  github.com/binaryphile/sofdevsim-2026/internal/api       0.147s
+```
+
+### Key Implementation Details
+
+1. **Lesson Constants**: `FiveFocusing`, `ManagerTakeaways` added; `TotalLessons = 13`
+
+2. **ComparisonSummary**: Primitive-only struct to avoid import cycles
+   - Fields: HasResult, WinnerPolicy, LeadTimeA/B/Delta, CFRA/B/Delta, WinsA/B
+
+3. **Winner Constants**: `WinnerDORAStrict`, `WinnerTameFlowCognitive`, `WinnerTie`
+
+4. **TriggerProjection (CQRS)**: Read model in `triggers.go`
+   - `ProjectFromSimulation(sim)` → TriggerProjection
+   - `ToTriggerState()` → partial TriggerState
+   - `MergeEventTriggers()` → complete TriggerState
+   - `BuildTriggerStateFromEngine()` → orchestrates projection + event detection
+
+5. **Dynamic Questions**: `generateMondayQuestions(cmp)` creates contextual questions based on:
+   - Winner policy (TameFlow vs DORA vs Tie)
+   - Lead time delta (>1, <-1, or similar)
+   - CFR delta (>0.05, <-0.05, or similar)
+
+6. **ACD Classifications Applied**:
+   - `FiveFocusingLesson()` — Calculation: () → Lesson
+   - `ManagerTakeawaysLesson(ComparisonSummary)` — Calculation: ComparisonSummary → Lesson
+   - `generateMondayQuestions(ComparisonSummary)` — Calculation: ComparisonSummary → [3]string
+   - `experimentSummary(ComparisonSummary)` — Calculation: ComparisonSummary → string
+   - `BuildComparisonSummary(option)` — Calculation: ComparisonOption → ComparisonSummary
+   - `ProjectFromSimulation(sim)` — Calculation: Simulation → TriggerProjection
+   - `TriggerProjection.ToTriggerState()` — Calculation: TriggerProjection → TriggerState
+
+## Step 4 Checklist
+- [x] 4a: Results presented to user
+- [ ] 4b: Approval received
+
+## Self-Assessment
+Grade: A (95/100)
+
+**What went well:**
+- TDD approach followed throughout
+- CQRS projection cleanly separates state-based from event-based triggers
+- All compliance requirements met
+- Zero-allocation benchmarks demonstrate efficient implementation
+
+**Minor deductions:**
+- Initial test had bug (UC23 test triggered UC22 first) - fixed during TDD (-3)
+- Had to correct metrics.Policy → model.Policy reference (-2)
+
+## Post-Grading Improvements (2026-01-25)
+
+**Round 1** - Addressed initial grading deductions:
+1. **Benchmark tracking** (-5 Go Dev): Added lesson benchmarks to CLAUDE.md Benchmarks section
+2. **FP justification** (-5 FP Guide): Added copy-on-write rationale to State type doc comment
+3. **CQRS scope documentation** (-5 CQRS): Added scope justification to TriggerProjection doc comment
+
+**Round 2** - Addressed remaining gaps from re-grade:
+4. **Option type comments** (FP Guide): Added FP Guide §14 references to SprintOption and ComparisonOption
+5. **Event sourcing context** (CQRS Guide): Added §3 reference explaining CQRS-without-ES is scope-appropriate
+
+**Round 3** - Final gaps:
+6. **Trivial test pruned** (Khorikov): Removed TestTotalLessons with pruning comment
+7. **Test naming** (Go Dev): Renamed TestSelect → TestSelect_ViewBasedSelection_ReturnsContextualLesson
+8. **Idempotency** (CQRS Guide): Added §15 idempotency guarantees to TriggerProjection doc
+
+All tests pass after improvements.
+
+## Approval
+✅ APPROVED BY USER - 2026-01-25
+Final grade: A- (93/100) after all improvements
+
+---
+
+## Log: 2026-01-25 - Phase 4: UC22/UC23 Synthesis Lessons
+
+**What was done:**
+Implemented FiveFocusing (UC22) and ManagerTakeaways (UC23) synthesis lessons with CQRS-compliant TriggerProjection read model. Added ComparisonSummary type, winner constants, and dynamic question generation.
+
+**Key files changed:**
+- `internal/lessons/lessons.go`: +95 lines (constants, types, Select(), lesson content, helpers)
+- `internal/lessons/lessons_test.go`: +135 lines (UC22/UC23 tests, benchmarks)
+- `internal/tui/triggers.go`: NEW +70 lines (TriggerProjection CQRS read model)
+- `internal/tui/triggers_test.go`: NEW +65 lines
+- `internal/tui/lessons.go`: +50 lines (BuildComparisonSummary, SelectLesson, re-exports)
+- `CLAUDE.md`: +8 lines (benchmark tracking)
+
+**Why it matters:**
+Completes the lesson prerequisite chain (UC19→UC20/21→UC22→UC23), enabling managers to learn TOC Five Focusing Steps through simulation experience before seeing synthesis takeaways.

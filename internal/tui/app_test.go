@@ -298,7 +298,7 @@ func TestApp_UC19TriggerIntegration(t *testing.T) {
 
 		// Uses same BuildTriggersFromClientState as app.go View()
 		triggers := BuildTriggersFromClientState(app.state)
-		lesson := SelectLesson(ViewExecution, app.lessonState, true, false, triggers)
+		lesson := SelectLesson(ViewExecution, app.lessonState, true, false, triggers, ComparisonSummary{})
 
 		if lesson.ID != LessonUncertaintyConstraint {
 			t.Errorf("Expected UncertaintyConstraint lesson, got %s", lesson.ID)
@@ -315,7 +315,7 @@ func TestApp_UC19TriggerIntegration(t *testing.T) {
 		}
 
 		triggers := BuildTriggersFromClientState(app.state)
-		lesson := SelectLesson(ViewExecution, app.lessonState, true, false, triggers)
+		lesson := SelectLesson(ViewExecution, app.lessonState, true, false, triggers, ComparisonSummary{})
 
 		if lesson.ID == LessonUncertaintyConstraint {
 			t.Error("Should not trigger UncertaintyConstraint when buffer is green")
@@ -332,7 +332,7 @@ func TestApp_UC19TriggerIntegration(t *testing.T) {
 		}
 
 		triggers := BuildTriggersFromClientState(app.state)
-		lesson := SelectLesson(ViewExecution, app.lessonState, true, false, triggers)
+		lesson := SelectLesson(ViewExecution, app.lessonState, true, false, triggers, ComparisonSummary{})
 
 		if lesson.ID == LessonUncertaintyConstraint {
 			t.Error("Should not trigger UncertaintyConstraint without LOW ticket")
@@ -368,7 +368,7 @@ func TestApp_UC20TriggerIntegration(t *testing.T) {
 		}
 
 		triggers := BuildTriggersFromClientState(app.state)
-		lesson := SelectLesson(ViewExecution, app.lessonState, true, false, triggers)
+		lesson := SelectLesson(ViewExecution, app.lessonState, true, false, triggers, ComparisonSummary{})
 
 		if lesson.ID != LessonConstraintHunt {
 			t.Errorf("Expected ConstraintHunt lesson, got %s", lesson.ID)
@@ -390,7 +390,7 @@ func TestApp_UC20TriggerIntegration(t *testing.T) {
 		}
 
 		triggers := BuildTriggersFromClientState(freshApp.state)
-		lesson := SelectLesson(ViewExecution, freshApp.lessonState, true, false, triggers)
+		lesson := SelectLesson(ViewExecution, freshApp.lessonState, true, false, triggers, ComparisonSummary{})
 
 		if lesson.ID == LessonConstraintHunt {
 			t.Error("Should not trigger ConstraintHunt without UC19 seen")
@@ -423,7 +423,7 @@ func TestApp_UC21TriggerIntegration(t *testing.T) {
 		}
 
 		triggers := BuildTriggersFromClientState(app.state)
-		lesson := SelectLesson(ViewExecution, app.lessonState, true, false, triggers)
+		lesson := SelectLesson(ViewExecution, app.lessonState, true, false, triggers, ComparisonSummary{})
 
 		if lesson.ID != LessonExploitFirst {
 			t.Errorf("Expected ExploitFirst lesson, got %s", lesson.ID)
@@ -442,7 +442,7 @@ func TestApp_UC21TriggerIntegration(t *testing.T) {
 		}
 
 		triggers := BuildTriggersFromClientState(freshApp.state)
-		lesson := SelectLesson(ViewExecution, freshApp.lessonState, true, false, triggers)
+		lesson := SelectLesson(ViewExecution, freshApp.lessonState, true, false, triggers, ComparisonSummary{})
 
 		if lesson.ID == LessonExploitFirst {
 			t.Error("Should not trigger ExploitFirst without UC19 seen")
