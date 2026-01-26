@@ -537,6 +537,33 @@ flowchart LR
 | Seed-based RNG | Enables reproducible experiments |
 | Gob-based persistence | Versioned binary saves for research workflows (see CLAUDE.md) |
 | Bubbletea TUI | Elm architecture, well-maintained, ntcharts compatible |
+| Decomposition doesn't change understanding | See detailed rationale below |
+
+### Decomposition and Understanding Levels
+
+**Decision:** Decomposing a ticket does not change the understanding level of child tickets. Children inherit or have their own understanding levels independent of the decomposition act.
+
+**Rationale:**
+
+Research distinguishes two types of uncertainty that affect estimation:
+
+1. **Scope uncertainty** ("How much work?"): Decomposition addresses this by revealing the true size/shape of work. Breaking tasks to <2 day granularity improves estimation accuracy (Jørgensen et al.).
+
+2. **Technical uncertainty** ("How do I do it?"): This requires investigation—spikes, prototypes, research, expert consultation. The cognitive work of learning, not just splitting.
+
+The simulation models understanding levels (HIGH/MEDIUM/LOW) as proxies for technical uncertainty, which drives variance. Decomposition may provide incremental scope clarity, but doesn't produce the step-change in understanding needed to move between levels.
+
+**Alternatives considered:**
+
+| Alternative | Tradeoff |
+|-------------|----------|
+| Decomposition gives small understanding boost | Could be gamed ("just decompose everything"); conflates scope and technical uncertainty |
+| Children reveal heterogeneous understanding | More realistic but adds complexity; parent understanding becomes misleading |
+| Spikes as explicit mechanism | Would require modeling time cost vs. understanding gain; future feature candidate |
+
+**Pedagogical justification:** The simulation teaches that variance comes from technical uncertainty, not scope. Keeping decomposition separate from understanding reinforces that lesson: if you want predictability, you need actual investigation, not just smaller tickets.
+
+**Future consideration:** A "spike" feature could model explicit time-boxed investigation that increases understanding, distinct from decomposition. This would let users experiment with the tradeoff between spending time on spikes vs. accepting variance.
 
 ---
 

@@ -26,11 +26,11 @@ func TestGenerateSparklineSVG_TwoPoints_ProducesValidSVG(t *testing.T) {
 	if !strings.Contains(svg, "<polyline") {
 		t.Error("expected <polyline> element")
 	}
-	if !strings.Contains(svg, `width="80"`) {
-		t.Errorf("expected width=80, got: %s", svg)
+	if !strings.Contains(svg, `width="200"`) {
+		t.Errorf("expected width=200, got: %s", svg)
 	}
-	if !strings.Contains(svg, `height="20"`) {
-		t.Errorf("expected height=20, got: %s", svg)
+	if !strings.Contains(svg, `height="50"`) {
+		t.Errorf("expected height=50, got: %s", svg)
 	}
 }
 
@@ -333,7 +333,7 @@ func TestGenerateHTML_TypicalSimulation_ContainsAllSections(t *testing.T) {
 
 	// Check all 6 sections present
 	sections := []string{
-		"Simulation Parameters",
+		"How to Read This Report",
 		"DORA Metrics",
 		"Buffer Consumption",
 		"Lessons",
@@ -427,6 +427,7 @@ func testSimulation() SimulationParams {
 		Seed:           42,
 		Policy:         "tameflow-cognitive",
 		DeveloperCount: 3,
+		SprintCount:    5,
 	}
 }
 
@@ -521,4 +522,56 @@ func readFileContent(path string) (string, error) {
 		return "", err
 	}
 	return string(data), nil
+}
+
+// TestManual_GenerateInspectableReport generates a report at /tmp for manual inspection.
+// Run with: go test -v -run TestManual_GenerateInspectableReport ./internal/export/
+func TestManual_GenerateInspectableReport(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping manual inspection test in short mode")
+	}
+
+	// Create rich test data simulating 3 sprints
+	sim := SimulationParams{
+		Seed:           42,
+		Policy:         "TameFlow-Cognitive",
+		DeveloperCount: 3,
+		SprintCount:    3,
+	}
+
+	tracker := TrackerData{
+		LeadTime:        4.2,
+		DeployFrequency: 2.5,
+		ChangeFailRate:  0.15,
+		MTTR:            1.2,
+		LeadTimeHistory: []float64{6.0, 5.0, 4.5, 4.2, 3.8}, // improving trend
+		FeverHistory:    []float64{20.0, 35.0, 50.0, 65.0, 80.0}, // buffer consumption over sprint
+	}
+
+	// Simulate having seen lessons from 3 sprints
+	lessonsSeen := map[lessons.LessonID]bool{
+		lessons.UncertaintyConstraint: true,
+		lessons.ConstraintHunt:        true,
+		lessons.ExploitFirst:          true,
+		lessons.FiveFocusing:          true,
+	}
+
+	comparison := &ComparisonSummary{
+		PolicyA:     "DORA-Strict",
+		PolicyB:     "TameFlow-Cognitive",
+		Winner:      "TameFlow-Cognitive",
+		LeadTimeA:   5.2,
+		LeadTimeB:   3.8,
+		DeployFreqA: 2.0,
+		DeployFreqB: 2.8,
+	}
+
+	exporter := NewHTMLExporter(sim, tracker, lessonsSeen, comparison)
+	path := "/tmp/test-report.html"
+	if err := exporter.ExportToFile(path); err != nil {
+		t.Fatalf("export failed: %v", err)
+	}
+
+	t.Logf("Report generated at: %s", path)
+	t.Logf("Open in browser: file://%s", path)
 }

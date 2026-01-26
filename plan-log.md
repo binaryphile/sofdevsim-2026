@@ -28020,3 +28020,23 @@ Added HTML export capability allowing managers to share simulation learnings via
 
 **Why it matters:**
 Enables knowledge transfer from simulation insights to real-world team discussions via shareable reports.
+
+---
+
+## Log: 2026-01-26 - Phase 8 Polish: HTML Report UX Improvements
+
+**What was done:**
+Iterative UX improvements to the HTML report based on user feedback:
+
+1. **Gestalt principles**: Added emoji icons to section headers (📊🌡️💡❓⚖️) matching the "How to Read" guide for visual continuity
+2. **Lessons→Questions grouping**: Wrapped lessons and questions in a section-group with subtle blue gradient and ↓ connector to show relationship
+3. **Sprint count**: Added SprintCount field to SimulationParams and displayed in report header
+4. **Buffer timeline clarity**: Added "Start" and "End" labels under first/last bars, updated explanation text
+5. **Transfer question wording**: Fixed "What would decomposition reveal?" → "Would decomposing them reduce uncertainty?" (decomposition is remedy, not revelation)
+
+**Key files changed:**
+- `internal/export/html.go`: Icons on sections, section grouping CSS, sprint count, buffer labels
+- `internal/export/html_test.go`: Added SprintCount to test fixtures
+
+**Why it matters:**
+Better visual hierarchy and clearer explanations make the report more useful for managers unfamiliar with TOC/Critical Chain concepts.
