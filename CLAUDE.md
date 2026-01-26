@@ -29,7 +29,7 @@ Pointers only for: sync.Mutex fields, Bubble Tea requirements, profiled hot path
 
 ## Code Style: FluentFP
 
-Use `github.com/binaryphile/fluentfp` for data transformation:
+Use `github.com/binaryphile/fluentfp` for data transformation. **Full guide:** `docs/fluentfp-guide.md`
 ```go
 // Filter and count (2 ops = multiline)
 count := slice.From(tickets).
@@ -72,18 +72,9 @@ Red → Green → Refactor → Prune. Never implement before writing a failing t
 | Trivial | Don't test |
 | Overcomplicated | Refactor first |
 
-### Coverage Baseline
+### Coverage
 
-| Package | Coverage |
-|---------|----------|
-| engine | 80.4% |
-| api | 74.3% |
-| events | 68.9% |
-| lessons | 82.8% |
-| export | 65.4% |
-| persistence | 65.5% |
-| metrics | 59.1% |
-| model | 30.3% |
+See `docs/testing-strategy.md` for coverage baseline.
 
 ## Benchmarks
 

@@ -405,21 +405,20 @@ type HTMLRenderer struct{}       // Export
 - Swap renderers (TUI, HTML, JSON)
 - Cleaner HTML export implementation
 
-## Coverage Baseline
+## Coverage Baseline (Single Source of Truth)
 
-Track coverage changes, not absolute numbers. See CLAUDE.md for authoritative baseline.
+Track coverage changes, not absolute numbers. Updated 2026-01-26.
 
 | Package | Coverage | Notes |
 |---------|----------|-------|
-| engine | ~80% | Domain + controller logic |
-| lessons | ~89% | Domain calculations |
-| api | ~74% | HTTP integration tests |
-| metrics | ~68% | Domain calculations |
-| events | ~69% | Event store infrastructure |
-| export | ~65% | Controller with domain helpers |
-| persistence | ~66% | State save/load |
-| tui | ~52% | Controller - Khorikov workflow tests |
-| model | ~30% | Mostly data structures (trivial) |
+| engine | 80.4% | Domain + controller logic |
+| api | 74.3% | HTTP integration tests |
+| events | 68.9% | Event store infrastructure |
+| lessons | 82.8% | Domain calculations |
+| export | 65.4% | Controller with domain helpers |
+| persistence | 65.5% | State save/load |
+| metrics | 59.1% | Domain calculations |
+| model | 30.3% | Mostly data structures (trivial) |
 
 **Note:** TUI coverage increased from 0% to 52% via workflow integration tests (Phase 7). Per Khorikov, this is appropriate for a controller - we test complete workflows, not individual methods.
 
