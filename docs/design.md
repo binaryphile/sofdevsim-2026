@@ -1088,6 +1088,68 @@ type IncidentResolved struct {
 }
 ```
 
+### Input Events (UI Interaction)
+
+While domain events record simulation state changes, **input events** record user interactions with their outcomes. This enables testing the TUI via event replay (UC25, UC26).
+
+**Key principle:** Input events are recorded AFTER the outcome is known. This preserves ES semantics—events are immutable facts about what happened, not requests.
+
+```go
+// Outcome sum type for input events
+type Outcome interface{ sealed() }
+type Succeeded struct{}
+type Failed struct{
+    Category FailureCategory  // Enables proper retry/UI behavior
+    Reason   string
+}
+
+// FailureCategory distinguishes error types (ES Guide §4)
+type FailureCategory int
+const (
+    BusinessRule FailureCategory = iota  // Invariant violated, don't retry
+    NotFound                              // Entity missing, try different ID
+    Conflict                              // Concurrent modification, reload and retry
+)
+
+// Input events (past-tense facts, include outcome)
+type SprintStartAttempted struct{ Outcome Outcome }
+type TickAttempted struct{ Outcome Outcome }
+type ViewSwitched struct{ To View }               // Always succeeds
+type LessonPanelToggled struct{}                  // Always succeeds
+type TicketSelected struct{ ID string }           // Always succeeds
+type AssignmentAttempted struct{
+    TicketID string
+    Outcome  Outcome
+}
+```
+
+**Recording flow:**
+1. User presses key → `Update()` receives `tea.KeyMsg`
+2. `Update()` translates to semantic intent
+3. For domain-affecting actions: Engine processes, returns success/failure
+4. Input event recorded WITH outcome
+5. UIProjection applies event to produce new UIState
+
+| Raw Key | Intent | Possible Events |
+|---------|--------|-----------------|
+| 's' | Start sprint | `SprintStartAttempted{Succeeded{}}` or `{Failed{BusinessRule, "Sprint already active"}}` |
+| Space | Tick | `TickAttempted{Succeeded{}}` or `{Failed{BusinessRule, "No active sprint"}}` |
+| Tab | Switch view | `ViewSwitched{To: Metrics}` (always succeeds) |
+| 'h' | Toggle lessons | `LessonPanelToggled{}` (always succeeds) |
+| 'j'/'k' | Select ticket | `TicketSelected{ID: "TKT-001"}` (always succeeds) |
+| 'a' | Assign ticket | `AssignmentAttempted{..., Succeeded{}}` or `{..., Failed{Conflict, "Dev busy"}}` |
+
+**Event lifecycle differences:**
+
+| Aspect | Domain Events | Input Events |
+|--------|---------------|--------------|
+| Scope | Persistent (stored, replayed) | Session-scoped (ephemeral) |
+| Purpose | Simulation state | UI state + test replay |
+| Storage | EventStore | In-memory only (production) |
+| Testing | Replay for state verification | Construct directly in tests |
+
+**Event schema note:** Input events are ephemeral (in-memory only in production), so serialization compatibility is not a concern. Use Option types freely if needed.
+
 ### EventStore Interface
 
 ```go
@@ -1200,65 +1262,218 @@ func (p *Projection) State() *model.Simulation {
 }
 ```
 
+### UI Projection
+
+While the simulation projection (above) rebuilds domain state from domain events, the **UI projection** rebuilds UI state from input events. Both are pure folds—same events always produce same state.
+
+```go
+// UIState holds UI-specific state derived from input events
+type UIState struct {
+    CurrentView    View
+    SelectedTicket string
+    LessonVisible  bool
+    ErrorMessage   string  // From most recent Failed outcome
+}
+
+// UIProjection applies input events to build UI state
+// Calculation: []InputEvent → UIState
+func (p *UIProjection) Apply(events []InputEvent) UIState {
+    state := UIState{CurrentView: Planning}
+    for _, e := range events {
+        switch ev := e.(type) {
+        case ViewSwitched:
+            state.CurrentView = ev.To
+            state.SelectedTicket = ""  // Clear selection on view change
+            state.ErrorMessage = ""    // View switch clears error
+        case SprintStartAttempted:
+            state.ErrorMessage = errorFromOutcome(ev.Outcome)
+        case TickAttempted:
+            state.ErrorMessage = errorFromOutcome(ev.Outcome)
+        case LessonPanelToggled:
+            state.LessonVisible = !state.LessonVisible
+            state.ErrorMessage = ""    // Any user action clears error
+        case TicketSelected:
+            state.SelectedTicket = ev.ID
+            state.ErrorMessage = ""    // Any user action clears error
+        case AssignmentAttempted:
+            state.ErrorMessage = errorFromOutcome(ev.Outcome)
+            if _, ok := ev.Outcome.(Succeeded); ok {
+                state.SelectedTicket = ""  // Clear selection after successful assignment
+            }
+        }
+    }
+    return state
+}
+
+// errorFromOutcome extracts error message from Failed outcome, empty string for Succeeded
+func errorFromOutcome(o Outcome) string {
+    if f, ok := o.(Failed); ok {
+        return f.Reason
+    }
+    return ""
+}
+```
+
+**Key properties:**
+- **Pure fold**: No side effects; same events produce same state every time
+- **Error via projection**: Failed outcomes produce ErrorMessage; subsequent events clear it through projection (not mutation)
+- **No cross-stream coupling**: UIProjection only reads input events, not domain events
+- **Always valid**: Input events are constructed by tests or Update(); no corruption handling needed (ES Guide §15 corruption handling applies to domain projections, not test-constructed input events)
+
+**The View() function composes both projections:**
+
+```go
+// Calculation: (SimState, UIState) → string
+func View(sim SimState, ui UIState) string {
+    // Render based on ui.CurrentView, using sim for data
+    // Display ui.ErrorMessage if present
+}
+```
+
 ### Data Flow with Event Sourcing
+
+The TUI operates as a dual projection of two event streams:
 
 ```mermaid
 flowchart TD
-    subgraph Commands
-        A[TUI: Press space] --> B[Tick Command]
-        C[API: POST /tick] --> B
-        D[TUI: Press 'a'] --> E[Assign Command]
+    subgraph UserInput["User Input"]
+        KEY[KeyPress] --> UPD[Update - translate to intent]
     end
 
-    subgraph Engine
-        B --> F[Engine.Tick]
-        E --> G[Engine.Assign]
-        F --> H[Generate Events]
-        G --> H
+    subgraph CommandHandling["Command Handling"]
+        UPD -->|domain action| ENG[Engine.Command]
+        ENG -->|success/fail| UPD
+        UPD -->|record with outcome| INP[(Input Events)]
+        ENG -->|emit| DOM[(Domain Events)]
     end
 
-    subgraph EventStore
-        H --> I[Append Events]
-        I --> J[(Event Log)]
+    subgraph Projections["Dual Projection"]
+        INP --> UIP[UIProjection - pure fold]
+        DOM --> SIP[SimProjection - pure fold]
+        UIP --> UIS[UIState]
+        SIP --> SIM[SimState]
     end
 
-    subgraph Subscribers
-        J --> K[TUI Subscription]
-        J --> L[API Subscription]
-        K --> M[TUI Projection]
-        L --> N[API Projection]
-        M --> O[Update Display]
-        N --> P[Return State]
+    subgraph Rendering["Pure Rendering"]
+        UIS --> VIEW[View - pure function]
+        SIM --> VIEW
+        VIEW --> STR[string output]
     end
+
+    subgraph API["API Path"]
+        API_REQ[API Request] --> API_ENG[Engine]
+        API_ENG --> DOM
+        DOM --> API_PROJ[Replay + Project]
+        API_PROJ --> API_RESP[JSON Response]
+    end
+```
+
+**Key flows:**
+- **Domain actions** (space, 'a'): Update() → Engine → Domain Event → SimProjection → SimState
+- **UI-only actions** (Tab, 'h'): Update() → Input Event → UIProjection → UIState
+- **Failed actions**: Engine returns failure → Input Event with `Failed{Reason}` → UIState.ErrorMessage
+
+**Alternate view (ASCII):**
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                         TUI Layer                                │
+├─────────────────────────────────────────────────────────────────┤
+│   ┌──────────┐     ┌─────────────┐     ┌──────────────────┐    │
+│   │ KeyPress │────▶│  Update()   │────▶│ Engine.Command() │    │
+│   └──────────┘     │ (translate) │     │ (domain action)  │    │
+│                    └──────┬──────┘     └────────┬─────────┘    │
+│                           │                      │               │
+│                           │ record with outcome  │ success/fail  │
+│                           ▼                      ▼               │
+│              ┌────────────────────┐    ┌─────────────────┐      │
+│              │   Input Events     │    │  Domain Events  │      │
+│              │ (session-scoped)   │    │  (persistent)   │      │
+│              └─────────┬──────────┘    └────────┬────────┘      │
+│                        │                         │               │
+│                        ▼                         ▼               │
+│              ┌─────────────────┐      ┌──────────────────┐      │
+│              │  UIProjection   │      │ SimProjection    │      │
+│              │  (pure fold)    │      │ (pure fold)      │      │
+│              └────────┬────────┘      └────────┬─────────┘      │
+│                       │                         │                │
+│                       ▼                         ▼                │
+│              ┌─────────────┐          ┌─────────────┐           │
+│              │  UIState    │          │  SimState   │           │
+│              └──────┬──────┘          └──────┬──────┘           │
+│                     └───────────┬────────────┘                   │
+│                                 ▼                                │
+│                        ┌──────────────┐                         │
+│                        │   View()     │                         │
+│                        │ (pure func)  │                         │
+│                        └──────────────┘                         │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
 ### TUI Integration
 
-The TUI subscribes to events and uses `p.Send()` to inject them into Bubbletea's update loop:
+The TUI translates key presses to semantic intents, routes domain actions to the Engine, and records input events with outcomes:
 
 ```go
-func (a *App) subscribeToEvents() {
-    ch := a.store.Subscribe(a.simID)
-    go func() {
-        for event := range ch {
-            a.program.Send(eventMsg{event})
-        }
-    }()
-}
-
 func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
     switch m := msg.(type) {
+    case tea.KeyMsg:
+        return a.handleKeyPress(m)
     case eventMsg:
-        a.projection.Apply(m.event)
-        // React to significant events
-        if m.event.EventType() == "SprintStarted" {
-            a.currentView = ExecutionView
-        }
+        // Domain events from Engine subscription
+        a.simProjection.Apply(m.event)
         return a, nil
-    // ... other message handling
     }
+    return a, nil
+}
+
+func (a *App) handleKeyPress(key tea.KeyMsg) (tea.Model, tea.Cmd) {
+    switch key.String() {
+    case "s":
+        // Domain action: route to Engine, record with outcome
+        err := a.engine.StartSprint()
+        if err != nil {
+            a.recordInputEvent(SprintStartAttempted{
+                Outcome: Failed{Reason: err.Error()},
+            })
+        } else {
+            a.recordInputEvent(SprintStartAttempted{
+                Outcome: Succeeded{},
+            })
+        }
+
+    case "tab":
+        // UI-only action: record directly (always succeeds)
+        nextView := a.currentView.Next()
+        a.recordInputEvent(ViewSwitched{To: nextView})
+
+    case "h":
+        // UI-only action: toggle lesson panel
+        a.recordInputEvent(LessonPanelToggled{})
+
+    case "j", "k":
+        // UI-only action: select ticket
+        ticketID := a.getAdjacentTicket(key.String())
+        a.recordInputEvent(TicketSelected{ID: ticketID})
+    }
+
+    // Rebuild UI state from input events
+    a.uiState = a.uiProjection.Apply(a.inputEvents)
+    return a, nil
+}
+
+func (a *App) recordInputEvent(evt InputEvent) {
+    a.inputEvents = append(a.inputEvents, evt)
+}
+
+func (a *App) View() string {
+    simState := a.simProjection.State()
+    // View is pure function of both states
+    return render(simState, a.uiState)
 }
 ```
+
+**Key principle:** `Update()` acts as the command handler layer. It translates raw input to semantic intent, processes domain actions through the Engine, and records input events AFTER outcomes are known.
 
 ### API Integration
 
@@ -1276,19 +1491,145 @@ func (h *Handler) GetSimulation(w http.ResponseWriter, r *http.Request) {
 }
 ```
 
+### Testing via Event Replay
+
+The dual-projection architecture enables testing the TUI without terminal dependencies. Tests construct event sequences directly and assert on projection outputs.
+
+**UC25: Verify UI Displays Correct State**
+
+Feed domain events to SimProjection, verify state matches expected:
+
+```go
+func TestExecutionView_ShowsActiveTickets(t *testing.T) {
+    events := []DomainEvent{
+        SimulationCreated{ID: "test", Seed: 42},
+        SprintStarted{SprintNumber: 1, BufferDays: 2.0},
+        TicketAssigned{TicketID: "TKT-001", DeveloperID: "dev-1"},
+    }
+
+    proj := NewSimProjection()
+    state := proj.Apply(events)
+
+    if len(state.ActiveTickets) != 1 {
+        t.Errorf("expected 1 active ticket, got %d", len(state.ActiveTickets))
+    }
+    if state.ActiveTickets[0].ID != "TKT-001" {
+        t.Errorf("expected TKT-001, got %s", state.ActiveTickets[0].ID)
+    }
+}
+```
+
+**UC26: Verify Input Produces Correct State Change**
+
+Feed input events to UIProjection, verify state transitions:
+
+```go
+func TestUIProjection_ViewSwitching(t *testing.T) {
+    events := []InputEvent{
+        ViewSwitched{To: Execution},
+        ViewSwitched{To: Metrics},
+    }
+
+    proj := NewUIProjection()
+    state := proj.Apply(events)
+
+    if state.CurrentView != Metrics {
+        t.Errorf("expected Metrics view, got %v", state.CurrentView)
+    }
+}
+
+func TestUIProjection_FailedAction_SetsError(t *testing.T) {
+    events := []InputEvent{
+        SprintStartAttempted{Outcome: Failed{Reason: "Sprint already active"}},
+    }
+
+    proj := NewUIProjection()
+    state := proj.Apply(events)
+
+    if state.ErrorMessage != "Sprint already active" {
+        t.Errorf("expected error message, got %q", state.ErrorMessage)
+    }
+}
+
+func TestUIProjection_SuccessfulAction_ClearsError(t *testing.T) {
+    events := []InputEvent{
+        SprintStartAttempted{Outcome: Failed{Reason: "Sprint already active"}},
+        ViewSwitched{To: Planning},  // Any successful action clears error
+    }
+
+    proj := NewUIProjection()
+    state := proj.Apply(events)
+
+    if state.ErrorMessage != "" {
+        t.Errorf("expected empty error, got %q", state.ErrorMessage)
+    }
+}
+
+func TestUIProjection_TicketSelection_ClearsOnViewSwitch(t *testing.T) {
+    events := []InputEvent{
+        TicketSelected{ID: "TKT-001"},
+        ViewSwitched{To: Metrics},
+    }
+
+    proj := NewUIProjection()
+    state := proj.Apply(events)
+
+    if state.SelectedTicket != "" {
+        t.Errorf("expected empty selection after view switch, got %q", state.SelectedTicket)
+    }
+}
+```
+
+**Key properties:**
+- **Idempotent**: Same events always produce same state
+- **No mocks needed**: Projections are pure functions, no external dependencies
+- **Fast**: No terminal, no I/O, just data transformation
+- **Comprehensive**: Can test error paths by constructing Failed outcomes
+
+**Integration test: Full key → event → projection flow**
+
+```go
+func TestIntegration_SprintStart_UpdatesBothProjections(t *testing.T) {
+    // Setup: Engine with event store
+    store := NewInMemoryEventStore()
+    engine := NewEngine(store, seed)
+
+    // Simulate key press 's' through Update()
+    app := NewApp(engine)
+    inputEvent, domainEvents := app.HandleKey("s")
+
+    // Verify input event recorded with outcome
+    assert.Equal(t, SprintStartAttempted{Outcome: Succeeded{}}, inputEvent)
+
+    // Verify domain event emitted
+    assert.Len(t, domainEvents, 1)
+    assert.IsType(t, SprintStarted{}, domainEvents[0])
+
+    // Verify both projections updated
+    simState := app.simProjection.State()
+    assert.NotNil(t, simState.CurrentSprint)
+
+    uiState := app.uiProjection.Apply(app.inputEvents)
+    assert.Empty(t, uiState.ErrorMessage)  // Success clears any prior error
+}
+```
+
 ### Package Structure
 
 ```
 internal/
 ├── events/
-│   ├── types.go      # Event type definitions
-│   ├── store.go      # EventStore interface + in-memory impl
-│   └── projection.go # State projection from events
+│   ├── types.go       # Domain event type definitions
+│   ├── input.go       # Input event types (UI interactions)
+│   ├── store.go       # EventStore interface + in-memory impl
+│   └── projection.go  # SimProjection (domain events → SimState)
 ├── engine/
-│   └── engine.go     # Modified to emit events
+│   └── engine.go      # Emits domain events
 ├── tui/
-│   └── app.go        # Subscribe and project
+│   ├── app.go         # Update() command handler, records input events
+│   ├── uistate.go     # UIState struct
+│   └── uiprojection.go # UIProjection (input events → UIState)
 └── api/
-    └── handlers.go   # Replay and project
+    └── handlers.go    # Replay domain events, project
 ```
 

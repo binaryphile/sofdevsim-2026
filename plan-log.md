@@ -26445,3 +26445,377 @@ Implemented FiveFocusing (UC22) and ManagerTakeaways (UC23) synthesis lessons wi
 
 **Why it matters:**
 Completes the lesson prerequisite chain (UC19→UC20/21→UC22→UC23), enabling managers to learn TOC Five Focusing Steps through simulation experience before seeing synthesis takeaways.
+
+---
+
+## Approved Plan: 2026-01-26 - Phase 5: TUI as Event Stream Projection
+
+## Phase 5: TUI as Event Stream Projection (UC25-26)
+
+**Scope:** Update Event Sourcing Architecture section in `docs/design.md` to describe TUI as projection of two event streams.
+
+**Why now:** Enables UC25 (verify display) and UC26 (verify input) using same projection mechanism. Documentation-first approach clarifies architecture before implementation.
+
+**Use cases:** UC25 (verify display), UC26 (verify input handling)
+
+### Core Concept: Input Events with Outcomes
+
+Input events are recorded AFTER outcome is known, preserving ES semantics:
+
+```go
+// Events are past-tense facts, not commands
+type UserRequestedSprintStart struct{ Outcome Outcome }
+type Outcome interface{ sealed() }
+type Succeeded struct{}
+type Failed struct{ Reason string }
+```
+
+**Recording flow:**
+1. User presses key → Update() receives tea.KeyMsg
+2. Update() translates to semantic intent
+3. For domain-affecting actions: Engine processes, returns success/failure
+4. Input event recorded WITH outcome
+5. UIProjection applies event to produce new UIState
+
+### Two Projections (Pure Folds)
+
+**SimulationProjection** (existing): `[]DomainEvent → SimState`
+**UIProjection** (new): `[]InputEvent → UIState`
+
+**View() is pure function:** `View(simState, uiState) → string`
+
+### Approach
+
+1. Add "Input Events" subsection after existing "Event Types"
+2. Add "UI Projection" subsection
+3. Update "Data Flow with Event Sourcing" diagram
+4. Update "TUI Integration" subsection
+5. Add "Testing via Event Replay" subsection
+
+### Acceptance Criteria
+
+- [ ] Design describes two separate event streams (domain, input)
+- [ ] Input events are past-tense facts with outcomes (not commands)
+- [ ] Recording flow clarified: outcome known → event recorded
+- [ ] Event lifecycle clarified: domain=persistent, input=ephemeral
+- [ ] Two projections documented as pure folds
+- [ ] UIState struct documented with ErrorMessage field
+- [ ] TUI View() described as pure function of both projection states
+- [ ] Testing approach explained: replay events → check projection (idempotent)
+- [ ] Existing Event Sourcing Architecture section updated (not replaced)
+- [ ] "Data Flow with Event Sourcing" diagram updated to show dual projection
+
+### ES Compliance
+
+- [ ] Events are immutable facts (past-tense, include outcome)
+- [ ] No cross-stream coupling (UIProjection only reads input stream)
+- [ ] Error state via projection (not mutation)
+- [ ] Pure fold semantics (same events → same state)
+
+**Estimated:** 15-20K tokens (documentation task, no implementation)
+
+
+---
+
+## Approved Contract: 2026-01-26 - Phase 5
+
+# Phase 5 Contract: TUI as Event Stream Projection
+
+**Created:** 2026-01-26
+
+## Objective
+
+Update the Event Sourcing Architecture section of `docs/design.md` to describe the TUI as a projection of two event streams:
+1. **Domain events** (existing): Ticked, TicketAssigned, SprintStarted, etc. — stored, replayed, persistent
+2. **Input events** (new): Past-tense facts about user interaction with outcomes — ephemeral for production, replayable for testing
+
+This enables UC25 (verify display) and UC26 (verify input) using the same projection mechanism.
+
+## Success Criteria
+
+- [ ] Design describes two separate event streams (domain, input)
+- [ ] Input events are past-tense facts with outcomes (not commands)
+- [ ] Recording flow clarified: outcome known → event recorded
+- [ ] Event lifecycle clarified: domain=persistent, input=ephemeral (test-replayable)
+- [ ] Two projections documented as pure folds: SimulationProjection + UIProjection
+- [ ] UIState struct documented with ErrorMessage field
+- [ ] TUI View() described as pure function of both projection states
+- [ ] Testing approach explained: replay events → check projection (idempotent)
+- [ ] Existing Event Sourcing Architecture section updated (not replaced)
+- [ ] "Data Flow with Event Sourcing" diagram updated to show dual projection
+
+## Deliverable
+
+Modified file: `docs/design.md` (Event Sourcing Architecture section)
+
+## Token Budget
+
+Estimated: 15-20K tokens (documentation task, no implementation)
+
+
+---
+
+## Archived: 2026-01-26
+
+# Phase 5 Contract: TUI as Event Stream Projection
+
+**Created:** 2026-01-26
+
+## Step 1 Checklist
+- [x] 1a: Presented understanding
+- [x] 1b: Asked clarifying questions
+- [x] 1b-answer: Received answers (separate streams, semantic commands, update existing section)
+- [x] 1c: Contract created (this file)
+- [x] 1d: Approval received
+- [x] 1e: Plan + contract archived
+
+## Objective
+
+Update the Event Sourcing Architecture section of `docs/design.md` to describe the TUI as a projection of two event streams:
+1. **Domain events** (existing): Ticked, TicketAssigned, SprintStarted, etc. — stored, replayed, persistent
+2. **Input events** (new): Past-tense facts about user interaction with outcomes — ephemeral for production, replayable for testing
+
+This enables UC25 (verify display) and UC26 (verify input) using the same projection mechanism.
+
+## Input Events (Recorded Facts, Not Commands)
+
+Input events are recorded AFTER the outcome is known. This preserves ES semantics: events are immutable facts about what happened, not requests.
+
+**Event Types with Outcomes:**
+
+```go
+// Outcome sum type
+type Outcome interface{ sealed() }
+type Succeeded struct{}
+type Failed struct{ Reason string }
+
+// Input events (past-tense, include outcome)
+type UserRequestedSprintStart struct{ Outcome Outcome }
+type UserRequestedTick struct{ Outcome Outcome }
+type UserSwitchedView struct{ To View }           // Always succeeds
+type UserToggledLessonPanel struct{}              // Always succeeds
+type UserSelectedTicket struct{ ID string }       // Always succeeds
+type UserRequestedAssignment struct{
+    TicketID string
+    Outcome  Outcome
+}
+```
+
+**Recording Flow:**
+1. User presses key → Update() receives tea.KeyMsg
+2. Update() translates to semantic intent
+3. For domain-affecting actions: Engine processes, returns success/failure
+4. Input event recorded WITH outcome
+5. UIProjection applies event to produce new UIState
+
+| Raw Key | Intent | Possible Events |
+|---------|--------|-----------------|
+| 's' | Start sprint | `UserRequestedSprintStart{Succeeded{}}` or `{Failed{"Sprint already active"}}` |
+| Space | Tick | `UserRequestedTick{Succeeded{}}` or `{Failed{"No active sprint"}}` |
+| Tab | Switch view | `UserSwitchedView{To: Metrics}` (always succeeds) |
+| 'h' | Toggle lessons | `UserToggledLessonPanel{}` (always succeeds) |
+| 'a' | Assign ticket | `UserRequestedAssignment{..., Succeeded{}}` or `{..., Failed{"Dev busy"}}` |
+
+**Key distinction:**
+- Events record what happened, including failures
+- UIProjection reads outcome from event (no cross-stream coupling)
+- Error state comes from projecting Failed outcomes
+- Error "clears" because subsequent events project to non-error state (pure fold)
+
+## Projection Architecture
+
+Two projections, each a pure fold over its event stream:
+
+**1. SimulationProjection** (existing):
+```go
+// Calculation: []DomainEvent → SimState
+func (p *SimulationProjection) Apply(events []DomainEvent) SimState
+```
+
+**2. UIProjection** (new):
+```go
+// Calculation: []InputEvent → UIState
+func (p *UIProjection) Apply(events []InputEvent) UIState {
+    state := UIState{CurrentView: Planning}
+    for _, e := range events {
+        switch ev := e.(type) {
+        case UserSwitchedView:
+            state.CurrentView = ev.To
+            state.ErrorMessage = ""  // View switch clears error
+        case UserRequestedSprintStart:
+            if f, ok := ev.Outcome.(Failed); ok {
+                state.ErrorMessage = f.Reason
+            } else {
+                state.ErrorMessage = ""
+            }
+        // ... other event handlers
+        }
+    }
+    return state
+}
+```
+
+**UIState struct:**
+```go
+type UIState struct {
+    CurrentView    View
+    SelectedTicket string
+    LessonVisible  bool
+    ErrorMessage   string  // From most recent Failed outcome
+}
+```
+
+**View() is pure function of both states:**
+```go
+// Calculation: (SimState, UIState) → string
+func View(sim SimState, ui UIState) string
+```
+
+**Test replay mechanism:**
+- Tests construct input event sequences directly (no persistent storage)
+- Tests feed events to projections and assert on resulting state
+- Same events always produce same state (idempotent fold)
+- Tests are producers; no runtime event capture needed
+
+## Success Criteria
+
+- [x] Design describes two separate event streams (domain, input) — lines 1089-1135
+- [x] Input events are past-tense facts with outcomes (not commands) — lines 1093-1107
+- [x] Recording flow clarified: outcome known → event recorded — lines 1108-1114
+- [x] Event lifecycle clarified: domain=persistent, input=ephemeral (test-replayable) — lines 1127-1135
+- [x] Two projections documented as pure folds: SimulationProjection + UIProjection — lines 1250-1303
+- [x] UIState struct documented with ErrorMessage field — lines 1268-1276
+- [x] TUI View() described as pure function of both projection states — lines 1295-1303
+- [x] Testing approach explained: replay events → check projection (idempotent) — lines 1461-1530
+- [x] Existing Event Sourcing Architecture section updated (not replaced) — section preserved at lines 988-1531
+- [x] "Data Flow with Event Sourcing" diagram updated to show dual projection — lines 1305-1383
+
+## Approach
+
+1. Add "Input Events" subsection after existing "Event Types"
+   - Define input event types with Outcome field
+   - Clarify recording flow: outcome known → event recorded
+   - Show key → intent → event examples (including failure cases)
+   - Document that events are past-tense facts, not commands
+2. Add "UI Projection" subsection
+   - UIState struct (CurrentView, SelectedTicket, LessonVisible, ErrorMessage)
+   - UIProjection.Apply([]InputEvent) as pure fold
+   - Show how Failed outcomes produce ErrorMessage
+   - Show how subsequent events clear errors via projection (not mutation)
+3. Update "Data Flow with Event Sourcing" diagram
+   - Show input stream separate from domain stream
+   - Show both projections feeding View()
+   - Show Update() as the command handler layer
+4. Update "TUI Integration" subsection
+   - Key → semantic intent translation in Update()
+   - Update() routes to Engine for domain-affecting actions
+   - Update() records input event WITH outcome after Engine returns
+5. Add "Testing via Event Replay" subsection
+   - Test mechanism: tests construct events directly, feed to projections
+   - UC25: Feed domain events → check SimulationProjection state
+   - UC26: Feed input events → check UIProjection state (including error cases)
+   - Idempotency: same events always produce same state
+
+## Token Budget
+
+Estimated: 15-20K tokens (documentation task, no implementation)
+
+## Deliverable
+
+Modified file: `docs/design.md` (Event Sourcing Architecture section)
+
+## Architecture Diagram (Target State)
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                         TUI Layer                                │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│   ┌──────────┐     ┌─────────────┐     ┌──────────────────┐    │
+│   │ KeyPress │────▶│  Update()   │────▶│ Engine.Command() │    │
+│   └──────────┘     │ (translate) │     │ (domain action)  │    │
+│                    └──────┬──────┘     └────────┬─────────┘    │
+│                           │                      │               │
+│                           │ record with outcome  │ success/fail  │
+│                           ▼                      ▼               │
+│              ┌────────────────────┐    ┌─────────────────┐      │
+│              │   Input Events     │    │  Domain Events  │      │
+│              │ (session-scoped)   │    │  (persistent)   │      │
+│              └─────────┬──────────┘    └────────┬────────┘      │
+│                        │                         │               │
+│                        ▼                         ▼               │
+│              ┌─────────────────┐      ┌──────────────────┐      │
+│              │  UIProjection   │      │ SimProjection    │      │
+│              │  (pure fold)    │      │ (pure fold)      │      │
+│              └────────┬────────┘      └────────┬─────────┘      │
+│                       │                         │                │
+│                       ▼                         ▼                │
+│              ┌─────────────┐          ┌─────────────┐           │
+│              │  UIState    │          │  SimState   │           │
+│              └──────┬──────┘          └──────┬──────┘           │
+│                     │                        │                   │
+│                     └───────────┬────────────┘                   │
+│                                 ▼                                │
+│                        ┌──────────────┐                         │
+│                        │   View()     │                         │
+│                        │ (pure func)  │                         │
+│                        └──────┬───────┘                         │
+│                               │                                  │
+│                               ▼                                  │
+│                        ┌──────────────┐                         │
+│                        │   string     │                         │
+│                        │  (render)    │                         │
+│                        └──────────────┘                         │
+└─────────────────────────────────────────────────────────────────┘
+
+Testing via Replay:
+  UC25: []DomainEvent ──▶ SimProjection ──▶ SimState ──▶ assert
+  UC26: []InputEvent  ──▶ UIProjection  ──▶ UIState  ──▶ assert
+```
+
+## Actual Results
+
+**Completed:** 2026-01-26
+
+**Deliverable:** `docs/design.md` — Event Sourcing Architecture section updated
+
+**Subsections added/modified:**
+
+| Subsection | Lines | Description |
+|------------|-------|-------------|
+| Input Events (UI Interaction) | 1089-1135 | New: event types with outcomes, recording flow, lifecycle table |
+| UI Projection | 1250-1303 | New: UIState struct, UIProjection.Apply() as pure fold |
+| Data Flow with Event Sourcing | 1305-1383 | Updated: mermaid + ASCII diagrams showing dual projection |
+| TUI Integration | 1385-1443 | Updated: Update() as command handler, records events with outcomes |
+| Testing via Event Replay | 1461-1530 | New: UC25/UC26 test examples, idempotency properties |
+
+**Key additions:**
+- Outcome sum type (`Succeeded{}`, `Failed{Reason}`)
+- 6 input event types with semantic naming
+- Key → intent → event mapping table
+- UIProjection code showing error handling via projection
+- Dual-stream mermaid diagram
+- ASCII architecture diagram
+- 3 test examples (UC25, UC26 success, UC26 failure)
+
+## Step 4 Checklist
+- [x] 4a: Results presented to user
+- [x] 4b: Approval received
+
+## Approval
+✅ APPROVED BY USER - 2026-01-26
+
+Phase 5 complete: Event Sourcing Architecture section updated to describe TUI as dual projection of domain events and input events. Documentation-only phase (no implementation code). Enables UC25 (verify display) and UC26 (verify input) via event replay testing.
+
+---
+
+## Log: 2026-01-26 - Phase 5: TUI as Event Stream Projection
+
+**What was done:**
+Updated the Event Sourcing Architecture section of `docs/design.md` to describe the TUI as a projection of two event streams: domain events (persistent) for simulation state and input events (ephemeral) for UI state. Input events are recorded AFTER outcomes are known, preserving ES semantics. This documentation enables UC25 (verify display) and UC26 (verify input handling) via event replay testing.
+
+**Key files changed:**
+- `docs/design.md`: Added Input Events subsection (event types with outcomes), UI Projection subsection (UIState struct, pure fold), updated Data Flow diagrams (mermaid + ASCII), updated TUI Integration (Update() as command handler), added Testing via Event Replay subsection
+
+**Why it matters:**
+Establishes architectural foundation for testable TUI by treating user interaction as an event stream that can be replayed and verified independently of the simulation domain.
