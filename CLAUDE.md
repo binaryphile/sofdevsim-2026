@@ -823,7 +823,7 @@ go test -cover ./...
 | Package | Coverage | Notes |
 |---------|----------|-------|
 | engine | 80.4% | Domain + controller logic |
-| export | 65.4% | Controller with domain helpers |
+| export | 75.3% | Controller with domain helpers (Phase 8: +10%) |
 | events | 68.9% | Event store infrastructure |
 | lessons | 89.0% | Domain calculations |
 | metrics | 68.2% | Domain calculations |
@@ -1272,3 +1272,19 @@ BenchmarkExperimentSummary-8         370579515   3.170 ns/op   0 B/op   0 allocs
 ```
 
 Both pure calculation functions achieve **zero allocations** - string literals returned directly from switch statements, no runtime string construction.
+
+### HTML Export Benchmarks (2026-01-26)
+
+```
+BenchmarkGenerateSparklineSVG-8   246638    4828 ns/op    1064 B/op    34 allocs/op
+BenchmarkBufferTimelineHTML-8     738396    1585 ns/op    1872 B/op    26 allocs/op
+BenchmarkGenerateHTML-8            94158   13103 ns/op   24620 B/op    74 allocs/op
+```
+
+| Function | Time | Target | Status |
+|----------|------|--------|--------|
+| Sparkline | 4.8μs | N/A | Acceptable |
+| Buffer Timeline | 1.6μs | N/A | Acceptable |
+| Full HTML | 13μs | <10ms | ✓ Well under target |
+
+All HTML generation completes in microseconds - negligible latency for export operation.

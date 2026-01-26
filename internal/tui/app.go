@@ -527,7 +527,7 @@ func (a *App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case "e":
-		// Export simulation data (requires engine mode for local data)
+		// Export HTML report (requires engine mode for local data)
 		eng, isEngine := a.mode.GetLeft()
 		if !isEngine {
 			a.statusMessage = "Export requires local mode (run without --client)"
@@ -540,15 +540,44 @@ func (a *App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			a.statusExpiry = time.Now().Add(3 * time.Second)
 			return a, nil
 		}
-		// ToOpt() converts Option to *T at boundary - nil if no comparison run yet
-		exporter := export.New(sim, eng.Tracker, a.comparisonResult.ToOpt())
-		result, err := exporter.Export()
-		if err != nil {
+
+		// Build export data types from TUI state
+		simParams := export.SimulationParams{
+			Seed:           sim.Seed,
+			Policy:         sim.SizingPolicy.String(),
+			DeveloperCount: len(sim.Developers),
+		}
+
+		trackerData := export.TrackerData{
+			LeadTime:        eng.Tracker.DORA.LeadTimeAvg.Hours() / 24,
+			DeployFrequency: eng.Tracker.DORA.DeployFrequency,
+			ChangeFailRate:  eng.Tracker.DORA.ChangeFailRate,
+			MTTR:            eng.Tracker.DORA.MTTRAvg.Hours() / 24,
+			LeadTimeHistory: extractLeadTimeHistory(eng.Tracker.DORA.History),
+			FeverHistory:    extractFeverHistory(eng.Tracker.Fever.History),
+		}
+
+		var comparison *export.ComparisonSummary
+		if result, ok := a.comparisonResult.Get(); ok {
+			comparison = &export.ComparisonSummary{
+				PolicyA:     result.PolicyA.String(),
+				PolicyB:     result.PolicyB.String(),
+				Winner:      result.OverallWinner.String(),
+				LeadTimeA:   result.ResultsA.FinalMetrics.LeadTimeAvg.Hours() / 24,
+				LeadTimeB:   result.ResultsB.FinalMetrics.LeadTimeAvg.Hours() / 24,
+				DeployFreqA: result.ResultsA.FinalMetrics.DeployFrequency,
+				DeployFreqB: result.ResultsB.FinalMetrics.DeployFrequency,
+			}
+		}
+
+		exporter := export.NewHTMLExporter(simParams, trackerData, a.lessonState.SeenMap, comparison)
+		path := fmt.Sprintf("exports/simulation-report-%s.html", time.Now().Format("20060102-150405"))
+		if err := exporter.ExportToFile(path); err != nil {
 			a.statusMessage = fmt.Sprintf("Export failed: %v", err)
 			a.statusExpiry = time.Now().Add(5 * time.Second)
 			return a, nil
 		}
-		a.statusMessage = result.Summary()
+		a.statusMessage = fmt.Sprintf("Exported to %s", path)
 		a.statusExpiry = time.Now().Add(5 * time.Second)
 		return a, nil
 
@@ -1011,4 +1040,24 @@ func (a *App) selectedTicketID() string {
 		return sim.Backlog[a.selected].ID
 	}
 	return ""
+}
+
+// extractLeadTimeHistory extracts lead time values from DORA snapshots.
+// Calculation: []DORASnapshot → []float64
+func extractLeadTimeHistory(history []metrics.DORASnapshot) []float64 {
+	result := make([]float64, len(history))
+	for i, s := range history {
+		result[i] = s.LeadTimeAvg
+	}
+	return result
+}
+
+// extractFeverHistory extracts percent used values from fever snapshots.
+// Calculation: []FeverSnapshot → []float64
+func extractFeverHistory(history []metrics.FeverSnapshot) []float64 {
+	result := make([]float64, len(history))
+	for i, s := range history {
+		result[i] = s.PercentUsed
+	}
+	return result
 }
