@@ -103,6 +103,54 @@ state := app.uiProjection.State()
 go test -v -run "TestApp_FullSessionWalkthrough" ./internal/tui/...
 ```
 
+### TUI Visual Inspection (AI-Assisted Testing)
+
+For AI assistants (Claude) to directly verify TUI rendering, use `TestView_Inspect` in `view_inspect_test.go`. This test outputs ANSI-stripped rendered views at key interaction points, enabling visual verification without running the actual TUI.
+
+```bash
+go test -v -run "TestView_Inspect" ./internal/tui/...
+```
+
+The test walks through:
+1. Initial planning view
+2. Tab navigation to execution
+3. j/k ticket selection
+4. h toggle lessons panel
+5. s start sprint
+
+Each step outputs the full rendered view with ANSI codes stripped, plus UIProjection state for verification. This enables:
+- Verifying layout and content without running the TUI
+- Catching view/projection sync bugs (if CurrentView doesn't match rendered view)
+- Regression detection when modifying view code
+
+**Example output:**
+```
+=== 5. After s (Sprint started - Execution view) ===
+╭──────────────────────────────────────────────────────────────╮
+│  Planning  Execution  Metrics  Comparison   Policy: None ... │
+╰──────────────────────────────────────────────────────────────╯
+...
+=== UIProjection State ===
+CurrentView: 1
+SelectedTicket: ""
+LessonVisible: true
+ErrorMessage: ""
+```
+
+### TUI Golden File Testing
+
+For CI regression detection, use `TestView_PlanningInitial` in `view_golden_test.go` with the teatest package:
+
+```bash
+# Run to verify (fails if output differs from golden file)
+go test -v -run "TestView_PlanningInitial" ./internal/tui/...
+
+# Update golden file after intentional changes
+go test -v -run "TestView_PlanningInitial" ./internal/tui/... -update
+```
+
+Golden files are stored in `testdata/` and capture exact terminal output for baseline comparison.
+
 ### TUI Manual Testing (Visual Verification)
 
 For visual/rendering issues not covered by UIProjection:
@@ -258,30 +306,30 @@ go run ./cmd/sofdevsim -seed 42
 | Missing Content-Type | 415 Unsupported Media Type |
 | Developer already busy | 409 Conflict |
 
-## TUI Integration Testing (Future)
+## TUI Testing Architecture
 
-### Current Architecture
+### Current Implementation
 
 ```
 App (Bubble Tea Model)
 ├── State (SimulationState)
+├── UIProjection (event-sourced UI state)
 ├── Update(msg) → App, Cmd
 └── View() → string (with ANSI codes)
 ```
 
-### Testing Options
+**Implemented approaches:**
 
-**Option A: Direct View() Testing**
-```go
-func TestExecutionView(t *testing.T) {
-    app := NewApp(...)
-    app.state = SimulationState{...}
-    output := app.View()
-    // Strip ANSI and assert
-}
-```
+| Approach | File | Purpose |
+|----------|------|---------|
+| UIProjection state testing | `app_test.go` | Key→event→state flow |
+| Visual inspection | `view_inspect_test.go` | AI-assisted rendering verification |
+| Golden file regression | `view_golden_test.go` | CI baseline comparison |
 
-**Option B: ViewModel Separation (Recommended for Future)**
+### Future: ViewModel Separation
+
+For Phase 7 HTML export, consider extracting view models:
+
 ```go
 // Layer 1: Pure data (testable)
 type ExecutionViewModel struct {
@@ -296,26 +344,14 @@ type Renderer interface {
 }
 
 // Layer 3: Implementations
-type BubbleTeaRenderer struct{}  // Production
-type PlainTextRenderer struct{}  // Testing
+type BubbleTeaRenderer struct{}  // TUI
 type HTMLRenderer struct{}       // Export
 ```
 
 **Benefits of ViewModel separation:**
 - Test business logic without rendering
-- Swap renderers (TUI, plain text, HTML, JSON)
-- Supports Phase 5 HTML export cleanly
-
-**Option C: teatest Package**
-```go
-import "github.com/charmbracelet/x/exp/teatest"
-
-func TestApp_SprintFlow(t *testing.T) {
-    tm := teatest.NewTestModel(t, NewApp(...))
-    tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
-    teatest.RequireOutput(t, tm.FinalOutput(t), ...)
-}
-```
+- Swap renderers (TUI, HTML, JSON)
+- Cleaner HTML export implementation
 
 ## Coverage Baseline
 

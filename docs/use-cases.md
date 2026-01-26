@@ -67,6 +67,8 @@ flowchart TB
 
 **Manager** - Software development manager learning TOC/DBR concepts through simulation
 
+**Developer (test writer)** - Developer writing automated tests for TUI behavior without terminal dependencies
+
 ### Secondary Actors
 
 None (self-contained simulation, no external services)
@@ -114,6 +116,10 @@ None (self-contained simulation, no external services)
 ### Story 7: The Collaborative Session
 
 > Ted starts the TUI to explore a new sizing policy. Meanwhile, Claude (in a terminal session) wants to help operate the simulation while Ted watches. Claude GETs `/simulations` to discover what simulations exist—the response lists Ted's active simulation with its ID. Claude then GETs that simulation's state to see current tick, backlog, and available actions. Before starting the sprint, Claude assigns tickets to developers—POSTing to `/simulations/{id}/assignments` three times for the high-priority items. Each response includes the `assign` link since backlog still has tickets. Ted watches assignments appear in his TUI. Only after planning is complete does Claude POST to start the sprint. Ted sees the sprint begin and work commence. Ted likes this because Claude can drive the simulation while Ted observes patterns and asks questions. Claude likes sprint planning via API because it mirrors real planning—assign work *before* committing to the sprint.
+
+### Story 8: The TUI Test Writer
+
+> Alex, a developer adding a new lesson trigger, needs to verify the lesson panel displays correctly when the trigger fires. Rather than launching the TUI and manually clicking through states, Alex writes a test that constructs an `ExecutionViewModel` with the trigger conditions met, passes it to a `PlainTextRenderer`, and asserts the output contains "Understanding IS the Constraint". The test runs in milliseconds without terminal dependencies. Alex likes the ViewModel layer because it separates *what to display* from *how to display it*—the same ViewModel feeds both Bubble Tea (production) and plain text (testing). When the test passes, Alex runs the HTML renderer with the same ViewModel to verify the export looks right too. Alex realizes this architecture means new renderers (JSON API, accessibility mode) are just new implementations of the Renderer interface.
 
 ---
 
@@ -165,7 +171,14 @@ None (self-contained simulation, no external services)
 
 *Pedagogical Order:* UC19 → UC20/UC21 (parallel) → UC22 → UC23; UC24 anytime
 
-**Use Cases Written:** Goals 1-12, 14-24 (Blue level)
+**Primary Actor:** Developer (test writer)
+
+| # | Goal | Level | "Lunch Test" | Stakeholder Interest |
+|---|------|-------|--------------|---------------------|
+| 25 | Verify UI displays correct state without terminal | Blue | Yes - test passes | Developer - catch display bugs in CI |
+| 26 | Verify input produces correct state change | Blue | Yes - interaction verified | Developer - catch handler bugs in CI |
+
+**Use Cases Written:** Goals 1-12, 14-26 (Blue level)
 
 ---
 
@@ -925,6 +938,136 @@ This use case requires event sourcing architecture:
 - 7a. *No lessons triggered:* Report shows metrics only with "Run with 'h' to enable lessons" prompt
 
 **Note:** UC24 has no lesson—it's a sharing mechanism, not a teaching moment.
+
+---
+
+### UC25: Verify UI Displays Correct State
+
+**Primary Actor:** Developer (test writer)
+
+**Goal in Context:** Confirm that given a specific simulation state, the UI displays the expected information without requiring a terminal. (See Story 8: The TUI Test Writer)
+
+**Scope:** Software Development Simulation
+
+**Level:** User Goal (Blue)
+
+**Stakeholders and Interests:**
+
+- *Developer:* Wants to catch display bugs before production
+- *CI System:* Needs headless test execution
+
+**Trigger:** Developer modifies display logic or adds new UI element
+
+**Preconditions:**
+
+- Simulation can be initialized to a known state
+- UI output can be captured as text (not just ANSI terminal codes)
+
+**Minimal Guarantees (always hold):**
+
+- Test execution never requires terminal or user interaction
+- Test produces deterministic output (same state → same result)
+
+**Postconditions (Guarantees):**
+
+- *Success:* Test confirms UI shows correct values for given state
+- *Failure:* Test shows expected vs actual output
+
+**Main Success Scenario:**
+
+1. Developer specifies simulation state (sprint day, buffer level, active tickets, etc.)
+2. Developer requests text representation of current view
+3. Developer receives deterministic text output
+4. Developer asserts output contains expected content
+5. Test passes
+
+**Extensions:**
+
+- 1a. *Complex state needed:* Developer runs simulation actions to reach desired state
+- 3a. *Multiple views to verify:* Developer requests each view's output separately
+- 4a. *Assertion fails:* Developer sees diff, fixes display logic or updates expectation
+- 4b. *Golden file comparison:* Developer compares against stored expected output
+
+**Technology & Data Variations:**
+
+- Text output: Plain text for assertions, HTML for export, ANSI for terminal
+- State setup: Direct construction, action sequence, or fixture loading
+- Assertion style: Substring match, exact match, or golden file
+
+---
+
+### UC26: Verify Input Produces Correct State Change
+
+**Primary Actor:** Developer (test writer)
+
+**Goal in Context:** Confirm that user input (key press, command) in a given state produces the expected state transition without requiring a terminal. (See Story 8: The TUI Test Writer)
+
+**Scope:** Software Development Simulation
+
+**Level:** User Goal (Blue)
+
+**Stakeholders and Interests:**
+
+- *Developer:* Wants to catch interaction bugs before production
+- *QA:* Needs automated regression tests for keyboard handlers
+
+**Trigger:** Developer adds or modifies keyboard handler
+
+**Preconditions:**
+
+- Simulation can be initialized to a known state
+- Input events can be sent programmatically
+
+**Minimal Guarantees (always hold):**
+
+- Test execution never requires terminal or user interaction
+- Invalid input never corrupts simulation state
+
+**Postconditions (Guarantees):**
+
+- *Success:* Test confirms input produced expected state change
+- *Failure:* Test shows state before, input sent, and actual vs expected state after
+
+**Main Success Scenario:**
+
+1. Developer specifies initial simulation state
+2. Developer sends input event (key press, mouse click, etc.)
+3. Developer inspects resulting state
+4. Developer asserts resulting state matches expected
+5. Test passes
+
+**Extensions:**
+
+- 2a. *Input sequence:* Developer sends multiple inputs in order
+- 3a. *Input triggers async operation:* Developer waits for or simulates completion
+- 4a. *State unchanged (expected):* Developer verifies no-op for invalid input
+- 4b. *State unchanged (unexpected):* Developer debugs handler logic
+- 4c. *Verify display also changed:* Developer combines with UC25 to check output
+
+**Example Scenarios:**
+
+| Initial State | Input | Expected Result |
+|---------------|-------|-----------------|
+| Planning view, tickets in backlog | 's' key | Sprint starts, view switches to Execution |
+| Execution view, sprint active | Space | Tick advances, day increments |
+| Any view | Tab | View cycles to next |
+| Metrics view, no comparison | 'c' key | Comparison runs, results displayed |
+| Planning view, ticket selected | 'a' key | Ticket assigned to idle developer |
+
+**Technology & Data Variations:**
+
+- Input types: Key press, special key (Tab, Enter), mouse event
+- Sequence testing: Chain of inputs with intermediate state checks
+- Combined verification: State assertion + output assertion in same test
+
+**Example Scenarios:**
+
+| Initial State | Input | Expected Result |
+|---------------|-------|-----------------|
+| Planning view, tickets in backlog | 's' key | Sprint starts, view switches to Execution |
+| Execution view, sprint active | Space | Tick advances, day increments |
+| Any view | Tab | View cycles to next |
+| Metrics view, no comparison | 'c' key | Comparison runs, results displayed |
 
 ---
 

@@ -266,6 +266,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				a.currentView = ViewExecution
 				a.paused = false
 				a.recordInputEvent(SprintStartAttempted{Outcome: Succeeded{}})
+				a.recordInputEvent(ViewSwitched{To: ViewExecution})
 			case "tick":
 				a.recordInputEvent(TickAttempted{Outcome: Succeeded{}})
 				// Check if sprint ended
@@ -424,6 +425,7 @@ func (a *App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			a.currentView = ViewExecution
 			a.paused = false
 			a.recordInputEvent(SprintStartAttempted{Outcome: Succeeded{}})
+			a.recordInputEvent(ViewSwitched{To: ViewExecution})
 			return a, a.tickCmd()
 		}
 		// Precondition failed: sprint already active or wrong view
