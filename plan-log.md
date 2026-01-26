@@ -26819,3 +26819,142 @@ Updated the Event Sourcing Architecture section of `docs/design.md` to describe 
 
 **Why it matters:**
 Establishes architectural foundation for testable TUI by treating user interaction as an event stream that can be replayed and verified independently of the simulation domain.
+
+---
+
+## Archived: 2026-01-26
+
+# Phase 6 Contract
+
+**Created:** 2026-01-26
+
+## Step 1 Checklist
+- [x] 1a: Presented understanding
+- [x] 1b: Asked clarifying questions
+- [x] 1b-answer: Received answers
+- [x] 1c: Contract created (this file)
+- [x] 1d: Approval received
+- [x] 1e: Plan + contract archived
+
+## Objective
+Implement TUI as Event Stream Projection — input events, UIProjection, and App integration.
+
+## Success Criteria
+- [x] 6 input event types defined (SprintStartAttempted, TickAttempted, ViewSwitched, LessonPanelToggled, TicketSelected, AssignmentAttempted)
+- [x] Outcome sum type with Succeeded{} and Failed{Category, Reason}
+- [x] UIState struct with CurrentView, SelectedTicket, LessonVisible, ErrorMessage
+- [x] UIProjection with value semantics (Record returns new projection)
+- [x] State() computes UIState via pure fold
+- [x] App struct has uiProjection field
+- [x] All 6 key handlers record input events with outcomes
+- [x] Works for Engine mode AND Client mode
+- [x] `go test ./internal/tui/...` passes
+- [x] `go test -race ./internal/tui/...` passes
+- [x] Idempotency test: same events always produce same state
+- [x] BenchmarkUIProjection_State baseline recorded
+
+## Approach
+1. Create input.go with event types (TDD)
+2. Create uistate.go with UIState (TDD)
+3. Create uiprojection.go with projection (TDD)
+4. Create uiprojection_test.go with comprehensive tests
+5. Modify app.go for event recording
+
+## Token Budget
+Estimated: 30-40K tokens
+
+## Compliance Invariants
+
+### Go Development Guide
+- [x] Value semantics for UIProjection (immutable pattern)
+- [x] No nil pointer issues (UIState is value type)
+- [x] Pointers justified and nil checks documented (see Pointer Audit below)
+- [x] BenchmarkUIProjection_State exists with baseline
+- [x] Race detection passes (`go test -race`)
+- [x] Test naming: `TestFunction_Scenario_ExpectedBehavior`
+
+### Pointer Audit
+| Location | Type | Justification | Nil Handling |
+|----------|------|---------------|--------------|
+| `UIProjection.events` | `[]InputEvent` | Slice (not pointer) | nil-safe: `range` iterates 0 times on nil slice |
+| **No pointers in Phase 6** | — | All value types | N/A |
+
+### Functional Programming Guide
+- [x] ACD comments on all public functions
+- [x] State() is pure fold (no side effects)
+- [x] Record() returns new value (immutable)
+
+### CQRS/Event Sourcing Guide
+- [x] Input events are past-tense facts with outcomes
+- [x] Outcome determined BEFORE recording (events are facts, not commands)
+- [x] UIProjection only reads input stream (no cross-stream coupling)
+- [x] Error state via projection, not mutation
+- [x] Idempotency verified by test
+
+### Khorikov Test Layers (rebalance at verification)
+- [x] Domain logic: Unit tests for State() fold
+- [x] Orchestration: Integration tests for key → event → state flow
+- [x] Observable behavior: Tests verify outputs, not implementation details
+
+**Quadrant Analysis:**
+| Function | Quadrant | Test Strategy | Status |
+|----------|----------|---------------|--------|
+| `State()` | Domain | 14 unit tests (edge cases) | ✓ Appropriate |
+| `errorFromOutcome()` | Trivial | PRUNED (covered by State() tests) | ✓ Correct |
+| `Record()` | Trivial | Covered by State() tests | ✓ No dedicated test needed |
+| `NewUIProjection()` | Trivial | Covered by State() tests | ✓ No dedicated test needed |
+| `NewUIState()` | Trivial | 1 unit test | ✓ Could prune |
+| `recordInputEvent()` | Controller | 7 integration tests | ✓ Appropriate |
+| `selectedTicketID()` | Controller | Covered by integration | ✓ Appropriate |
+
+## Actual Results
+
+**Completed:** 2026-01-26
+
+### Deliverables
+
+| File | Lines | Description |
+|------|-------|-------------|
+| `internal/tui/input.go` | 64 | 6 input event types, Outcome sum type, FailureCategory |
+| `internal/tui/uistate.go` | 16 | UIState struct, NewUIState() |
+| `internal/tui/uiprojection.go` | 58 | UIProjection, Record(), State(), errorFromOutcome() |
+| `internal/tui/uiprojection_test.go` | 280 | 12 unit tests + 2 benchmarks |
+| `internal/tui/app.go` (modified) | +80 | uiProjection field, recordInputEvent(), selectedTicketID(), key handler updates |
+| `internal/tui/app_test.go` (modified) | +120 | 7 integration tests for input event recording |
+| **Total** | ~618 | Estimated 560, actual 618 |
+
+### Benchmark Baselines
+
+```
+BenchmarkUIProjection_State-8    5148031    212.4 ns/op    0 B/op    0 allocs/op
+BenchmarkUIProjection_Record-8   500160903  2.318 ns/op    0 B/op    0 allocs/op
+```
+
+### Test Coverage
+
+- Phase 6 core files: 100% (NewUIProjection, Record, State, errorFromOutcome, NewUIState)
+- TUI package overall: 29.2% (UI rendering code not unit-tested)
+
+## Step 4 Checklist
+- [x] 4a: Results presented to user
+- [x] 4b: Approval received
+
+## Approval
+✅ APPROVED BY USER - 2026-01-26
+Final grade: A- (92/100)
+
+---
+
+## Log: 2026-01-26 - Phase 6: TUI as Event Stream Projection
+
+**What was done:**
+Implemented input event recording for TUI interactions. UIProjection accumulates events (SprintStartAttempted, TickAttempted, ViewSwitched, LessonPanelToggled, TicketSelected, AssignmentAttempted) and computes UIState via pure fold. Works in both Engine and Client modes.
+
+**Key files changed:**
+- `internal/tui/input.go`: 6 input event types, Outcome sum type
+- `internal/tui/uistate.go`: UIState read model
+- `internal/tui/uiprojection.go`: Pure fold projection
+- `internal/tui/app.go`: Event recording in key handlers
+
+**Why it matters:**
+Enables error state management via projection (not mutation), supporting future UI features like error display and undo.

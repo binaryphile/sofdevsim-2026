@@ -398,6 +398,162 @@ func TestApp_UC20TriggerIntegration(t *testing.T) {
 	})
 }
 
+// TestApp_RecordsViewSwitched_EngineMode verifies tab key records ViewSwitched event.
+func TestApp_RecordsViewSwitched_EngineMode(t *testing.T) {
+	app := NewAppWithSeed(42)
+
+	// Initial state should be ViewPlanning
+	uiState := app.uiProjection.State()
+	if uiState.CurrentView != ViewPlanning {
+		t.Errorf("Initial CurrentView = %v, want ViewPlanning", uiState.CurrentView)
+	}
+
+	// Press tab (KeyTab type, not runes)
+	app.Update(tea.KeyMsg{Type: tea.KeyTab})
+
+	// UIProjection should record ViewSwitched
+	uiState = app.uiProjection.State()
+	if uiState.CurrentView != ViewExecution {
+		t.Errorf("After tab: CurrentView = %v, want ViewExecution", uiState.CurrentView)
+	}
+}
+
+// TestApp_RecordsLessonPanelToggled_EngineMode verifies h key records LessonPanelToggled event.
+func TestApp_RecordsLessonPanelToggled_EngineMode(t *testing.T) {
+	app := NewAppWithSeed(42)
+
+	// Initially not visible in projection
+	if app.uiProjection.State().LessonVisible {
+		t.Error("Initial LessonVisible should be false")
+	}
+
+	// Press h
+	app.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("h")})
+
+	// UIProjection should record toggle
+	if !app.uiProjection.State().LessonVisible {
+		t.Error("After h: LessonVisible should be true")
+	}
+}
+
+// TestApp_RecordsTicketSelected_EngineMode verifies j/k keys record TicketSelected event.
+func TestApp_RecordsTicketSelected_EngineMode(t *testing.T) {
+	app := NewAppWithSeed(42)
+	eng, _ := app.mode.GetLeft()
+	sim := eng.Engine.Sim()
+
+	// Initial selection is 0
+	if app.selected != 0 {
+		t.Fatalf("Initial selected = %d, want 0", app.selected)
+	}
+
+	// Press j (down)
+	app.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
+
+	// UIProjection should have second ticket selected
+	uiState := app.uiProjection.State()
+	expectedID := sim.Backlog[1].ID
+	if uiState.SelectedTicket != expectedID {
+		t.Errorf("After j: SelectedTicket = %q, want %q", uiState.SelectedTicket, expectedID)
+	}
+
+	// Press k (up)
+	app.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("k")})
+
+	// UIProjection should have first ticket selected
+	uiState = app.uiProjection.State()
+	expectedID = sim.Backlog[0].ID
+	if uiState.SelectedTicket != expectedID {
+		t.Errorf("After k: SelectedTicket = %q, want %q", uiState.SelectedTicket, expectedID)
+	}
+}
+
+// TestApp_RecordsSprintStartAttempted_Success_EngineMode verifies s key records SprintStartAttempted on success.
+func TestApp_RecordsSprintStartAttempted_Success_EngineMode(t *testing.T) {
+	app := NewAppWithSeed(42)
+	app.currentView = ViewPlanning
+
+	// Press s to start sprint
+	app.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("s")})
+
+	// UIProjection should show no error (success clears error)
+	uiState := app.uiProjection.State()
+	if uiState.ErrorMessage != "" {
+		t.Errorf("After successful sprint start: ErrorMessage = %q, want empty", uiState.ErrorMessage)
+	}
+}
+
+// TestApp_RecordsSprintStartAttempted_Failure_EngineMode verifies s key records failure when sprint already active.
+func TestApp_RecordsSprintStartAttempted_Failure_EngineMode(t *testing.T) {
+	app := NewAppWithSeed(42)
+	app.currentView = ViewPlanning
+
+	// Start a sprint first
+	app.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("s")})
+
+	// Go back to planning view
+	app.currentView = ViewPlanning
+
+	// Try to start another sprint (should fail)
+	app.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("s")})
+
+	// UIProjection should have error message
+	uiState := app.uiProjection.State()
+	if uiState.ErrorMessage == "" {
+		t.Error("After failed sprint start: ErrorMessage should not be empty")
+	}
+}
+
+// TestApp_RecordsAssignmentAttempted_Success_EngineMode verifies a key records AssignmentAttempted on success.
+func TestApp_RecordsAssignmentAttempted_Success_EngineMode(t *testing.T) {
+	app := NewAppWithSeed(42)
+	app.currentView = ViewPlanning
+	app.selected = 0
+
+	// Press a to assign
+	app.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
+
+	// UIProjection should show no error (success clears error) and clear selection
+	uiState := app.uiProjection.State()
+	if uiState.ErrorMessage != "" {
+		t.Errorf("After successful assignment: ErrorMessage = %q, want empty", uiState.ErrorMessage)
+	}
+	if uiState.SelectedTicket != "" {
+		t.Errorf("After successful assignment: SelectedTicket = %q, want empty", uiState.SelectedTicket)
+	}
+}
+
+// TestApp_RecordsInputEvents_ClientMode verifies HTTP result handler records events in client mode.
+func TestApp_RecordsInputEvents_ClientMode(t *testing.T) {
+	reg := api.NewSimRegistry()
+	srv := httptest.NewServer(api.NewRouter(reg))
+	defer srv.Close()
+
+	client := NewClient(srv.URL)
+	createResp, err := client.CreateSimulation(42, "dora-strict")
+	if err != nil {
+		t.Fatalf("CreateSimulation failed: %v", err)
+	}
+
+	app := NewAppWithClient(client, createResp.Simulation)
+	app.currentView = ViewPlanning
+
+	// Press s to start sprint (triggers HTTP call)
+	_, cmd := app.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("s")})
+
+	// Execute the HTTP command and process result
+	if cmd != nil {
+		msg := cmd()
+		app.Update(msg)
+	}
+
+	// UIProjection should record successful sprint start
+	uiState := app.uiProjection.State()
+	if uiState.ErrorMessage != "" {
+		t.Errorf("After successful HTTP sprint start: ErrorMessage = %q, want empty", uiState.ErrorMessage)
+	}
+}
+
 // TestApp_UC21TriggerIntegration verifies UC21 (ExploitFirst) wiring.
 func TestApp_UC21TriggerIntegration(t *testing.T) {
 	reg := api.NewSimRegistry()

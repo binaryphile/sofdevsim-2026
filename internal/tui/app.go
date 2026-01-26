@@ -91,6 +91,9 @@ type App struct {
 	// Status message (for export feedback)
 	statusMessage string
 	statusExpiry  time.Time
+
+	// Input event projection (ES read model for UI state)
+	uiProjection UIProjection
 }
 
 // tickMsg is sent on each simulation tick (legacy engine mode)
@@ -176,6 +179,7 @@ func NewAppWithRegistry(seed int64, reg *registry.SimRegistry) *App {
 		speed:        1,
 		modelEvents:  make([]model.Event, 0),
 		tickInterval: 500 * time.Millisecond,
+		uiProjection: NewUIProjection(),
 	}
 }
 
@@ -197,6 +201,7 @@ func NewAppWithClient(client Client, initialState SimulationState) *App {
 		speed:        1,
 		modelEvents:  make([]model.Event, 0),
 		tickInterval: 500 * time.Millisecond,
+		uiProjection: NewUIProjection(),
 	}
 }
 
@@ -243,20 +248,34 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			a.statusMessage = fmt.Sprintf("%s failed: %v", msg.operation, msg.err)
 			a.statusExpiry = time.Now().Add(5 * time.Second)
+			// Record failed input events
+			switch msg.operation {
+			case "sprint":
+				a.recordInputEvent(SprintStartAttempted{Outcome: Failed{Category: BusinessRule, Reason: msg.err.Error()}})
+			case "tick":
+				a.recordInputEvent(TickAttempted{Outcome: Failed{Category: BusinessRule, Reason: msg.err.Error()}})
+			case "assign":
+				a.recordInputEvent(AssignmentAttempted{TicketID: a.selectedTicketID(), Outcome: Failed{Category: BusinessRule, Reason: msg.err.Error()}})
+			}
 		} else {
 			a.state = msg.state
+			// Record successful input events
 			switch msg.operation {
 			case "sprint":
 				// Switch to execution view and unpause
 				a.currentView = ViewExecution
 				a.paused = false
+				a.recordInputEvent(SprintStartAttempted{Outcome: Succeeded{}})
 			case "tick":
+				a.recordInputEvent(TickAttempted{Outcome: Succeeded{}})
 				// Check if sprint ended
 				if !a.state.SprintActive {
 					a.paused = true
 					a.statusMessage = "Sprint complete - press 's' for next sprint"
 					a.statusExpiry = time.Now().Add(5 * time.Second)
 				}
+			case "assign":
+				a.recordInputEvent(AssignmentAttempted{TicketID: a.selectedTicketID(), Outcome: Succeeded{}})
 			}
 		}
 		return a, nil
@@ -325,7 +344,9 @@ func (a *App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return a, tea.Quit
 
 	case "tab":
-		a.currentView = (a.currentView + 1) % 4
+		nextView := (a.currentView + 1) % 4
+		a.currentView = nextView
+		a.recordInputEvent(ViewSwitched{To: nextView})
 		return a, nil
 
 	case " ":
@@ -333,12 +354,15 @@ func (a *App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if _, isClient := a.mode.Get(); isClient {
 			// Client mode: trigger HTTP tick (blocked if in-flight)
 			if a.inFlight || a.paused || !a.state.SprintActive {
+				// Precondition failed
+				a.recordInputEvent(TickAttempted{Outcome: Failed{Category: BusinessRule, Reason: "tick blocked (in-flight, paused, or no sprint)"}})
 				return a, nil // Blocked
 			}
 			a.inFlight = true
+			// HTTP result handler will record success/failure
 			return a, a.doHTTPTick()
 		}
-		// Engine mode: toggle pause
+		// Engine mode: toggle pause (not a TickAttempted - engine ticks automatically)
 		a.paused = !a.paused
 		if !a.paused {
 			return a, a.tickCmd()
@@ -348,11 +372,13 @@ func (a *App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "up", "k":
 		if a.selected > 0 {
 			a.selected--
+			a.recordInputEvent(TicketSelected{ID: a.selectedTicketID()})
 		}
 		return a, nil
 
 	case "down", "j":
 		a.selected++
+		a.recordInputEvent(TicketSelected{ID: a.selectedTicketID()})
 		return a, nil
 
 	case "p":
@@ -381,10 +407,12 @@ func (a *App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "s":
 		// Start sprint (from planning view)
 		if _, isClient := a.mode.Get(); isClient {
-			// Client mode: HTTP call
+			// Client mode: HTTP call - outcome determined by HTTP response (recorded in handleHTTPResult)
 			if a.currentView == ViewPlanning && !a.state.SprintActive {
 				return a, a.doHTTPStartSprint()
 			}
+			// Precondition failed: not in planning or sprint already active
+			a.recordInputEvent(SprintStartAttempted{Outcome: Failed{Category: BusinessRule, Reason: "sprint already active or wrong view"}})
 			return a, nil
 		}
 		// Engine mode - StartSprint returns new engine (value semantics)
@@ -395,12 +423,16 @@ func (a *App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			a.mode = either.Left[EngineMode, ClientMode](eng)
 			a.currentView = ViewExecution
 			a.paused = false
+			a.recordInputEvent(SprintStartAttempted{Outcome: Succeeded{}})
 			return a, a.tickCmd()
 		}
+		// Precondition failed: sprint already active or wrong view
+		a.recordInputEvent(SprintStartAttempted{Outcome: Failed{Category: BusinessRule, Reason: "sprint already active or wrong view"}})
 		return a, nil
 
 	case "a":
 		// Assign selected ticket to first idle developer
+		ticketID := a.selectedTicketID()
 		if _, isClient := a.mode.Get(); isClient {
 			// Client mode: HTTP call
 			if a.currentView == ViewPlanning && a.selected < len(a.state.Backlog) {
@@ -414,8 +446,14 @@ func (a *App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					}
 				}
 				if devID != "" {
+					// HTTP result handler will record success/failure
 					return a, a.doHTTPAssign(ticket.ID, devID)
 				}
+				// No idle developer
+				a.recordInputEvent(AssignmentAttempted{TicketID: ticketID, Outcome: Failed{Category: Conflict, Reason: "no idle developer"}})
+			} else {
+				// Wrong view or no ticket selected
+				a.recordInputEvent(AssignmentAttempted{TicketID: ticketID, Outcome: Failed{Category: BusinessRule, Reason: "wrong view or no ticket selected"}})
 			}
 			return a, nil
 		}
@@ -424,13 +462,22 @@ func (a *App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		sim := eng.Engine.Sim()
 		if a.currentView == ViewPlanning && a.selected < len(sim.Backlog) {
 			ticket := sim.Backlog[a.selected]
+			assigned := false
 			for _, dev := range sim.Developers {
 				if dev.IsIdle() {
 					eng.Engine = must.Get(eng.Engine.AssignTicket(ticket.ID, dev.ID))
 					a.mode = either.Left[EngineMode, ClientMode](eng)
+					a.recordInputEvent(AssignmentAttempted{TicketID: ticket.ID, Outcome: Succeeded{}})
+					assigned = true
 					break
 				}
 			}
+			if !assigned {
+				a.recordInputEvent(AssignmentAttempted{TicketID: ticket.ID, Outcome: Failed{Category: Conflict, Reason: "no idle developer"}})
+			}
+		} else {
+			// Wrong view or no ticket selected
+			a.recordInputEvent(AssignmentAttempted{TicketID: ticketID, Outcome: Failed{Category: BusinessRule, Reason: "wrong view or no ticket selected"}})
 		}
 		return a, nil
 
@@ -592,6 +639,7 @@ func (a *App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "h":
 		// Toggle lessons panel
 		a.lessonState = a.lessonState.WithVisible(!a.lessonState.Visible)
+		a.recordInputEvent(LessonPanelToggled{})
 		if a.lessonState.Visible {
 			a.statusMessage = "Lessons enabled"
 		} else {
@@ -937,4 +985,28 @@ func (a *App) helpView() string {
 	}
 
 	return MutedStyle.Render(help)
+}
+
+// Action: records input event, mutates App.uiProjection.
+// Used by key handlers to track user interactions for UI state projection.
+func (a *App) recordInputEvent(evt InputEvent) {
+	a.uiProjection = a.uiProjection.Record(evt)
+}
+
+// Calculation: App → string (selected ticket ID, empty if none).
+// Returns the ticket ID at the current selection index, or empty if out of bounds.
+func (a *App) selectedTicketID() string {
+	if _, isClient := a.mode.Get(); isClient {
+		if a.selected < len(a.state.Backlog) {
+			return a.state.Backlog[a.selected].ID
+		}
+		return ""
+	}
+	// Engine mode
+	eng, _ := a.mode.GetLeft()
+	sim := eng.Engine.Sim()
+	if a.selected < len(sim.Backlog) {
+		return sim.Backlog[a.selected].ID
+	}
+	return ""
 }
