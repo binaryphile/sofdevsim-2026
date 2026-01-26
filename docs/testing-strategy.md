@@ -436,3 +436,36 @@ Key targets:
 - Engine tick: <50ms
 - Lesson selection: <1μs
 - Pure calculations: 0 allocs/op
+
+## Mutation Testing
+
+Mutation testing measures test *efficacy* — whether tests catch bugs, not just execute code.
+
+**Tool:** [gremlins](https://github.com/go-gremlins/gremlins)
+
+```bash
+# Install
+go install github.com/go-gremlins/gremlins/cmd/gremlins@latest
+
+# Run on a package (slow - runs tests many times)
+~/go/bin/gremlins unleash --timeout-coefficient 50 ./internal/metrics
+
+# Dry run (just show what would be mutated)
+~/go/bin/gremlins unleash --dry-run ./internal/metrics
+```
+
+**Interpreting results:**
+- **Killed**: Mutation broke tests (good)
+- **Lived**: Mutation survived — test gap
+- **Not covered**: Code not exercised by tests
+- **Test efficacy**: Killed / (Killed + Lived) — target 60-80%
+
+**When to use:**
+- Spot-check high-risk packages (not full suite — too slow)
+- After major refactoring
+- To find test gaps in domain logic
+
+**Caveats:**
+- Very slow (~1-2 min per package)
+- Timeout issues with some packages
+- Not a replacement for coverage — complementary metric
