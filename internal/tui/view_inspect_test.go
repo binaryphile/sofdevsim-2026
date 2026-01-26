@@ -2,31 +2,11 @@ package tui
 
 import (
 	"fmt"
-	"strings"
 	"testing"
 
+	"github.com/acarl005/stripansi"
 	tea "github.com/charmbracelet/bubbletea"
 )
-
-// stripANSI removes ANSI escape codes for readable output
-func stripANSI(s string) string {
-	result := s
-	for strings.Contains(result, "\x1b[") {
-		start := strings.Index(result, "\x1b[")
-		end := start + 2
-		for end < len(result) && !((result[end] >= 'A' && result[end] <= 'Z') || (result[end] >= 'a' && result[end] <= 'z')) {
-			end++
-		}
-		if end < len(result) {
-			result = result[:start] + result[end+1:]
-		} else {
-			break
-		}
-	}
-	// Also strip other escape sequences
-	result = strings.ReplaceAll(result, "\x1b", "")
-	return result
-}
 
 // TestView_Inspect lets Claude see the TUI output at each step
 func TestView_Inspect(t *testing.T) {
@@ -43,7 +23,7 @@ func TestView_Inspect(t *testing.T) {
 
 	// Helper to show current view
 	show := func(label string) {
-		output := stripANSI(app.View())
+		output := stripansi.Strip(app.View())
 		fmt.Printf("\n=== %s ===\n%s\n", label, output)
 	}
 
