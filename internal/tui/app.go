@@ -822,12 +822,14 @@ func (a *App) View() string {
 		// - Engine mode uses model types directly for type safety
 		if _, isClient := a.mode.Get(); isClient {
 			hasActiveSprint = a.state.SprintActive
-			triggers = BuildTriggersFromClientState(a.state.SprintOption, a.state.ActiveTickets)
+			triggers = BuildTriggersFromClientState(a.state)
 		} else {
 			eng, _ := a.mode.GetLeft()
 			sim := eng.Engine.Sim()
 			_, hasActiveSprint = sim.CurrentSprintOption.Get()
 			triggers.HasRedBufferWithLowTicket = lessons.HasRedBufferWithLowTicket(eng.Tracker.Fever.Status, sim.ActiveTickets)
+			triggers.HasQueueImbalance = lessons.HasQueueImbalance(sim.ActiveTickets)
+			triggers.HasHighChildVariance = lessons.HasHighChildVariance(sim.CompletedTickets)
 		}
 		lesson := SelectLesson(a.currentView, a.lessonState, hasActiveSprint, a.comparisonResult.IsOk(), triggers)
 		a.lessonState = a.lessonState.WithSeen(lesson.ID)

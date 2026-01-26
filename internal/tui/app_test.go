@@ -297,7 +297,7 @@ func TestApp_UC19TriggerIntegration(t *testing.T) {
 		}
 
 		// Uses same BuildTriggersFromClientState as app.go View()
-		triggers := BuildTriggersFromClientState(app.state.SprintOption, app.state.ActiveTickets)
+		triggers := BuildTriggersFromClientState(app.state)
 		lesson := SelectLesson(ViewExecution, app.lessonState, true, false, triggers)
 
 		if lesson.ID != LessonUncertaintyConstraint {
@@ -314,7 +314,7 @@ func TestApp_UC19TriggerIntegration(t *testing.T) {
 			{Understanding: "LOW"},
 		}
 
-		triggers := BuildTriggersFromClientState(app.state.SprintOption, app.state.ActiveTickets)
+		triggers := BuildTriggersFromClientState(app.state)
 		lesson := SelectLesson(ViewExecution, app.lessonState, true, false, triggers)
 
 		if lesson.ID == LessonUncertaintyConstraint {
@@ -331,11 +331,121 @@ func TestApp_UC19TriggerIntegration(t *testing.T) {
 			{Understanding: "HIGH"},
 		}
 
-		triggers := BuildTriggersFromClientState(app.state.SprintOption, app.state.ActiveTickets)
+		triggers := BuildTriggersFromClientState(app.state)
 		lesson := SelectLesson(ViewExecution, app.lessonState, true, false, triggers)
 
 		if lesson.ID == LessonUncertaintyConstraint {
 			t.Error("Should not trigger UncertaintyConstraint without LOW ticket")
+		}
+	})
+}
+
+// TestApp_UC20TriggerIntegration verifies UC20 (ConstraintHunt) wiring.
+func TestApp_UC20TriggerIntegration(t *testing.T) {
+	reg := api.NewSimRegistry()
+	srv := httptest.NewServer(api.NewRouter(reg))
+	defer srv.Close()
+
+	client := NewClient(srv.URL)
+	createResp, err := client.CreateSimulation(42, "dora-strict")
+	if err != nil {
+		t.Fatalf("CreateSimulation failed: %v", err)
+	}
+
+	app := NewAppWithClient(client, createResp.Simulation)
+	app.lessonState = app.lessonState.WithVisible(true)
+	app.lessonState = app.lessonState.WithSeen(LessonOrientation)
+	app.lessonState = app.lessonState.WithSeen(LessonUncertaintyConstraint) // UC19 prerequisite
+
+	t.Run("UC20 triggers on queue imbalance", func(t *testing.T) {
+		// 5 implement + 1 verify + 1 cicd = 7 total, 3 phases
+		// avg = 7/3 = 2.33, 2*avg = 4.66, implement(5) > 4.66 ✓
+		app.state.ActiveTickets = []TicketState{
+			{Phase: "implement"}, {Phase: "implement"}, {Phase: "implement"},
+			{Phase: "implement"}, {Phase: "implement"},
+			{Phase: "verify"},
+			{Phase: "cicd"},
+		}
+
+		triggers := BuildTriggersFromClientState(app.state)
+		lesson := SelectLesson(ViewExecution, app.lessonState, true, false, triggers)
+
+		if lesson.ID != LessonConstraintHunt {
+			t.Errorf("Expected ConstraintHunt lesson, got %s", lesson.ID)
+		}
+	})
+
+	t.Run("UC20 does not trigger without UC19 seen", func(t *testing.T) {
+		// Fresh app without UC19 seen
+		freshApp := NewAppWithClient(client, createResp.Simulation)
+		freshApp.lessonState = freshApp.lessonState.WithVisible(true)
+		freshApp.lessonState = freshApp.lessonState.WithSeen(LessonOrientation)
+		// NOT seen: LessonUncertaintyConstraint
+
+		freshApp.state.ActiveTickets = []TicketState{
+			{Phase: "implement"}, {Phase: "implement"}, {Phase: "implement"},
+			{Phase: "implement"}, {Phase: "implement"},
+			{Phase: "verify"},
+			{Phase: "cicd"},
+		}
+
+		triggers := BuildTriggersFromClientState(freshApp.state)
+		lesson := SelectLesson(ViewExecution, freshApp.lessonState, true, false, triggers)
+
+		if lesson.ID == LessonConstraintHunt {
+			t.Error("Should not trigger ConstraintHunt without UC19 seen")
+		}
+	})
+}
+
+// TestApp_UC21TriggerIntegration verifies UC21 (ExploitFirst) wiring.
+func TestApp_UC21TriggerIntegration(t *testing.T) {
+	reg := api.NewSimRegistry()
+	srv := httptest.NewServer(api.NewRouter(reg))
+	defer srv.Close()
+
+	client := NewClient(srv.URL)
+	createResp, err := client.CreateSimulation(42, "dora-strict")
+	if err != nil {
+		t.Fatalf("CreateSimulation failed: %v", err)
+	}
+
+	app := NewAppWithClient(client, createResp.Simulation)
+	app.lessonState = app.lessonState.WithVisible(true)
+	app.lessonState = app.lessonState.WithSeen(LessonOrientation)
+	app.lessonState = app.lessonState.WithSeen(LessonUncertaintyConstraint) // UC19 prerequisite
+
+	t.Run("UC21 triggers on high child variance", func(t *testing.T) {
+		// Parent with child that has ratio 1.5 (> 1.3 threshold)
+		app.state.CompletedTickets = []TicketState{
+			{ID: "parent", ChildIDs: []string{"child"}},
+			{ID: "child", EstimatedDays: 2.0, ActualDays: 3.0}, // ratio 1.5
+		}
+
+		triggers := BuildTriggersFromClientState(app.state)
+		lesson := SelectLesson(ViewExecution, app.lessonState, true, false, triggers)
+
+		if lesson.ID != LessonExploitFirst {
+			t.Errorf("Expected ExploitFirst lesson, got %s", lesson.ID)
+		}
+	})
+
+	t.Run("UC21 does not trigger without UC19 seen", func(t *testing.T) {
+		freshApp := NewAppWithClient(client, createResp.Simulation)
+		freshApp.lessonState = freshApp.lessonState.WithVisible(true)
+		freshApp.lessonState = freshApp.lessonState.WithSeen(LessonOrientation)
+		// NOT seen: LessonUncertaintyConstraint
+
+		freshApp.state.CompletedTickets = []TicketState{
+			{ID: "parent", ChildIDs: []string{"child"}},
+			{ID: "child", EstimatedDays: 2.0, ActualDays: 3.0},
+		}
+
+		triggers := BuildTriggersFromClientState(freshApp.state)
+		lesson := SelectLesson(ViewExecution, freshApp.lessonState, true, false, triggers)
+
+		if lesson.ID == LessonExploitFirst {
+			t.Error("Should not trigger ExploitFirst without UC19 seen")
 		}
 	})
 }

@@ -24782,3 +24782,1398 @@ Implemented the UC19 "aha moment" trigger: when sprint buffer >66% consumed AND 
 First TOC/DBR teaching moment in the simulation. When managers see buffer consumed by a LOW understanding ticket, they learn that "just work faster" doesn't fix missed sprints—reducing uncertainty does.
 
 **Grade:** A (95/100) - exemplary value semantics, pure functions, Khorikov-compliant tests
+
+---
+## Approved Plan: 2026-01-25
+
+# Plan: TOC/DBR Lesson System Implementation
+
+## Phase Summary
+
+| Phase | Scope | Status | LOC (impl+test) |
+|-------|-------|--------|-----------------|
+| 1 | Use Case Design (UC19-24) | ✓ COMPLETE | — |
+| 2 | Prereq Infrastructure + UC19 | ✓ COMPLETE | ~235 |
+| 3 | Query Helpers + UC20 + UC21 | Planning | ~490 |
+| 4 | Synthesis Lessons UC22 + UC23 | Future | ~260 |
+| 5 | HTML Export UC24 | Future | ~600 |
+
+**Total remaining:** ~1210 LOC
+
+---
+
+## System-in-Use Story
+
+> Sarah, a development manager whose team just missed another sprint commitment, opens the simulation during her lunch break. She runs a sprint and watches her buffer go red on a ticket she thought was "only 3 days." The lesson panel explains: "This ticket had LOW understanding—variance ate your safety margin." Sarah realizes it wasn't the size that killed them, it was uncertainty. She tries the comparison mode and sees TameFlow outperforming DORA on her team's profile. She likes the simulation because it shows consequences without risking real sprints. She comes back to it before her next planning session to practice identifying constraints.
+
+---
+
+## Scope
+
+**System:** sofdevsim-2026 (Software Development Simulation)
+
+**In Scope:**
+- New lessons teaching TOC/DBR concepts
+- Constraint visualization in existing views
+- Event-triggered learning moments
+- Manager-focused synthesis/takeaways
+- HTML report export (for sharing learnings)
+
+**Out of Scope:**
+- Interactive decision points (pausing simulation for choices)
+- Rope mode (pull-based release simulation)
+- Separate constraint analysis tab
+- Grafana dashboard (overkill for learning use case)
+
+**Rationale:** TUI for learning (hands-on, immediate feedback), HTML export for sharing (simple, no infrastructure).
+
+**Actors:**
+- **Primary:** Manager (software development manager using the simulation)
+- **Secondary:** Simulation Engine (processes events, tracks state), Lesson System (selects contextual lessons)
+
+---
+
+## Lessons Summary
+
+**Use Cases:** See `/home/ted/projects/sofdevsim-2026/docs/use-cases.md` (UC19-24)
+
+**Pedagogical Order:** UC19 → UC20/UC21 (parallel) → UC22 → UC23; UC24 anytime
+
+| Lesson | Trigger | UC |
+|--------|---------|-----|
+| UncertaintyConstraint | Buffer >66% + LOW ticket | UC19 |
+| ConstraintHunt | Queue >2× avg + UC19 seen | UC20 |
+| ExploitFirst | Child ratio >1.3 + UC19 seen | UC21 |
+| FiveFocusing | 3+ sprints + UC20/21 seen | UC22 |
+| ManagerTakeaways | Comparison + UC22 seen | UC23 |
+
+---
+
+## Existing Infrastructure (from codebase analysis)
+
+**Already exists:**
+- Buffer/fever tracking (`internal/metrics/fever.go`)
+- Understanding levels per ticket (`internal/model/ticket.go`)
+- Decomposition parent/child tracking (`internal/model/ticket.go`)
+- Lesson state management (`internal/lessons/lessons.go`)
+- Lesson rendering (`internal/tui/lessons.go`)
+- Comparison results (`internal/metrics/comparison.go`)
+
+**Gaps to fill:**
+- Prerequisite chain validation in `Select()`
+- Queue depth per phase calculation
+- Child variance ratio detection
+- HTML export (UC24)
+
+---
+
+## Phase 2: Prereq Infrastructure + UC19
+
+**Scope:** Enhance lesson selection with prerequisites; implement UC19 (aha moment)
+
+**Why first:** UC19 is the simplest trigger (buffer data exists), validates enhanced `Select()` before building harder lessons.
+
+---
+
+### Prerequisites (done before Phase 2)
+
+- [x] fluentfp Option JSON marshaling support added
+- [x] SimulationState.SprintOption replaces Sprint pointer
+
+---
+
+### Implementation Steps
+
+#### Step 1: Add TriggerState struct and new lesson constants
+
+**File:** `internal/lessons/lessons.go`
+
+```go
+// After line 17 (existing constants)
+const (
+    // ... existing ...
+    UncertaintyConstraint LessonID = "uncertainty-constraint" // UC19
+)
+
+// After line 20
+const TotalLessons = 13 // was 8
+
+// New struct after State (line 36)
+type TriggerState struct {
+    HasRedBufferWithLowTicket bool // UC19
+    // Future: HasQueueImbalance, HasHighChildVariance, etc.
+}
+```
+
+#### Step 2: Expand Select() signature
+
+**File:** `internal/lessons/lessons.go` (line 69)
+
+Current:
+```go
+func Select(view ViewContext, state State, hasActiveSprint bool, hasComparisonResult bool) Lesson
+```
+
+New:
+```go
+func Select(view ViewContext, state State, hasActiveSprint bool, hasComparisonResult bool, triggers TriggerState) Lesson
+```
+
+Add trigger check before view switch (after orientation check, line 73):
+```go
+// UC19: Aha moment - understanding IS the constraint
+if triggers.HasRedBufferWithLowTicket && !state.SeenMap[UncertaintyConstraint] {
+    return UncertaintyConstraintLesson()
+}
+```
+
+#### Step 3: Add UC19 lesson content
+
+**File:** `internal/lessons/lessons.go` (after line 297)
+
+```go
+func UncertaintyConstraintLesson() Lesson {
+    return Lesson{
+        ID:    UncertaintyConstraint,
+        Title: "Understanding IS the Constraint",
+        Content: `Buffer consumed! This LOW understanding ticket caused the variance.
+
+KEY INSIGHT: Your constraint isn't capacity—it's what you don't know yet.
+
+LOW understanding (±50% variance):
+  3-day estimate → actual 1.5-6.0 days possible
+
+The buffer protects the commitment, but uncertainty eats it.
+This is why "just work faster" doesn't fix missed sprints.`,
+        Tips: []string{
+            "Watch which tickets consume buffer",
+            "HIGH understanding = predictable",
+            "Decomposition can improve understanding",
+        },
+    }
+}
+```
+
+#### Step 4: Create trigger detection functions
+
+**File:** `internal/lessons/triggers.go` (NEW)
+
+```go
+package lessons
+
+import (
+    "github.com/binaryphile/sofdevsim-2026/internal/model"
+)
+
+// HasRedBufferWithLowTicket detects UC19 trigger (engine mode):
+// Buffer >66% consumed AND at least one active LOW understanding ticket.
+func HasRedBufferWithLowTicket(feverStatus model.FeverStatus, activeTickets []model.Ticket) bool {
+    if feverStatus != model.FeverRed {
+        return false
+    }
+    for _, t := range activeTickets {
+        if t.UnderstandingLevel == model.LowUnderstanding {
+            return true
+        }
+    }
+    return false
+}
+
+// HasRedBufferWithLowTicketFromStrings detects UC19 trigger (client mode):
+// Takes primitive []string to avoid importing tui package (would cause cycle).
+func HasRedBufferWithLowTicketFromStrings(isRedBuffer bool, understandingLevels []string) bool {
+    if !isRedBuffer {
+        return false
+    }
+    for _, u := range understandingLevels {
+        if u == "LOW" {
+            return true
+        }
+    }
+    return false
+}
+```
+
+**Note:** Client mode function takes `[]string` instead of `[]tui.TicketState` to avoid import cycle (tui already imports lessons).
+
+#### Step 5: Update TUI adapter
+
+**File:** `internal/tui/lessons.go` (line 48)
+
+Current:
+```go
+func SelectLesson(view View, state LessonState, hasActiveSprint bool, hasComparisonResult bool) Lesson {
+    return lessons.Select(toViewContext(view), state, hasActiveSprint, hasComparisonResult)
+}
+```
+
+New:
+```go
+func SelectLesson(view View, state LessonState, hasActiveSprint bool, hasComparisonResult bool, triggers lessons.TriggerState) Lesson {
+    return lessons.Select(toViewContext(view), state, hasActiveSprint, hasComparisonResult, triggers)
+}
+```
+
+Add re-export:
+```go
+type TriggerState = lessons.TriggerState
+```
+
+#### Step 6: Update app.go trigger code (uses SprintOption from prereqs)
+
+**File:** `internal/tui/app.go` (line 825)
+
+Current:
+```go
+lesson := SelectLesson(a.currentView, a.lessonState, hasActiveSprint, a.comparisonResult.IsOk())
+```
+
+New (insert before line 825):
+```go
+// Build trigger state for lesson selection
+var triggers TriggerState
+if _, isClient := a.mode.Get(); isClient {
+    // Client mode: use SprintOption directly (JSON unmarshals to Option)
+    a.state.SprintOption.IfOk(func(sprint SprintState) {
+        pctUsed := (sprint.BufferConsumed / sprint.BufferDays) * 100
+        isRed := pctUsed >= 66
+        // Extract understanding levels to avoid import cycle (lessons can't import tui)
+        var understandings []string
+        for _, t := range a.state.ActiveTickets {
+            understandings = append(understandings, t.Understanding)
+        }
+        triggers.HasRedBufferWithLowTicket = lessons.HasRedBufferWithLowTicketFromStrings(isRed, understandings)
+    })
+} else {
+    // Engine mode: use tracker directly
+    eng, _ := a.mode.GetLeft()
+    sim := eng.Engine.Sim()
+    triggers.HasRedBufferWithLowTicket = lessons.HasRedBufferWithLowTicket(eng.Tracker.Fever.Status, sim.ActiveTickets)
+}
+lesson := SelectLesson(a.currentView, a.lessonState, hasActiveSprint, a.comparisonResult.IsOk(), triggers)
+```
+
+**Note:** `Tracker.Fever.Status` is type `model.FeverStatus` (verified in fever.go:13)
+
+#### Step 7: Update existing tests + add new tests
+
+**File:** `internal/lessons/lessons_test.go`
+
+First, update existing TestSelect tests to pass empty TriggerState (8 existing tests):
+```go
+// Change line 74 from:
+got := Select(tt.view, tt.state, tt.hasActiveSprint, tt.hasComparisonResult)
+// To:
+got := Select(tt.view, tt.state, tt.hasActiveSprint, tt.hasComparisonResult, TriggerState{})
+```
+
+Then append new UC19 tests:
+```go
+func TestSelect_UC19_UncertaintyConstraint(t *testing.T) {
+    tests := []struct {
+        name     string
+        view     ViewContext
+        state    State
+        triggers TriggerState
+        want     LessonID
+    }{
+        {
+            name:     "triggers on red buffer + low ticket",
+            view:     ViewExecution,
+            state:    State{SeenMap: map[LessonID]bool{Orientation: true}},
+            triggers: TriggerState{HasRedBufferWithLowTicket: true},
+            want:     UncertaintyConstraint,
+        },
+        {
+            name:     "does not trigger if already seen",
+            view:     ViewExecution,
+            state:    State{SeenMap: map[LessonID]bool{Orientation: true, UncertaintyConstraint: true}},
+            triggers: TriggerState{HasRedBufferWithLowTicket: true},
+            want:     FeverChart, // Falls through to view-based selection
+        },
+        {
+            name:     "does not trigger without red buffer",
+            view:     ViewExecution,
+            state:    State{SeenMap: map[LessonID]bool{Orientation: true}},
+            triggers: TriggerState{HasRedBufferWithLowTicket: false},
+            want:     FeverChart,
+        },
+    }
+    for _, tt := range tests {
+        t.Run(tt.name, func(t *testing.T) {
+            got := Select(tt.view, tt.state, true, false, tt.triggers)
+            if got.ID != tt.want {
+                t.Errorf("Select() = %v, want %v", got.ID, tt.want)
+            }
+        })
+    }
+}
+```
+
+**File:** `internal/lessons/triggers_test.go` (NEW)
+
+```go
+package lessons
+
+import (
+    "testing"
+    "github.com/binaryphile/sofdevsim-2026/internal/model"
+)
+
+func TestHasRedBufferWithLowTicket(t *testing.T) {
+    tests := []struct {
+        name         string
+        feverStatus  model.FeverStatus
+        tickets      []model.Ticket
+        want         bool
+    }{
+        {"red + low = true", model.FeverRed, []model.Ticket{{UnderstandingLevel: model.LowUnderstanding}}, true},
+        {"red + high = false", model.FeverRed, []model.Ticket{{UnderstandingLevel: model.HighUnderstanding}}, false},
+        {"red + mixed = true", model.FeverRed, []model.Ticket{{UnderstandingLevel: model.HighUnderstanding}, {UnderstandingLevel: model.LowUnderstanding}}, true},
+        {"yellow + low = false", model.FeverYellow, []model.Ticket{{UnderstandingLevel: model.LowUnderstanding}}, false},
+        {"green + low = false", model.FeverGreen, []model.Ticket{{UnderstandingLevel: model.LowUnderstanding}}, false},
+        {"red + empty = false", model.FeverRed, []model.Ticket{}, false},
+    }
+    for _, tt := range tests {
+        t.Run(tt.name, func(t *testing.T) {
+            if got := HasRedBufferWithLowTicket(tt.feverStatus, tt.tickets); got != tt.want {
+                t.Errorf("HasRedBufferWithLowTicket() = %v, want %v", got, tt.want)
+            }
+        })
+    }
+}
+
+func TestHasRedBufferWithLowTicketFromStrings(t *testing.T) {
+    tests := []struct {
+        name          string
+        isRed         bool
+        understandings []string
+        want          bool
+    }{
+        {"red + LOW = true", true, []string{"LOW"}, true},
+        {"red + HIGH = false", true, []string{"HIGH"}, false},
+        {"red + mixed = true", true, []string{"HIGH", "LOW"}, true},
+        {"not red + LOW = false", false, []string{"LOW"}, false},
+        {"red + empty = false", true, []string{}, false},
+    }
+    for _, tt := range tests {
+        t.Run(tt.name, func(t *testing.T) {
+            if got := HasRedBufferWithLowTicketFromStrings(tt.isRed, tt.understandings); got != tt.want {
+                t.Errorf("HasRedBufferWithLowTicketFromStrings() = %v, want %v", got, tt.want)
+            }
+        })
+    }
+}
+```
+
+---
+
+### Files Summary
+
+| File | Action | Lines |
+|------|--------|-------|
+| `internal/lessons/lessons.go` | Edit: constants, TriggerState, Select(), lesson content | +45 |
+| `internal/lessons/triggers.go` | New: engine + client trigger functions | +35 |
+| `internal/lessons/triggers_test.go` | New: trigger tests (both modes) | +55 |
+| `internal/lessons/lessons_test.go` | Edit: update existing + add UC19 tests | +35 |
+| `internal/tui/lessons.go` | Edit: SelectLesson signature, re-export | +8 |
+| `internal/tui/app.go` | Edit: build TriggerState (both modes) | +20 |
+| **Total** | | ~145 impl + ~90 test = **~235** |
+
+---
+
+### Acceptance Criteria
+
+- [ ] `UncertaintyConstraint` lesson constant added
+- [ ] `TotalLessons` updated to 13
+- [ ] `TriggerState` struct exists
+- [ ] `Select()` accepts TriggerState parameter
+- [ ] UC19 triggers on FeverRed + LowUnderstanding (engine mode)
+- [ ] UC19 triggers on SprintOption.IsOk() + "LOW" (client mode)
+- [ ] UC19 does not re-trigger after seen
+- [ ] Existing 8 tests updated to pass TriggerState{}
+- [ ] `go test ./internal/lessons/...` passes
+- [ ] `go test ./internal/tui/...` passes
+- [ ] TUI shows UC19 lesson when conditions met (both modes)
+
+---
+
+## Phase 3: Query Helpers + UC20 + UC21
+
+**Scope:** Add metric detection helpers; implement constraint identification and exploit/elevate lessons.
+
+**Why together:** Both need new metric helpers; parallel in pedagogical order.
+
+**Stratified Design:** Three layers with clear responsibilities:
+- `internal/metrics/` (calculation layer): Pure functions computing queue depths, variance ratios
+- `internal/lessons/` (decision layer): Selects lessons based on triggers, manages prerequisite chains
+- `internal/tui/` (adaptation layer): Bridges engine/client modes, builds TriggerState for lesson selection
+
+Data flows down: tui → lessons → metrics. No upward dependencies.
+
+---
+
+### UC20 Trigger Analysis
+
+**Condition:** Phase queue > 2× average queue depth + UC19 seen
+
+**Data available:**
+- `sim.ActiveTickets []Ticket` - each has `Phase WorkflowPhase`
+- 8 phases: Backlog, Research, Sizing, Planning, Implement, Verify, CICD, Review, Done
+
+**Calculation:**
+```
+depths = count(tickets) per phase (excluding Backlog, Done)
+avg = sum(depths) / 6  (6 active phases)
+imbalance = any phase > 2 × avg
+```
+
+---
+
+### UC21 Trigger Analysis
+
+**Condition:** Decomposed ticket's children completed + any child actual/estimate > 1.3 + UC19 seen
+
+**Data available:**
+- `ticket.ParentID string` - empty if root
+- `ticket.ChildIDs []string` - list of children
+- `ticket.EstimatedDays float64`
+- `ticket.ActualDays float64` - set on completion
+- `sim.CompletedTickets []Ticket`
+
+**Calculation:**
+```
+for each completed parent with children:
+  for each childID in parent.ChildIDs:
+    child = find in CompletedTickets
+    ratio = child.ActualDays / child.EstimatedDays
+    if ratio > 1.3: trigger
+```
+
+---
+
+### Implementation Steps
+
+#### Step 1: Tests for metric helpers
+
+**File:** `internal/metrics/queue_test.go` (NEW)
+
+```go
+package metrics
+
+import (
+    "testing"
+    "github.com/binaryphile/sofdevsim-2026/internal/model"
+)
+
+func TestQueueDepthPerPhase(t *testing.T) {
+    tests := []struct {
+        name    string
+        tickets []model.Ticket
+        want    map[model.WorkflowPhase]int
+    }{
+        {"empty", nil, map[model.WorkflowPhase]int{}},
+        {"single phase", []model.Ticket{{Phase: model.PhaseImplement}},
+            map[model.WorkflowPhase]int{model.PhaseImplement: 1}},
+        {"multiple phases", []model.Ticket{
+            {Phase: model.PhaseImplement},
+            {Phase: model.PhaseImplement},
+            {Phase: model.PhaseVerify},
+        }, map[model.WorkflowPhase]int{model.PhaseImplement: 2, model.PhaseVerify: 1}},
+    }
+    for _, tt := range tests {
+        t.Run(tt.name, func(t *testing.T) {
+            got := QueueDepthPerPhase(tt.tickets)
+            if len(got) != len(tt.want) {
+                t.Errorf("QueueDepthPerPhase() len = %d, want %d", len(got), len(tt.want))
+                return
+            }
+            for phase, count := range tt.want {
+                if got[phase] != count {
+                    t.Errorf("QueueDepthPerPhase()[%v] = %d, want %d", phase, got[phase], count)
+                }
+            }
+        })
+    }
+}
+
+func TestHasQueueImbalance(t *testing.T) {
+    tests := []struct {
+        name    string
+        tickets []model.Ticket
+        want    bool
+    }{
+        {"empty = false", nil, false},
+        {"single ticket = false", []model.Ticket{{Phase: model.PhaseImplement}}, false},
+        {"balanced 2 phases = false", []model.Ticket{
+            {Phase: model.PhaseImplement}, {Phase: model.PhaseVerify},
+        }, false},
+        {"imbalanced 3 phases = true", []model.Ticket{
+            {Phase: model.PhaseImplement}, {Phase: model.PhaseImplement},
+            {Phase: model.PhaseImplement}, {Phase: model.PhaseImplement},
+            {Phase: model.PhaseImplement}, // 5 in implement
+            {Phase: model.PhaseVerify},    // 1 in verify
+            {Phase: model.PhaseCICD},      // 1 in cicd
+        }, true}, // sum=7, phases=3, avg=2.33, implement(5) > 2×2.33=4.66 ✓
+    }
+    for _, tt := range tests {
+        t.Run(tt.name, func(t *testing.T) {
+            if got := HasQueueImbalance(tt.tickets); got != tt.want {
+                t.Errorf("HasQueueImbalance() = %v, want %v", got, tt.want)
+            }
+        })
+    }
+}
+```
+
+**File:** `internal/metrics/variance_test.go` (NEW)
+
+```go
+package metrics
+
+import (
+    "testing"
+    "github.com/binaryphile/sofdevsim-2026/internal/model"
+)
+
+func TestHasHighChildVariance(t *testing.T) {
+    tests := []struct {
+        name    string
+        tickets []model.Ticket
+        want    bool
+    }{
+        {"no decomposed = false", []model.Ticket{{ID: "1"}}, false},
+        {"children low variance = false", []model.Ticket{
+            {ID: "parent", ChildIDs: []string{"c1", "c2"}},
+            {ID: "c1", EstimatedDays: 2, ActualDays: 2.2},  // 1.1 ratio
+            {ID: "c2", EstimatedDays: 2, ActualDays: 2.4},  // 1.2 ratio
+        }, false},
+        {"children high variance = true", []model.Ticket{
+            {ID: "parent", ChildIDs: []string{"c1"}},
+            {ID: "c1", EstimatedDays: 2, ActualDays: 3.0},  // 1.5 ratio > 1.3
+        }, true},
+        {"incomplete children = false", []model.Ticket{
+            {ID: "parent", ChildIDs: []string{"c1", "c2"}},
+            {ID: "c1", EstimatedDays: 2, ActualDays: 3.0},
+            // c2 not in completed list
+        }, false},
+    }
+    for _, tt := range tests {
+        t.Run(tt.name, func(t *testing.T) {
+            if got := HasHighChildVariance(tt.tickets); got != tt.want {
+                t.Errorf("HasHighChildVariance() = %v, want %v", got, tt.want)
+            }
+        })
+    }
+}
+```
+
+#### Step 2: Implement metric helpers
+
+**File:** `internal/metrics/queue.go` (NEW)
+
+```go
+package metrics
+
+import "github.com/binaryphile/sofdevsim-2026/internal/model"
+
+// QueueDepthPerPhase returns ticket counts for each active phase.
+// Excludes PhaseBacklog and PhaseDone (not active work).
+func QueueDepthPerPhase(activeTickets []model.Ticket) map[model.WorkflowPhase]int {
+    depths := make(map[model.WorkflowPhase]int)
+    for _, t := range activeTickets {
+        depths[t.Phase]++
+    }
+    return depths
+}
+
+// HasQueueImbalance returns true if any phase queue > 2× average.
+func HasQueueImbalance(activeTickets []model.Ticket) bool {
+    depths := QueueDepthPerPhase(activeTickets)
+    if len(depths) == 0 {
+        return false
+    }
+
+    var sum int
+    for _, d := range depths {
+        sum += d
+    }
+    avg := float64(sum) / float64(len(depths))
+
+    for _, d := range depths {
+        if float64(d) > 2*avg {
+            return true
+        }
+    }
+    return false
+}
+```
+
+**File:** `internal/metrics/variance.go` (NEW)
+
+```go
+package metrics
+
+import "github.com/binaryphile/sofdevsim-2026/internal/model"
+
+// ChildVarianceResult holds decomposition outcome analysis.
+type ChildVarianceResult struct {
+    ParentID       string
+    HighVariance   bool    // any child > 1.3 ratio
+    MaxChildRatio  float64 // highest child actual/estimate
+}
+
+// AnalyzeChildVariance checks if decomposed tickets had high variance.
+// Returns results for parents whose children are all completed.
+func AnalyzeChildVariance(completedTickets []model.Ticket) []ChildVarianceResult {
+    // Build lookup map
+    byID := make(map[string]model.Ticket)
+    for _, t := range completedTickets {
+        byID[t.ID] = t
+    }
+
+    var results []ChildVarianceResult
+    for _, parent := range completedTickets {
+        if !parent.HasChildren() {
+            continue
+        }
+
+        // Check all children completed
+        allCompleted := true
+        var maxRatio float64
+        for _, childID := range parent.ChildIDs {
+            child, ok := byID[childID]
+            if !ok {
+                allCompleted = false
+                break
+            }
+            ratio := child.ActualDays / child.EstimatedDays
+            if ratio > maxRatio {
+                maxRatio = ratio
+            }
+        }
+
+        if allCompleted {
+            results = append(results, ChildVarianceResult{
+                ParentID:      parent.ID,
+                HighVariance:  maxRatio > 1.3,
+                MaxChildRatio: maxRatio,
+            })
+        }
+    }
+    return results
+}
+
+// HasHighChildVariance returns true if any decomposed ticket has child ratio > 1.3.
+// Note: Uses raw loop instead of fluentfp for early-exit semantics (first match returns).
+// This is intentional per FP guide - fluentfp is for transformation pipelines, not early-exit searches.
+func HasHighChildVariance(completedTickets []model.Ticket) bool {
+    for _, r := range AnalyzeChildVariance(completedTickets) {
+        if r.HighVariance {
+            return true
+        }
+    }
+    return false
+}
+```
+
+#### Step 3: Add lesson constants
+
+**File:** `internal/lessons/lessons.go`
+
+```go
+// Add after UncertaintyConstraint constant
+const (
+    ConstraintHunt LessonID = "constraint-hunt"     // UC20
+    ExploitFirst   LessonID = "exploit-first"       // UC21
+)
+
+// Update TotalLessons
+const TotalLessons = 11 // was 9
+```
+
+#### Step 4: Expand TriggerState
+
+**File:** `internal/lessons/lessons.go`
+
+```go
+type TriggerState struct {
+    HasRedBufferWithLowTicket bool // UC19
+    HasQueueImbalance         bool // UC20
+    HasHighChildVariance      bool // UC21
+}
+```
+
+#### Step 5: Tests for Select() with new triggers
+
+**File:** `internal/lessons/lessons_test.go` (append)
+
+```go
+func TestSelect_UC20_ConstraintHunt(t *testing.T) {
+    tests := []struct {
+        name     string
+        state    State
+        triggers TriggerState
+        want     LessonID
+    }{
+        {
+            name:     "triggers on queue imbalance + UC19 seen",
+            state:    State{SeenMap: map[LessonID]bool{Orientation: true, UncertaintyConstraint: true}},
+            triggers: TriggerState{HasQueueImbalance: true},
+            want:     ConstraintHunt,
+        },
+        {
+            name:     "does not trigger without UC19 seen (prerequisite)",
+            state:    State{SeenMap: map[LessonID]bool{Orientation: true}},
+            triggers: TriggerState{HasQueueImbalance: true},
+            want:     FeverChart, // Falls through to view-based
+        },
+        {
+            name:     "does not trigger if already seen",
+            state:    State{SeenMap: map[LessonID]bool{Orientation: true, UncertaintyConstraint: true, ConstraintHunt: true}},
+            triggers: TriggerState{HasQueueImbalance: true},
+            want:     FeverChart,
+        },
+    }
+    for _, tt := range tests {
+        t.Run(tt.name, func(t *testing.T) {
+            got := Select(ViewExecution, tt.state, true, false, tt.triggers)
+            if got.ID != tt.want {
+                t.Errorf("Select() = %v, want %v", got.ID, tt.want)
+            }
+        })
+    }
+}
+
+func TestSelect_UC21_ExploitFirst(t *testing.T) {
+    tests := []struct {
+        name     string
+        state    State
+        triggers TriggerState
+        want     LessonID
+    }{
+        {
+            name:     "triggers on high child variance + UC19 seen",
+            state:    State{SeenMap: map[LessonID]bool{Orientation: true, UncertaintyConstraint: true}},
+            triggers: TriggerState{HasHighChildVariance: true},
+            want:     ExploitFirst,
+        },
+        {
+            name:     "does not trigger without UC19 seen (prerequisite)",
+            state:    State{SeenMap: map[LessonID]bool{Orientation: true}},
+            triggers: TriggerState{HasHighChildVariance: true},
+            want:     FeverChart,
+        },
+    }
+    for _, tt := range tests {
+        t.Run(tt.name, func(t *testing.T) {
+            got := Select(ViewExecution, tt.state, true, false, tt.triggers)
+            if got.ID != tt.want {
+                t.Errorf("Select() = %v, want %v", got.ID, tt.want)
+            }
+        })
+    }
+}
+```
+
+#### Step 6: Update Select() with new triggers
+
+**File:** `internal/lessons/lessons.go`
+
+After UC19 check, add:
+```go
+// UC20: Constraint Hunt - queue imbalance shows symptoms
+if triggers.HasQueueImbalance && state.SeenMap[UncertaintyConstraint] && !state.SeenMap[ConstraintHunt] {
+    return ConstraintHuntLesson()
+}
+
+// UC21: Exploit First - decomposition didn't fix uncertainty
+if triggers.HasHighChildVariance && state.SeenMap[UncertaintyConstraint] && !state.SeenMap[ExploitFirst] {
+    return ExploitFirstLesson()
+}
+```
+
+#### Step 7: Add lesson content functions
+
+**File:** `internal/lessons/lessons.go`
+
+```go
+func ConstraintHuntLesson() Lesson {
+    return Lesson{
+        ID:    ConstraintHunt,
+        Title: "Finding the Constraint",
+        Content: `Queue depth shows WHERE work piles up.
+Understanding level shows WHY.
+
+SYMPTOM: Long queue at a phase
+ROOT CAUSE: LOW understanding tickets block flow
+
+Look at the tickets in the longest queue.
+Are they HIGH or LOW understanding?
+
+The constraint isn't the phase—it's uncertainty.`,
+        Tips: []string{
+            "Queue depth = symptom",
+            "Understanding = root cause",
+            "Focus on WHY, not WHERE",
+        },
+    }
+}
+
+func ExploitFirstLesson() Lesson {
+    return Lesson{
+        ID:    ExploitFirst,
+        Title: "Exploit Before Elevate",
+        Content: `Splitting didn't fix uncertainty!
+
+The decomposed ticket's children ALSO had high variance.
+This means the split was ELEVATION (more work) not EXPLOITATION.
+
+TOC's Five Focusing Steps:
+1. IDENTIFY the constraint
+2. EXPLOIT it (get more from what you have)
+3. SUBORDINATE everything else
+4. ELEVATE only if exploitation isn't enough
+5. Repeat
+
+Exploitation = improve understanding BEFORE splitting.
+Elevation = split to add capacity.
+
+You elevated without exploiting first.`,
+        Tips: []string{
+            "Exploit = improve understanding",
+            "Elevate = add capacity (split)",
+            "Research before decomposition",
+        },
+    }
+}
+```
+
+#### Step 8: Add trigger detection functions
+
+**File:** `internal/lessons/triggers.go`
+
+```go
+import "github.com/binaryphile/sofdevsim-2026/internal/metrics"
+
+// HasQueueImbalance detects UC20 trigger (engine mode).
+func HasQueueImbalance(activeTickets []model.Ticket) bool {
+    return metrics.HasQueueImbalance(activeTickets)
+}
+
+// HasHighChildVariance detects UC21 trigger (engine mode).
+func HasHighChildVariance(completedTickets []model.Ticket) bool {
+    return metrics.HasHighChildVariance(completedTickets)
+}
+```
+
+#### Step 9: Tests for client mode triggers
+
+**File:** `internal/tui/lessons_test.go` (NEW)
+
+```go
+package tui
+
+import (
+    "encoding/json"
+    "testing"
+)
+
+func TestHasQueueImbalanceFromTickets(t *testing.T) {
+    tests := []struct {
+        name    string
+        tickets []TicketState
+        want    bool
+    }{
+        {"empty = false", nil, false},
+        {"single ticket = false", []TicketState{{Phase: "implement"}}, false},
+        {"balanced 2 phases = false", []TicketState{
+            {Phase: "implement"}, {Phase: "verify"},
+        }, false},
+        {"imbalanced 3 phases = true", []TicketState{
+            {Phase: "implement"}, {Phase: "implement"}, {Phase: "implement"},
+            {Phase: "implement"}, {Phase: "implement"}, // 5 in implement
+            {Phase: "verify"},                          // 1 in verify
+            {Phase: "cicd"},                            // 1 in cicd
+        }, true}, // sum=7, phases=3, avg=2.33, implement(5) > 2×2.33=4.66 ✓
+    }
+    for _, tt := range tests {
+        t.Run(tt.name, func(t *testing.T) {
+            if got := HasQueueImbalanceFromTickets(tt.tickets); got != tt.want {
+                t.Errorf("HasQueueImbalanceFromTickets() = %v, want %v", got, tt.want)
+            }
+        })
+    }
+}
+
+func TestHasHighChildVarianceFromTickets(t *testing.T) {
+    tests := []struct {
+        name    string
+        tickets []TicketState
+        want    bool
+    }{
+        {"no decomposed = false", []TicketState{{ID: "1"}}, false},
+        {"children low variance = false", []TicketState{
+            {ID: "parent", ChildIDs: []string{"c1", "c2"}},
+            {ID: "c1", EstimatedDays: 2, ActualDays: 2.2},
+            {ID: "c2", EstimatedDays: 2, ActualDays: 2.4},
+        }, false},
+        {"children high variance = true", []TicketState{
+            {ID: "parent", ChildIDs: []string{"c1"}},
+            {ID: "c1", EstimatedDays: 2, ActualDays: 3.0},
+        }, true},
+    }
+    for _, tt := range tests {
+        t.Run(tt.name, func(t *testing.T) {
+            if got := HasHighChildVarianceFromTickets(tt.tickets); got != tt.want {
+                t.Errorf("HasHighChildVarianceFromTickets() = %v, want %v", got, tt.want)
+            }
+        })
+    }
+}
+
+// TestClientModeTriggers_JSONRoundTrip verifies triggers work with JSON-deserialized TicketState.
+// This catches field naming mismatches between api and tui packages.
+func TestClientModeTriggers_JSONRoundTrip(t *testing.T) {
+    // Simulate JSON from API (what client receives)
+    jsonData := `{
+        "completedTickets": [
+            {"id": "parent", "childIds": ["c1"], "estimatedDays": 2, "actualDays": 2},
+            {"id": "c1", "estimatedDays": 2, "actualDays": 3.0}
+        ],
+        "activeTickets": [
+            {"id": "t1", "phase": "implement"},
+            {"id": "t2", "phase": "implement"},
+            {"id": "t3", "phase": "implement"},
+            {"id": "t4", "phase": "verify"},
+            {"id": "t5", "phase": "cicd"}
+        ]
+    }`
+
+    var state struct {
+        CompletedTickets []TicketState `json:"completedTickets"`
+        ActiveTickets    []TicketState `json:"activeTickets"`
+    }
+    if err := json.Unmarshal([]byte(jsonData), &state); err != nil {
+        t.Fatalf("JSON unmarshal failed: %v", err)
+    }
+
+    // Verify triggers detect correctly from deserialized data
+    if !HasHighChildVarianceFromTickets(state.CompletedTickets) {
+        t.Error("Expected high child variance from JSON data (3.0/2.0 = 1.5 > 1.3)")
+    }
+    if !HasQueueImbalanceFromTickets(state.ActiveTickets) {
+        t.Error("Expected queue imbalance from JSON data (implement:3, verify:1, cicd:1)")
+    }
+}
+```
+
+#### Step 10: Update app.go trigger building
+
+**File:** `internal/tui/app.go`
+
+**Engine mode:**
+```go
+triggers.HasQueueImbalance = lessons.HasQueueImbalance(sim.ActiveTickets)
+triggers.HasHighChildVariance = lessons.HasHighChildVariance(sim.CompletedTickets)
+```
+
+**Client mode:**
+
+**File:** `internal/tui/lessons.go` (add after BuildTriggersFromClientState)
+
+UC20 (queue imbalance): Calculate from existing `ActiveTickets` using `Phase` field:
+```go
+// HasQueueImbalanceFromTickets detects UC20 trigger (client mode).
+// Uses Phase field (already in TicketState) to calculate queue depths.
+func HasQueueImbalanceFromTickets(activeTickets []TicketState) bool {
+    depths := make(map[string]int)
+    for _, t := range activeTickets {
+        if t.Phase != "" {
+            depths[t.Phase]++
+        }
+    }
+    if len(depths) == 0 {
+        return false
+    }
+    var sum int
+    for _, d := range depths {
+        sum += d
+    }
+    avg := float64(sum) / float64(len(depths))
+    for _, d := range depths {
+        if float64(d) > 2*avg {
+            return true
+        }
+    }
+    return false
+}
+```
+
+UC21 (child variance): Requires additional fields. Add to both `api.TicketState` (resources.go:14) and `tui.TicketState` (client.go:40). These mirror each other - tui decodes what api encodes:
+```go
+type TicketState struct {
+    // ... existing fields ...
+    ParentID      string   `json:"parentId,omitempty"`
+    ChildIDs      []string `json:"childIds,omitempty"`
+    EstimatedDays float64  `json:"estimatedDays,omitempty"`
+}
+```
+
+Update `ToTicketState` in resources.go to populate new fields:
+```go
+return TicketState{
+    // ... existing ...
+    ParentID:      t.ParentID,
+    ChildIDs:      t.ChildIDs,
+    EstimatedDays: t.EstimatedDays,
+}
+```
+
+**File:** `internal/api/resources_test.go` (add test for new fields)
+
+```go
+func TestToTicketState_DecompositionFields(t *testing.T) {
+    ticket := model.Ticket{
+        ID:            "parent-1",
+        ParentID:      "",
+        ChildIDs:      []string{"child-1", "child-2"},
+        EstimatedDays: 5.0,
+    }
+
+    got := ToTicketState(ticket)
+
+    if got.ParentID != "" {
+        t.Errorf("ParentID = %q, want empty", got.ParentID)
+    }
+    if len(got.ChildIDs) != 2 || got.ChildIDs[0] != "child-1" {
+        t.Errorf("ChildIDs = %v, want [child-1, child-2]", got.ChildIDs)
+    }
+    if got.EstimatedDays != 5.0 {
+        t.Errorf("EstimatedDays = %v, want 5.0", got.EstimatedDays)
+    }
+}
+```
+
+Then calculate client-side:
+```go
+// HasHighChildVarianceFromTickets detects UC21 trigger (client mode).
+func HasHighChildVarianceFromTickets(completedTickets []TicketState) bool {
+    byID := make(map[string]TicketState)
+    for _, t := range completedTickets {
+        byID[t.ID] = t
+    }
+    for _, parent := range completedTickets {
+        if len(parent.ChildIDs) == 0 {
+            continue
+        }
+        for _, childID := range parent.ChildIDs {
+            child, ok := byID[childID]
+            if !ok {
+                continue // child not yet completed
+            }
+            if child.EstimatedDays > 0 {
+                ratio := child.ActualDays / child.EstimatedDays
+                if ratio > 1.3 {
+                    return true
+                }
+            }
+        }
+    }
+    return false
+}
+```
+
+**Also update API** (`internal/api/resources.go`) to include new fields in TicketState serialization.
+
+#### Step 11: Update TUI re-exports
+
+**File:** `internal/tui/lessons.go`
+
+```go
+const (
+    // ... existing ...
+    LessonConstraintHunt = lessons.ConstraintHunt
+    LessonExploitFirst   = lessons.ExploitFirst
+)
+```
+
+---
+
+### Files Summary
+
+| File | Action | Lines |
+|------|--------|-------|
+| `internal/metrics/queue.go` | NEW: queue depth helpers | ~35 |
+| `internal/metrics/queue_test.go` | NEW: queue tests | ~50 |
+| `internal/metrics/variance.go` | NEW: child variance helpers | ~55 |
+| `internal/metrics/variance_test.go` | NEW: variance tests | ~50 |
+| `internal/lessons/lessons.go` | Edit: constants, TriggerState, Select(), lessons | ~60 |
+| `internal/lessons/triggers.go` | Edit: wrapper functions | ~15 |
+| `internal/lessons/lessons_test.go` | Edit: UC20/UC21 tests | ~40 |
+| `internal/tui/lessons.go` | Edit: client mode triggers, re-exports | ~45 |
+| `internal/tui/lessons_test.go` | NEW: client mode trigger tests + JSON round-trip | ~95 |
+| `internal/tui/app.go` | Edit: trigger building | ~10 |
+| `internal/api/resources.go` | Edit: TicketState fields, ToTicketState | ~8 |
+| `internal/api/resources_test.go` | Edit: ToTicketState decomposition test | ~20 |
+| `internal/tui/client.go` | Edit: TicketState fields | ~5 |
+| **Total** | | ~235 impl + ~255 test = **~490** |
+
+---
+
+### Acceptance Criteria
+
+- [ ] `ConstraintHunt` and `ExploitFirst` lesson constants added
+- [ ] `TotalLessons` updated to 11
+- [ ] `TriggerState` has `HasQueueImbalance` and `HasHighChildVariance` fields
+- [ ] `QueueDepthPerPhase()` returns map of phase → count
+- [ ] `HasQueueImbalance()` detects when any phase > 2× average
+- [ ] `HasHighChildVariance()` detects when child actual/estimate > 1.3
+- [ ] UC20 triggers on queue imbalance + UC19 seen
+- [ ] UC21 triggers on high child variance + UC19 seen
+- [ ] UC20/UC21 don't trigger before UC19 (prerequisite enforced)
+- [ ] `go test ./internal/metrics/...` passes
+- [ ] `go test ./internal/lessons/...` passes
+- [ ] TUI shows UC20/UC21 lessons when conditions met
+
+### Style Verification
+
+- [ ] Naming conventions: `SprintOption` (option.Basic[T]), not `SprintOpt`
+- [ ] Client mode functions use string/primitive types to avoid import cycles
+- [ ] Raw loops used for early-exit patterns (not fluentfp)
+- [ ] Test names follow `TestFunction_Scenario_ExpectedBehavior` pattern
+
+---
+
+## Phase 4: Synthesis Lessons UC22 + UC23
+
+**Scope:** Five Focusing Steps framework and transfer-to-practice lessons.
+
+**Why together:** Both are synthesis/culmination lessons; prereq infrastructure already built.
+
+**Deliverables:**
+1. UC22 `FiveFocusing` lesson (5FS framework content)
+2. UC23 `ManagerTakeaways` lesson + question generation
+3. Sprint count check in Select()
+
+**Files to modify:**
+- `internal/lessons/lessons.go` — Lesson content (~80 LOC for 5FS)
+- `internal/lessons/triggers.go` — Question generation logic
+
+**Acceptance criteria:**
+- [ ] UC22 shows after 3+ sprints + UC20 + UC21 seen
+- [ ] UC23 shows 3 contextual Monday questions
+- [ ] Questions reference actual simulation results
+
+**Estimated:** ~260 LOC (implementation + tests)
+
+---
+
+## Phase 5: HTML Export UC24
+
+**Scope:** Generate shareable HTML reports from simulation runs.
+
+**Why last:** Standalone feature; biggest piece; no lesson dependencies.
+
+**Deliverables:**
+1. HTML template with inline CSS
+2. DORA metrics section (no sparklines—static values)
+3. Buffer timeline section (color-coded)
+4. Lessons recap section
+5. Transfer questions section
+6. TUI 'e' key handler
+
+**Files to modify:**
+- `internal/export/html.go` (new) — HTML generation
+- `internal/tui/app.go` — 'e' key handler
+
+**Acceptance criteria:**
+- [ ] `file report.html` returns "HTML document"
+- [ ] 5 sections present (params, DORA, fever, lessons, questions)
+- [ ] Renders correctly in Firefox + Chrome
+- [ ] All content inline (no external dependencies)
+
+**Estimated:** ~600 LOC (implementation + tests)
+
+---
+
+## Reference Materials
+
+- **Use cases:** `/home/ted/projects/sofdevsim-2026/docs/use-cases.md` (UC19-24)
+- **Design doc:** `/home/ted/projects/sofdevsim-2026/docs/design.md` (lessons section)
+- **TameFlow book:** `/home/ted/projects/jeeves/books/hyper-productive-knowledge-work/`
+- **5FS source:** Chapter 12 (Herbie and Kanban), lines 71-87
+
+---
+## Approved Contract: 2026-01-25
+
+# Phase 3 Contract
+
+**Created:** 2026-01-25
+
+## Step 1 Checklist
+- [x] 1a: Presented understanding
+- [x] 1b: Asked clarifying questions
+- [x] 1b-answer: Received answers
+- [x] 1c: Contract created (this file)
+- [x] 1d: Approval received
+- [ ] 1e: Plan + contract archived
+
+## Objective
+Implement UC20 (ConstraintHunt) and UC21 (ExploitFirst) lessons with supporting metric helpers for queue depth and child variance detection.
+
+## Success Criteria
+- [ ] `ConstraintHunt` and `ExploitFirst` lesson constants added
+- [ ] `TotalLessons` updated to 11
+- [ ] `TriggerState` has `HasQueueImbalance` and `HasHighChildVariance` fields
+- [ ] `QueueDepthPerPhase()` returns map of phase → count
+- [ ] `HasQueueImbalance()` detects when any phase > 2× average
+- [ ] `HasHighChildVariance()` detects when child actual/estimate > 1.3
+- [ ] UC20 triggers on queue imbalance + UC19 seen
+- [ ] UC21 triggers on high child variance + UC19 seen
+- [ ] UC20/UC21 don't trigger before UC19 (prerequisite enforced)
+- [ ] `go test ./internal/metrics/...` passes
+- [ ] `go test ./internal/lessons/...` passes
+- [ ] `go test ./internal/tui/...` passes
+- [ ] TUI shows UC20/UC21 lessons when conditions met
+- [ ] Naming conventions followed (SprintOption, not SprintOpt)
+- [ ] Client mode functions use string/primitive types
+- [ ] Raw loops used for early-exit patterns
+
+## Approach
+TDD implementation in 11 steps per plan:
+1. Tests for metric helpers (queue, variance)
+2. Implement metric helpers
+3. Add lesson constants
+4. Expand TriggerState
+5. Tests for Select() with new triggers
+6. Update Select() with new triggers
+7. Add lesson content functions
+8. Add trigger detection functions
+9. Tests for client mode triggers
+10. Update app.go trigger building
+11. Update TUI re-exports
+
+## Token Budget
+Estimated: 30-50K tokens
+
+---
+## Archived: 2026-01-25
+
+# Phase 3 Contract
+
+**Created:** 2026-01-25
+
+## Step 1 Checklist
+- [x] 1a: Presented understanding
+- [x] 1b: Asked clarifying questions
+- [x] 1b-answer: Received answers
+- [x] 1c: Contract created (this file)
+- [x] 1d: Approval received
+- [x] 1e: Plan + contract archived
+
+## Objective
+Implement UC20 (ConstraintHunt) and UC21 (ExploitFirst) lessons with supporting metric helpers for queue depth and child variance detection.
+
+## Success Criteria
+- [x] `ConstraintHunt` and `ExploitFirst` lesson constants added (lessons.go:18-19)
+- [x] `TotalLessons` updated to 11 (lessons.go:23)
+- [x] `TriggerState` has `HasQueueImbalance` and `HasHighChildVariance` fields (lessons.go:75-76)
+- [x] `QueueDepthPerPhase()` returns map of phase → count (queue.go:7-13)
+- [x] `HasQueueImbalance()` detects when any phase > 2× average (queue.go:16-34)
+- [x] `HasHighChildVariance()` detects when child actual/estimate > 1.3 (variance.go:53-63)
+- [x] UC20 triggers on queue imbalance + UC19 seen (lessons.go:92-94)
+- [x] UC21 triggers on high child variance + UC19 seen (lessons.go:97-99)
+- [x] UC20/UC21 don't trigger before UC19 (prerequisite enforced) (lessons_test.go:138,175)
+- [x] `go test ./internal/metrics/...` passes
+- [x] `go test ./internal/lessons/...` passes
+- [x] `go test ./internal/tui/...` passes
+- [x] TUI shows UC20/UC21 lessons when conditions met (app.go:823-833)
+- [x] Naming conventions followed (SprintOption, not SprintOpt)
+- [x] Client mode functions use string/primitive types (lessons.go:100-142)
+- [x] Raw loops used for early-exit patterns (variance.go:56-62)
+
+## Approach
+TDD implementation in 11 steps per plan:
+1. Tests for metric helpers (queue, variance)
+2. Implement metric helpers
+3. Add lesson constants
+4. Expand TriggerState
+5. Tests for Select() with new triggers
+6. Update Select() with new triggers
+7. Add lesson content functions
+8. Add trigger detection functions
+9. Tests for client mode triggers
+10. Update app.go trigger building
+11. Update TUI re-exports
+
+## Token Budget
+Estimated: 30-50K tokens
+
+## Actual Results
+
+**Completed:** 2026-01-25
+
+### Files Created/Modified
+
+| File | Action | LOC |
+|------|--------|-----|
+| `internal/metrics/queue.go` | NEW | 35 |
+| `internal/metrics/queue_test.go` | NEW | 50 |
+| `internal/metrics/variance.go` | NEW | 55 |
+| `internal/metrics/variance_test.go` | NEW | 40 |
+| `internal/lessons/lessons.go` | EDIT | +60 |
+| `internal/lessons/lessons_test.go` | EDIT | +40 |
+| `internal/lessons/triggers.go` | EDIT | +15 |
+| `internal/tui/lessons.go` | EDIT | +55 |
+| `internal/tui/lessons_test.go` | NEW | 95 |
+| `internal/tui/client.go` | EDIT | +5 |
+| `internal/tui/app.go` | EDIT | +5 |
+| `internal/tui/app_test.go` | EDIT | +5 |
+| `internal/api/resources.go` | EDIT | +10 |
+| `internal/api/resources_test.go` | NEW | 25 |
+| **Total** | | ~490 |
+
+### Test Summary
+- 4 new metrics tests (queue depth, imbalance)
+- 4 new variance tests (child ratio detection)
+- 6 new lessons tests (UC20/UC21 trigger logic)
+- 3 new tui tests (client mode triggers + JSON round-trip)
+- 1 new api test (ToTicketState decomposition fields)
+
+### Self-Assessment
+Grade: A (95/100)
+
+What went well:
+- Clean TDD flow: RED → GREEN for each component
+- Stratified design maintained: metrics → lessons → tui
+- Both engine and client modes supported
+
+Deductions:
+- Test data bug in JSON round-trip test (-3): had 3 implement tickets when 5 needed for imbalance
+- Had to fix existing app_test.go calls after signature change (-2): should have grepped for callers first
+
+## Step 4 Checklist
+- [x] 4a: Results presented to user
+- [x] 4b: Approval received
+
+## Approval
+✅ APPROVED BY USER - 2026-01-25
+Final results: UC20/UC21 lessons implemented with full guide compliance (100/100 after fixes)
+
+---
+
+## Log: 2026-01-25 - Phase 3: UC20/UC21 Lesson Implementation
+
+**What was done:**
+Implemented ConstraintHunt (UC20) and ExploitFirst (UC21) lessons with supporting metric helpers. Queue depth detection identifies phase imbalances; child variance detection flags decompositions that didn't reduce uncertainty.
+
+**Key files changed:**
+- `internal/metrics/queue.go`: Queue depth per phase, imbalance detection
+- `internal/metrics/variance.go`: Child variance analysis for decomposed tickets
+- `internal/lessons/lessons.go`: UC20/UC21 lesson content and trigger logic
+- `internal/tui/lessons.go`: Client-mode trigger functions
+- `internal/tui/app.go`: Trigger state building for lesson selection
+
+**Why it matters:**
+Teaches the core TOC insight: queue buildup is a symptom, uncertainty is the root cause. When decomposition doesn't help (children still have high variance), the lesson explains exploit-before-elevate.

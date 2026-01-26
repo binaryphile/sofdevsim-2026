@@ -38,14 +38,17 @@ type CreateSimulationRequest struct {
 
 // TicketState mirrors api.TicketState for client-side decoding.
 type TicketState struct {
-	ID            string  `json:"id"`
-	Title         string  `json:"title"`
-	Size          float64 `json:"size"`
-	Understanding string  `json:"understanding"`
-	Progress      float64 `json:"progress,omitempty"`
-	AssignedTo    string  `json:"assignedTo,omitempty"`
-	Phase         string  `json:"phase,omitempty"`
-	ActualDays    float64 `json:"actualDays,omitempty"`
+	ID            string   `json:"id"`
+	Title         string   `json:"title"`
+	Size          float64  `json:"size"`
+	Understanding string   `json:"understanding"`
+	Progress      float64  `json:"progress,omitempty"`
+	AssignedTo    string   `json:"assignedTo,omitempty"`
+	Phase         string   `json:"phase,omitempty"`
+	ActualDays    float64  `json:"actualDays,omitempty"`
+	ParentID      string   `json:"parentId,omitempty"`
+	ChildIDs      []string `json:"childIds,omitempty"`
+	EstimatedDays float64  `json:"estimatedDays,omitempty"`
 }
 
 // DeveloperState mirrors api.DeveloperState for client-side decoding.

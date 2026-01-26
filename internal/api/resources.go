@@ -12,14 +12,17 @@ import (
 
 // TicketState is the JSON-friendly representation of a ticket.
 type TicketState struct {
-	ID            string  `json:"id"`
-	Title         string  `json:"title"`
-	Size          float64 `json:"size"`
-	Understanding string  `json:"understanding"`
-	Progress      float64 `json:"progress,omitempty"`
-	AssignedTo    string  `json:"assignedTo,omitempty"`
-	Phase         string  `json:"phase,omitempty"`
-	ActualDays    float64 `json:"actualDays,omitempty"`
+	ID            string   `json:"id"`
+	Title         string   `json:"title"`
+	Size          float64  `json:"size"`
+	Understanding string   `json:"understanding"`
+	Progress      float64  `json:"progress,omitempty"`
+	AssignedTo    string   `json:"assignedTo,omitempty"`
+	Phase         string   `json:"phase,omitempty"`
+	ActualDays    float64  `json:"actualDays,omitempty"`
+	ParentID      string   `json:"parentId,omitempty"`
+	ChildIDs      []string `json:"childIds,omitempty"`
+	EstimatedDays float64  `json:"estimatedDays,omitempty"`
 }
 
 // ToTicketState converts model.Ticket to TicketState.
@@ -37,6 +40,9 @@ func ToTicketState(t model.Ticket) TicketState {
 		AssignedTo:    "", // Set by caller for active tickets
 		Phase:         t.Phase.String(),
 		ActualDays:    t.ActualDays,
+		ParentID:      t.ParentID,
+		ChildIDs:      t.ChildIDs,
+		EstimatedDays: t.EstimatedDays,
 	}
 }
 

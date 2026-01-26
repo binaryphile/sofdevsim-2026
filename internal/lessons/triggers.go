@@ -12,6 +12,7 @@
 package lessons
 
 import (
+	"github.com/binaryphile/sofdevsim-2026/internal/metrics"
 	"github.com/binaryphile/sofdevsim-2026/internal/model"
 )
 
@@ -29,6 +30,10 @@ func HasRedBufferWithLowTicket(feverStatus model.FeverStatus, activeTickets []mo
 	return false
 }
 
+// LowUnderstandingString is the string representation of LOW understanding level.
+// Matches model.LowUnderstanding.String() but defined here to avoid import cycles.
+const LowUnderstandingString = "LOW"
+
 // HasRedBufferWithLowTicketFromStrings detects UC19 trigger (client mode):
 // Takes primitive []string to avoid importing tui package (would cause cycle).
 func HasRedBufferWithLowTicketFromStrings(isRedBuffer bool, understandingLevels []string) bool {
@@ -36,9 +41,21 @@ func HasRedBufferWithLowTicketFromStrings(isRedBuffer bool, understandingLevels 
 		return false
 	}
 	for _, u := range understandingLevels {
-		if u == "LOW" {
+		if u == LowUnderstandingString {
 			return true
 		}
 	}
 	return false
+}
+
+// HasQueueImbalance detects UC20 trigger (engine mode).
+// Delegates to metrics package for calculation.
+func HasQueueImbalance(activeTickets []model.Ticket) bool {
+	return metrics.HasQueueImbalance(activeTickets)
+}
+
+// HasHighChildVariance detects UC21 trigger (engine mode).
+// Delegates to metrics package for calculation.
+func HasHighChildVariance(completedTickets []model.Ticket) bool {
+	return metrics.HasHighChildVariance(completedTickets)
 }

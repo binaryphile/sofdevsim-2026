@@ -15,10 +15,12 @@ const (
 	PhaseProgress         LessonID = "phase-progress"
 	VarianceAnalysis      LessonID = "variance-analysis"
 	UncertaintyConstraint LessonID = "uncertainty-constraint" // UC19
+	ConstraintHunt        LessonID = "constraint-hunt"        // UC20
+	ExploitFirst          LessonID = "exploit-first"          // UC21
 )
 
 // TotalLessons is the number of unique teaching concepts.
-const TotalLessons = 9
+const TotalLessons = 11
 
 // Lesson contains teaching content for one concept.
 type Lesson struct {
@@ -70,10 +72,12 @@ const (
 // Each trigger fires at most once per session (Select checks SeenMap).
 type TriggerState struct {
 	HasRedBufferWithLowTicket bool // UC19: buffer >66% consumed + LOW understanding ticket
+	HasQueueImbalance         bool // UC20: any phase queue > 2× average
+	HasHighChildVariance      bool // UC21: decomposed ticket child actual/estimate > 1.3
 }
 
 // Select chooses the appropriate lesson based on current context.
-// Pure function: (view, state, hasActiveSprint, hasComparison, triggers) → Lesson
+// Calculation: (ViewContext, State, bool, bool, TriggerState) → Lesson
 func Select(view ViewContext, state State, hasActiveSprint bool, hasComparisonResult bool, triggers TriggerState) Lesson {
 	// First time: orientation
 	if !state.SeenMap[Orientation] {
@@ -83,6 +87,16 @@ func Select(view ViewContext, state State, hasActiveSprint bool, hasComparisonRe
 	// UC19: Aha moment - understanding IS the constraint
 	if triggers.HasRedBufferWithLowTicket && !state.SeenMap[UncertaintyConstraint] {
 		return UncertaintyConstraintLesson()
+	}
+
+	// UC20: Constraint Hunt - queue imbalance shows symptoms
+	if triggers.HasQueueImbalance && state.SeenMap[UncertaintyConstraint] && !state.SeenMap[ConstraintHunt] {
+		return ConstraintHuntLesson()
+	}
+
+	// UC21: Exploit First - decomposition didn't fix uncertainty
+	if triggers.HasHighChildVariance && state.SeenMap[UncertaintyConstraint] && !state.SeenMap[ExploitFirst] {
+		return ExploitFirstLesson()
 	}
 
 	switch view {
@@ -327,6 +341,56 @@ This is why "just work faster" doesn't fix missed sprints.`,
 			"Watch which tickets consume buffer",
 			"HIGH understanding = predictable",
 			"Decomposition can improve understanding",
+		},
+	}
+}
+
+func ConstraintHuntLesson() Lesson {
+	return Lesson{
+		ID:    ConstraintHunt,
+		Title: "Finding the Constraint",
+		Content: `Queue depth shows WHERE work piles up.
+Understanding level shows WHY.
+
+SYMPTOM: Long queue at a phase
+ROOT CAUSE: LOW understanding tickets block flow
+
+Look at the tickets in the longest queue.
+Are they HIGH or LOW understanding?
+
+The constraint isn't the phase—it's uncertainty.`,
+		Tips: []string{
+			"Queue depth = symptom",
+			"Understanding = root cause",
+			"Focus on WHY, not WHERE",
+		},
+	}
+}
+
+func ExploitFirstLesson() Lesson {
+	return Lesson{
+		ID:    ExploitFirst,
+		Title: "Exploit Before Elevate",
+		Content: `Splitting didn't fix uncertainty!
+
+The decomposed ticket's children ALSO had high variance.
+This means the split was ELEVATION (more work) not EXPLOITATION.
+
+TOC's Five Focusing Steps:
+1. IDENTIFY the constraint
+2. EXPLOIT it (get more from what you have)
+3. SUBORDINATE everything else
+4. ELEVATE only if exploitation isn't enough
+5. Repeat
+
+Exploitation = improve understanding BEFORE splitting.
+Elevation = split to add capacity.
+
+You elevated without exploiting first.`,
+		Tips: []string{
+			"Exploit = improve understanding",
+			"Elevate = add capacity (split)",
+			"Research before decomposition",
 		},
 	}
 }

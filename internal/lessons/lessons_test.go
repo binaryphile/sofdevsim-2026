@@ -120,6 +120,74 @@ func TestSelect_UC19_UncertaintyConstraint(t *testing.T) {
 	}
 }
 
+// TestSelect_UC20_ConstraintHunt tests the queue imbalance trigger.
+func TestSelect_UC20_ConstraintHunt(t *testing.T) {
+	tests := []struct {
+		name     string
+		state    State
+		triggers TriggerState
+		want     LessonID
+	}{
+		{
+			name:     "triggers on queue imbalance + UC19 seen",
+			state:    State{SeenMap: map[LessonID]bool{Orientation: true, UncertaintyConstraint: true}},
+			triggers: TriggerState{HasQueueImbalance: true},
+			want:     ConstraintHunt,
+		},
+		{
+			name:     "does not trigger without UC19 seen (prerequisite)",
+			state:    State{SeenMap: map[LessonID]bool{Orientation: true}},
+			triggers: TriggerState{HasQueueImbalance: true},
+			want:     FeverChart, // Falls through to view-based
+		},
+		{
+			name:     "does not trigger if already seen",
+			state:    State{SeenMap: map[LessonID]bool{Orientation: true, UncertaintyConstraint: true, ConstraintHunt: true}},
+			triggers: TriggerState{HasQueueImbalance: true},
+			want:     FeverChart,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := Select(ViewExecution, tt.state, true, false, tt.triggers)
+			if got.ID != tt.want {
+				t.Errorf("Select() = %v, want %v", got.ID, tt.want)
+			}
+		})
+	}
+}
+
+// TestSelect_UC21_ExploitFirst tests the high child variance trigger.
+func TestSelect_UC21_ExploitFirst(t *testing.T) {
+	tests := []struct {
+		name     string
+		state    State
+		triggers TriggerState
+		want     LessonID
+	}{
+		{
+			name:     "triggers on high child variance + UC19 seen",
+			state:    State{SeenMap: map[LessonID]bool{Orientation: true, UncertaintyConstraint: true}},
+			triggers: TriggerState{HasHighChildVariance: true},
+			want:     ExploitFirst,
+		},
+		{
+			name:     "does not trigger without UC19 seen (prerequisite)",
+			state:    State{SeenMap: map[LessonID]bool{Orientation: true}},
+			triggers: TriggerState{HasHighChildVariance: true},
+			want:     FeverChart,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := Select(ViewExecution, tt.state, true, false, tt.triggers)
+			if got.ID != tt.want {
+				t.Errorf("Select() = %v, want %v", got.ID, tt.want)
+			}
+		})
+	}
+}
+
 // TestState_WithSeen tests the value semantics of State.
 // Per Khorikov: Domain logic (state transitions) gets unit tests.
 func TestLessonState_WithSeenDoesNotMutate(t *testing.T) {
