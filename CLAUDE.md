@@ -754,6 +754,8 @@ The Go standard library uses both patterns. `strings.Builder` mutates. `time.Tim
 Reference: Khorikov, Vladimir. "Unit Testing: Principles, Practices, and Patterns." Manning, 2020.
 Summary available at: `/home/ted/projects/urma-obsidian/sources/tier2-silver/practitioner-blogs/khorikov-unit-testing-olano-summary.md`
 
+**Testing strategy doc:** `docs/testing-strategy.md` — manual testing protocols, TUI integration testing options, coverage baseline.
+
 ### TDD Cycle (MANDATORY)
 
 **CRITICAL**: Never implement before writing a failing test. If caught implementing first, STOP and revert.
