@@ -605,3 +605,99 @@ func TestApp_UC21TriggerIntegration(t *testing.T) {
 		}
 	})
 }
+
+// TestApp_FullSessionWalkthrough simulates a complete TUI session via UIProjection.
+// This replaces manual testing by programmatically verifying key→event→state flow.
+func TestApp_FullSessionWalkthrough(t *testing.T) {
+	app := NewAppWithSeed(42)
+
+	// Helper to send key
+	sendKey := func(key string) {
+		app.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(key)})
+	}
+	sendTab := func() {
+		app.Update(tea.KeyMsg{Type: tea.KeyTab})
+	}
+
+	// 1. INITIAL STATE
+	state := app.uiProjection.State()
+	if state.CurrentView != ViewPlanning {
+		t.Errorf("Initial: CurrentView = %v, want ViewPlanning", state.CurrentView)
+	}
+	if state.LessonVisible {
+		t.Error("Initial: LessonVisible should be false")
+	}
+
+	// 2. NAVIGATION - cycle through views
+	sendTab() // → Execution
+	if app.uiProjection.State().CurrentView != ViewExecution {
+		t.Error("After Tab 1: want ViewExecution")
+	}
+	sendTab() // → Metrics
+	sendTab() // → Comparison
+	sendTab() // → Planning
+	if app.uiProjection.State().CurrentView != ViewPlanning {
+		t.Error("After Tab 4: want ViewPlanning (cycle)")
+	}
+
+	// 3. TICKET SELECTION
+	eng, _ := app.mode.GetLeft()
+	sim := eng.Engine.Sim()
+	sendKey("j") // select second ticket
+	sendKey("j") // select third ticket
+	state = app.uiProjection.State()
+	if state.SelectedTicket != sim.Backlog[2].ID {
+		t.Errorf("After j j: SelectedTicket = %q, want %q", state.SelectedTicket, sim.Backlog[2].ID)
+	}
+	sendKey("k") // back to second
+	state = app.uiProjection.State()
+	if state.SelectedTicket != sim.Backlog[1].ID {
+		t.Errorf("After k: SelectedTicket = %q, want %q", state.SelectedTicket, sim.Backlog[1].ID)
+	}
+
+	// 4. LESSONS PANEL
+	sendKey("h") // toggle on
+	if !app.uiProjection.State().LessonVisible {
+		t.Error("After h: LessonVisible should be true")
+	}
+	sendKey("h") // toggle off
+	if app.uiProjection.State().LessonVisible {
+		t.Error("After h h: LessonVisible should be false")
+	}
+
+	// 5. ASSIGNMENT
+	sendKey("j")                       // select a ticket
+	app.selected = 0                   // reset to first ticket for clean test
+	sendKey("a")                       // assign
+	state = app.uiProjection.State()
+	if state.ErrorMessage != "" {
+		t.Errorf("After assign: ErrorMessage = %q, want empty", state.ErrorMessage)
+	}
+	if state.SelectedTicket != "" {
+		t.Errorf("After assign: SelectedTicket = %q, want empty (cleared on success)", state.SelectedTicket)
+	}
+
+	// 6. START SPRINT
+	sendKey("s")
+	state = app.uiProjection.State()
+	if state.ErrorMessage != "" {
+		t.Errorf("After sprint start: ErrorMessage = %q, want empty", state.ErrorMessage)
+	}
+
+	// 7. TRY SPRINT AGAIN (should fail)
+	app.currentView = ViewPlanning // force back for test
+	sendKey("s")
+	state = app.uiProjection.State()
+	if state.ErrorMessage == "" {
+		t.Error("After second sprint start: ErrorMessage should be set (already active)")
+	}
+
+	// 8. VIEW SWITCH CLEARS ERROR
+	sendTab()
+	state = app.uiProjection.State()
+	if state.ErrorMessage != "" {
+		t.Errorf("After Tab: ErrorMessage = %q, want empty (cleared on navigation)", state.ErrorMessage)
+	}
+
+	t.Logf("Session walkthrough complete: %d events recorded", len(app.uiProjection.events))
+}
