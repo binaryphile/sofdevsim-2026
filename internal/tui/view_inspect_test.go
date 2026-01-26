@@ -59,3 +59,86 @@ func TestView_Inspect(t *testing.T) {
 	fmt.Printf("LessonVisible: %v\n", state.LessonVisible)
 	fmt.Printf("ErrorMessage: %q\n", state.ErrorMessage)
 }
+
+// TestView_InspectLessons shows each triggered lesson (UC19-UC23) rendered in TUI panel
+func TestView_InspectLessons(t *testing.T) {
+	// Helper to set up app and render with specific lesson state
+	showRenderedLesson := func(label string, lessonState LessonState, view View, triggers TriggerState, comparison ComparisonSummary) {
+		app := NewAppWithSeed(42)
+		app.lessonState = lessonState.WithVisible(true)
+		app.currentView = view
+		app.width = 100
+		app.height = 40
+
+		// Get the lesson that would be selected
+		lesson := SelectLesson(view, app.lessonState, true, comparison.HasResult, triggers, comparison)
+
+		// Render the lesson panel
+		panel := stripansi.Strip(app.lessonsPanel(lesson))
+
+		fmt.Printf("\n=== %s ===\n", label)
+		fmt.Printf("Lesson ID: %s\n", lesson.ID)
+		fmt.Printf("Rendered Panel:\n%s\n", panel)
+	}
+
+	// UC19: UncertaintyConstraint - red buffer + LOW ticket
+	t.Run("UC19_UncertaintyConstraint", func(t *testing.T) {
+		state := LessonState{}
+		state = state.WithSeen(LessonOrientation)
+
+		triggers := TriggerState{HasRedBufferWithLowTicket: true}
+		showRenderedLesson("UC19: UncertaintyConstraint", state, ViewExecution, triggers, ComparisonSummary{})
+	})
+
+	// UC20: ConstraintHunt - queue imbalance + UC19 seen
+	t.Run("UC20_ConstraintHunt", func(t *testing.T) {
+		state := LessonState{}
+		state = state.WithSeen(LessonOrientation)
+		state = state.WithSeen(LessonUncertaintyConstraint)
+
+		triggers := TriggerState{HasQueueImbalance: true}
+		showRenderedLesson("UC20: ConstraintHunt", state, ViewExecution, triggers, ComparisonSummary{})
+	})
+
+	// UC21: ExploitFirst - high child variance + UC19 seen
+	t.Run("UC21_ExploitFirst", func(t *testing.T) {
+		state := LessonState{}
+		state = state.WithSeen(LessonOrientation)
+		state = state.WithSeen(LessonUncertaintyConstraint)
+
+		triggers := TriggerState{HasHighChildVariance: true}
+		showRenderedLesson("UC21: ExploitFirst", state, ViewExecution, triggers, ComparisonSummary{})
+	})
+
+	// UC22: FiveFocusing - 3+ sprints + UC20/21 seen
+	t.Run("UC22_FiveFocusing", func(t *testing.T) {
+		state := LessonState{}
+		state = state.WithSeen(LessonOrientation)
+		state = state.WithSeen(LessonUncertaintyConstraint)
+		state = state.WithSeen(LessonConstraintHunt)
+
+		triggers := TriggerState{SprintCount: 3}
+		showRenderedLesson("UC22: FiveFocusing", state, ViewExecution, triggers, ComparisonSummary{})
+	})
+
+	// UC23: ManagerTakeaways - comparison result + UC22 seen
+	t.Run("UC23_ManagerTakeaways", func(t *testing.T) {
+		state := LessonState{}
+		state = state.WithSeen(LessonOrientation)
+		state = state.WithSeen(LessonFiveFocusing)
+
+		comparison := ComparisonSummary{
+			HasResult:     true,
+			WinnerPolicy:  "TameFlow-Cognitive",
+			LeadTimeA:     5.2,
+			LeadTimeB:     3.8,
+			LeadTimeDelta: 1.4,
+			CFRA:          0.15,
+			CFRB:          0.08,
+			CFRDelta:      0.07,
+			WinsA:         1,
+			WinsB:         3,
+		}
+		showRenderedLesson("UC23: ManagerTakeaways", state, ViewComparison, TriggerState{}, comparison)
+	})
+}
