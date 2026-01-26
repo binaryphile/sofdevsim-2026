@@ -819,14 +819,20 @@ Examples of trivial code to **skip**:
 go test -cover ./...
 ```
 
-**Current baseline (2026-01-03):**
+**Current baseline (2026-01-26):**
 | Package | Coverage | Notes |
 |---------|----------|-------|
-| engine | 79.1% | Domain + controller logic |
-| export | 69.8% | Controller with domain helpers |
-| metrics | 60.8% | Domain calculations |
-| model | 28.4% | Mostly data structures (trivial) - acceptable |
-| tui | 0.0% | UI controller - test via manual/integration |
+| engine | 80.4% | Domain + controller logic |
+| export | 65.4% | Controller with domain helpers |
+| events | 68.9% | Event store infrastructure |
+| lessons | 89.0% | Domain calculations |
+| metrics | 68.2% | Domain calculations |
+| model | 30.3% | Mostly data structures (trivial) - acceptable |
+| tui | 52.3% | Controller - Khorikov workflow tests |
+| api | 74.3% | HTTP handlers |
+| persistence | 65.5% | State save/load |
+
+**Total test runtime:** ~0.4s (excluding cache hits)
 
 Per Khorikov: Coverage is a "good negative indicator, bad positive one."
 - **Below 60%**: Investigate - unless code is trivial/controller

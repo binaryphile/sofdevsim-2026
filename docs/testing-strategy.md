@@ -88,19 +88,32 @@ pkill -f sofdevsim-server
 
 ### TUI Testing via UIProjection
 
-The UIProjection event-sourced model enables programmatic testing of TUI behavior without visual rendering. See `TestApp_FullSessionWalkthrough` in `app_test.go`.
+The UIProjection event-sourced model enables programmatic testing of TUI behavior without visual rendering. The walkthrough test covers the complete user session:
 
 ```go
-// Example: verify key→event→state flow
-app := NewAppWithSeed(42)
-app.Update(tea.KeyMsg{Type: tea.KeyTab})
-state := app.uiProjection.State()
-// state.CurrentView == ViewExecution ✓
+// TestApp_FullSessionWalkthrough covers 10 steps:
+// 1. Initial state
+// 2. Navigation (Tab cycling)
+// 3. Ticket selection (j/k)
+// 4. Lessons panel (h toggle)
+// 5. Assignment (a)
+// 6. Sprint start (s)
+// 7. Failed sprint start (error)
+// 8. View switch clears error
+// 9. Sprint runs to completion
+// 10. Metrics view verification
 ```
 
-**Run walkthrough test:**
+**Run workflow tests:**
 ```bash
+# Engine mode full walkthrough
 go test -v -run "TestApp_FullSessionWalkthrough" ./internal/tui/...
+
+# Client mode sprint cycle
+go test -v -run "TestWorkflow_SprintCycle_ClientMode" ./internal/tui/...
+
+# Policy comparison
+go test -v -run "TestWorkflow_PolicyComparison" ./internal/tui/...
 ```
 
 ### TUI Visual Inspection (AI-Assisted Testing)
@@ -308,27 +321,66 @@ go run ./cmd/sofdevsim -seed 42
 
 ## TUI Testing Architecture
 
-### Current Implementation
+### Khorikov Classification
+
+The TUI App is a **Controller** (low complexity, many collaborators). Per Khorikov: "Test controllers through integration tests that cover the entire workflow."
 
 ```
-App (Bubble Tea Model)
+App (Bubble Tea Model) ← Controller: ONE integration test per workflow
 ├── State (SimulationState)
-├── UIProjection (event-sourced UI state)
+├── UIProjection (event-sourced UI state) ← Domain: unit test the projection logic
 ├── Update(msg) → App, Cmd
 └── View() → string (with ANSI codes)
 ```
 
-**Implemented approaches:**
+### Workflow Tests (Integration)
+
+Each distinct user workflow gets ONE integration test:
+
+| Workflow | Test | Coverage |
+|----------|------|----------|
+| Engine mode sprint cycle | `TestApp_FullSessionWalkthrough` | Planning → Sprint → Metrics |
+| Client mode sprint cycle | `TestWorkflow_SprintCycle_ClientMode` | Same flow via HTTP |
+| Policy comparison | `TestWorkflow_PolicyComparison` | Comparison view → results |
+| Lesson triggers | `TestApp_UC19-23TriggerIntegration` | State → trigger → lesson |
+
+### Lesson Trigger Tests
+
+All 5 lesson triggers have integration tests:
+
+| UC | Lesson | Test | Trigger Condition |
+|----|--------|------|-------------------|
+| UC19 | UncertaintyConstraint | `TestApp_UC19TriggerIntegration` | Buffer >66% + LOW ticket |
+| UC20 | ConstraintHunt | `TestApp_UC20TriggerIntegration` | Queue >2× avg + UC19 seen |
+| UC21 | ExploitFirst | `TestApp_UC21TriggerIntegration` | Child ratio >1.3 + UC19 seen |
+| UC22 | FiveFocusing | `TestApp_UC22TriggerIntegration` | 3+ sprints + UC20/21 seen |
+| UC23 | ManagerTakeaways | `TestApp_UC23TriggerIntegration` | Comparison + UC22 seen |
+
+**Best practices learned:**
+- Drive tests through public interface (key presses), not internal state
+- Don't use `app.selected = 0` - use `sendKey("k")` to navigate
+- Engine and client mode tests should have parity (both verify metrics view)
+- Verify observable outcomes via `UIProjection.State()`, not implementation details
+
+### Unit Tests (Domain)
+
+UIProjection logic is pure calculation - unit test heavily:
+
+| Test | Purpose |
+|------|---------|
+| `TestUIProjection_*` | Event replay produces correct state |
+| `TestUIProjection_Idempotent` | Same events always produce same state |
+
+### Other Approaches
 
 | Approach | File | Purpose |
 |----------|------|---------|
-| UIProjection state testing | `app_test.go` | Key→event→state flow |
 | Visual inspection | `view_inspect_test.go` | AI-assisted rendering verification |
 | Golden file regression | `view_golden_test.go` | CI baseline comparison |
 
 ### Future: ViewModel Separation
 
-For Phase 7 HTML export, consider extracting view models:
+For Phase 8 HTML export, consider extracting view models:
 
 ```go
 // Layer 1: Pure data (testable)
@@ -355,17 +407,21 @@ type HTMLRenderer struct{}       // Export
 
 ## Coverage Baseline
 
-Track coverage changes, not absolute numbers:
+Track coverage changes, not absolute numbers. See CLAUDE.md for authoritative baseline.
 
 | Package | Coverage | Notes |
 |---------|----------|-------|
 | engine | ~80% | Domain + controller logic |
-| export | ~70% | Controller with domain helpers |
-| metrics | ~60% | Domain calculations |
-| model | ~28% | Mostly data structures (trivial) |
-| lessons | ~75% | Domain logic |
-| tui | ~0% | UI layer - manual testing |
-| api | ~65% | Integration tests |
+| lessons | ~89% | Domain calculations |
+| api | ~74% | HTTP integration tests |
+| metrics | ~68% | Domain calculations |
+| events | ~69% | Event store infrastructure |
+| export | ~65% | Controller with domain helpers |
+| persistence | ~66% | State save/load |
+| tui | ~52% | Controller - Khorikov workflow tests |
+| model | ~30% | Mostly data structures (trivial) |
+
+**Note:** TUI coverage increased from 0% to 52% via workflow integration tests (Phase 7). Per Khorikov, this is appropriate for a controller - we test complete workflows, not individual methods.
 
 ## Benchmarking
 

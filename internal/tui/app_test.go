@@ -398,131 +398,6 @@ func TestApp_UC20TriggerIntegration(t *testing.T) {
 	})
 }
 
-// TestApp_RecordsViewSwitched_EngineMode verifies tab key records ViewSwitched event.
-func TestApp_RecordsViewSwitched_EngineMode(t *testing.T) {
-	app := NewAppWithSeed(42)
-
-	// Initial state should be ViewPlanning
-	uiState := app.uiProjection.State()
-	if uiState.CurrentView != ViewPlanning {
-		t.Errorf("Initial CurrentView = %v, want ViewPlanning", uiState.CurrentView)
-	}
-
-	// Press tab (KeyTab type, not runes)
-	app.Update(tea.KeyMsg{Type: tea.KeyTab})
-
-	// UIProjection should record ViewSwitched
-	uiState = app.uiProjection.State()
-	if uiState.CurrentView != ViewExecution {
-		t.Errorf("After tab: CurrentView = %v, want ViewExecution", uiState.CurrentView)
-	}
-}
-
-// TestApp_RecordsLessonPanelToggled_EngineMode verifies h key records LessonPanelToggled event.
-func TestApp_RecordsLessonPanelToggled_EngineMode(t *testing.T) {
-	app := NewAppWithSeed(42)
-
-	// Initially not visible in projection
-	if app.uiProjection.State().LessonVisible {
-		t.Error("Initial LessonVisible should be false")
-	}
-
-	// Press h
-	app.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("h")})
-
-	// UIProjection should record toggle
-	if !app.uiProjection.State().LessonVisible {
-		t.Error("After h: LessonVisible should be true")
-	}
-}
-
-// TestApp_RecordsTicketSelected_EngineMode verifies j/k keys record TicketSelected event.
-func TestApp_RecordsTicketSelected_EngineMode(t *testing.T) {
-	app := NewAppWithSeed(42)
-	eng, _ := app.mode.GetLeft()
-	sim := eng.Engine.Sim()
-
-	// Initial selection is 0
-	if app.selected != 0 {
-		t.Fatalf("Initial selected = %d, want 0", app.selected)
-	}
-
-	// Press j (down)
-	app.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
-
-	// UIProjection should have second ticket selected
-	uiState := app.uiProjection.State()
-	expectedID := sim.Backlog[1].ID
-	if uiState.SelectedTicket != expectedID {
-		t.Errorf("After j: SelectedTicket = %q, want %q", uiState.SelectedTicket, expectedID)
-	}
-
-	// Press k (up)
-	app.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("k")})
-
-	// UIProjection should have first ticket selected
-	uiState = app.uiProjection.State()
-	expectedID = sim.Backlog[0].ID
-	if uiState.SelectedTicket != expectedID {
-		t.Errorf("After k: SelectedTicket = %q, want %q", uiState.SelectedTicket, expectedID)
-	}
-}
-
-// TestApp_RecordsSprintStartAttempted_Success_EngineMode verifies s key records SprintStartAttempted on success.
-func TestApp_RecordsSprintStartAttempted_Success_EngineMode(t *testing.T) {
-	app := NewAppWithSeed(42)
-	app.currentView = ViewPlanning
-
-	// Press s to start sprint
-	app.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("s")})
-
-	// UIProjection should show no error (success clears error)
-	uiState := app.uiProjection.State()
-	if uiState.ErrorMessage != "" {
-		t.Errorf("After successful sprint start: ErrorMessage = %q, want empty", uiState.ErrorMessage)
-	}
-}
-
-// TestApp_RecordsSprintStartAttempted_Failure_EngineMode verifies s key records failure when sprint already active.
-func TestApp_RecordsSprintStartAttempted_Failure_EngineMode(t *testing.T) {
-	app := NewAppWithSeed(42)
-	app.currentView = ViewPlanning
-
-	// Start a sprint first
-	app.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("s")})
-
-	// Go back to planning view
-	app.currentView = ViewPlanning
-
-	// Try to start another sprint (should fail)
-	app.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("s")})
-
-	// UIProjection should have error message
-	uiState := app.uiProjection.State()
-	if uiState.ErrorMessage == "" {
-		t.Error("After failed sprint start: ErrorMessage should not be empty")
-	}
-}
-
-// TestApp_RecordsAssignmentAttempted_Success_EngineMode verifies a key records AssignmentAttempted on success.
-func TestApp_RecordsAssignmentAttempted_Success_EngineMode(t *testing.T) {
-	app := NewAppWithSeed(42)
-	app.currentView = ViewPlanning
-	app.selected = 0
-
-	// Press a to assign
-	app.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
-
-	// UIProjection should show no error (success clears error) and clear selection
-	uiState := app.uiProjection.State()
-	if uiState.ErrorMessage != "" {
-		t.Errorf("After successful assignment: ErrorMessage = %q, want empty", uiState.ErrorMessage)
-	}
-	if uiState.SelectedTicket != "" {
-		t.Errorf("After successful assignment: SelectedTicket = %q, want empty", uiState.SelectedTicket)
-	}
-}
-
 // TestApp_RecordsInputEvents_ClientMode verifies HTTP result handler records events in client mode.
 func TestApp_RecordsInputEvents_ClientMode(t *testing.T) {
 	reg := api.NewSimRegistry()
@@ -606,6 +481,140 @@ func TestApp_UC21TriggerIntegration(t *testing.T) {
 	})
 }
 
+// TestApp_UC22TriggerIntegration verifies UC22 (FiveFocusing) wiring.
+func TestApp_UC22TriggerIntegration(t *testing.T) {
+	reg := api.NewSimRegistry()
+	srv := httptest.NewServer(api.NewRouter(reg))
+	defer srv.Close()
+
+	client := NewClient(srv.URL)
+	createResp, err := client.CreateSimulation(42, "dora-strict")
+	if err != nil {
+		t.Fatalf("CreateSimulation failed: %v", err)
+	}
+
+	app := NewAppWithClient(client, createResp.Simulation)
+	app.lessonState = app.lessonState.WithVisible(true)
+	app.lessonState = app.lessonState.WithSeen(LessonOrientation)
+	app.lessonState = app.lessonState.WithSeen(LessonUncertaintyConstraint) // UC19
+	app.lessonState = app.lessonState.WithSeen(LessonConstraintHunt)        // UC20 prereq
+
+	t.Run("UC22 triggers after 3 sprints with UC20 seen", func(t *testing.T) {
+		// SprintCount >= 3 via TriggerState (simulated)
+		triggers := TriggerState{SprintCount: 3}
+		lesson := SelectLesson(ViewExecution, app.lessonState, true, false, triggers, ComparisonSummary{})
+
+		if lesson.ID != LessonFiveFocusing {
+			t.Errorf("Expected FiveFocusing lesson, got %s", lesson.ID)
+		}
+	})
+
+	t.Run("UC22 triggers with UC21 instead of UC20", func(t *testing.T) {
+		// Alternative prereq: ExploitFirst instead of ConstraintHunt
+		altApp := NewAppWithClient(client, createResp.Simulation)
+		altApp.lessonState = altApp.lessonState.WithVisible(true)
+		altApp.lessonState = altApp.lessonState.WithSeen(LessonOrientation)
+		altApp.lessonState = altApp.lessonState.WithSeen(LessonUncertaintyConstraint)
+		altApp.lessonState = altApp.lessonState.WithSeen(LessonExploitFirst) // UC21 instead of UC20
+
+		triggers := TriggerState{SprintCount: 3}
+		lesson := SelectLesson(ViewExecution, altApp.lessonState, true, false, triggers, ComparisonSummary{})
+
+		if lesson.ID != LessonFiveFocusing {
+			t.Errorf("Expected FiveFocusing lesson, got %s", lesson.ID)
+		}
+	})
+
+	t.Run("UC22 does not trigger without UC20/UC21 seen", func(t *testing.T) {
+		freshApp := NewAppWithClient(client, createResp.Simulation)
+		freshApp.lessonState = freshApp.lessonState.WithVisible(true)
+		freshApp.lessonState = freshApp.lessonState.WithSeen(LessonOrientation)
+		freshApp.lessonState = freshApp.lessonState.WithSeen(LessonUncertaintyConstraint)
+		// NOT seen: ConstraintHunt OR ExploitFirst
+
+		triggers := TriggerState{SprintCount: 3}
+		lesson := SelectLesson(ViewExecution, freshApp.lessonState, true, false, triggers, ComparisonSummary{})
+
+		if lesson.ID == LessonFiveFocusing {
+			t.Error("Should not trigger FiveFocusing without UC20 or UC21 seen")
+		}
+	})
+
+	t.Run("UC22 does not trigger with < 3 sprints", func(t *testing.T) {
+		triggers := TriggerState{SprintCount: 2} // Not enough sprints
+		lesson := SelectLesson(ViewExecution, app.lessonState, true, false, triggers, ComparisonSummary{})
+
+		if lesson.ID == LessonFiveFocusing {
+			t.Error("Should not trigger FiveFocusing with only 2 sprints")
+		}
+	})
+}
+
+// TestApp_UC23TriggerIntegration verifies UC23 (ManagerTakeaways) wiring.
+func TestApp_UC23TriggerIntegration(t *testing.T) {
+	reg := api.NewSimRegistry()
+	srv := httptest.NewServer(api.NewRouter(reg))
+	defer srv.Close()
+
+	client := NewClient(srv.URL)
+	createResp, err := client.CreateSimulation(42, "dora-strict")
+	if err != nil {
+		t.Fatalf("CreateSimulation failed: %v", err)
+	}
+
+	app := NewAppWithClient(client, createResp.Simulation)
+	app.lessonState = app.lessonState.WithVisible(true)
+	app.lessonState = app.lessonState.WithSeen(LessonOrientation)
+	app.lessonState = app.lessonState.WithSeen(LessonFiveFocusing) // UC22 prereq
+
+	t.Run("UC23 triggers in Comparison view with result and UC22 seen", func(t *testing.T) {
+		comparison := ComparisonSummary{
+			HasResult:    true,
+			WinnerPolicy: "TameFlow-Cognitive",
+			LeadTimeA:    5.0,
+			LeadTimeB:    3.5,
+		}
+
+		lesson := SelectLesson(ViewComparison, app.lessonState, false, true, TriggerState{}, comparison)
+
+		if lesson.ID != LessonManagerTakeaways {
+			t.Errorf("Expected ManagerTakeaways lesson, got %s", lesson.ID)
+		}
+	})
+
+	t.Run("UC23 does not trigger without UC22 seen", func(t *testing.T) {
+		freshApp := NewAppWithClient(client, createResp.Simulation)
+		freshApp.lessonState = freshApp.lessonState.WithVisible(true)
+		freshApp.lessonState = freshApp.lessonState.WithSeen(LessonOrientation)
+		// NOT seen: FiveFocusing
+
+		comparison := ComparisonSummary{HasResult: true, WinnerPolicy: "TameFlow-Cognitive"}
+		lesson := SelectLesson(ViewComparison, freshApp.lessonState, false, true, TriggerState{}, comparison)
+
+		if lesson.ID == LessonManagerTakeaways {
+			t.Error("Should not trigger ManagerTakeaways without UC22 seen")
+		}
+	})
+
+	t.Run("UC23 does not trigger without comparison result", func(t *testing.T) {
+		comparison := ComparisonSummary{HasResult: false} // No result yet
+		lesson := SelectLesson(ViewComparison, app.lessonState, false, false, TriggerState{}, comparison)
+
+		if lesson.ID == LessonManagerTakeaways {
+			t.Error("Should not trigger ManagerTakeaways without comparison result")
+		}
+	})
+
+	t.Run("UC23 does not trigger outside Comparison view", func(t *testing.T) {
+		comparison := ComparisonSummary{HasResult: true, WinnerPolicy: "TameFlow-Cognitive"}
+		lesson := SelectLesson(ViewExecution, app.lessonState, false, true, TriggerState{}, comparison)
+
+		if lesson.ID == LessonManagerTakeaways {
+			t.Error("Should not trigger ManagerTakeaways outside Comparison view")
+		}
+	})
+}
+
 // TestApp_FullSessionWalkthrough simulates a complete TUI session via UIProjection.
 // This replaces manual testing by programmatically verifying key→event→state flow.
 func TestApp_FullSessionWalkthrough(t *testing.T) {
@@ -666,9 +675,8 @@ func TestApp_FullSessionWalkthrough(t *testing.T) {
 	}
 
 	// 5. ASSIGNMENT
-	sendKey("j")                       // select a ticket
-	app.selected = 0                   // reset to first ticket for clean test
-	sendKey("a")                       // assign
+	sendKey("k") // back to first ticket (from second after step 3)
+	sendKey("a") // assign
 	state = app.uiProjection.State()
 	if state.ErrorMessage != "" {
 		t.Errorf("After assign: ErrorMessage = %q, want empty", state.ErrorMessage)
@@ -699,5 +707,115 @@ func TestApp_FullSessionWalkthrough(t *testing.T) {
 		t.Errorf("After Tab: ErrorMessage = %q, want empty (cleared on navigation)", state.ErrorMessage)
 	}
 
+	// 9. RUN SPRINT TO COMPLETION
+	app.currentView = ViewExecution
+	app.paused = false
+	for i := 0; i < 11; i++ { // 10 days + 1 to trigger end
+		app.Update(tickMsg(time.Now()))
+	}
+	if !app.paused {
+		t.Error("Should be paused after sprint ends")
+	}
+
+	// 10. VERIFY METRICS VIEW
+	sendTab() // → Metrics (from Execution)
+	state = app.uiProjection.State()
+	if state.CurrentView != ViewMetrics {
+		t.Errorf("After Tab: want ViewMetrics, got %v", state.CurrentView)
+	}
+	// Verify sprint completed
+	eng, _ = app.mode.GetLeft()
+	sim = eng.Engine.Sim()
+	if sim.SprintNumber < 1 {
+		t.Error("Sprint should have completed (SprintNumber >= 1)")
+	}
+
 	t.Logf("Session walkthrough complete: %d events recorded", len(app.uiProjection.events))
+}
+
+// TestWorkflow_SprintCycle_ClientMode verifies complete sprint cycle via HTTP backend.
+func TestWorkflow_SprintCycle_ClientMode(t *testing.T) {
+	// Setup test server
+	reg := api.NewSimRegistry()
+	srv := httptest.NewServer(api.NewRouter(reg))
+	defer srv.Close()
+
+	client := NewClient(srv.URL)
+	createResp, err := client.CreateSimulation(42, "dora-strict")
+	if err != nil {
+		t.Fatalf("CreateSimulation failed: %v", err)
+	}
+
+	app := NewAppWithClient(client, createResp.Simulation)
+	app.currentView = ViewPlanning
+
+	// Start sprint via key
+	_, cmd := app.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("s")})
+	if cmd != nil {
+		msg := cmd()
+		app.Update(msg)
+	}
+
+	// Verify sprint started
+	if app.uiProjection.State().ErrorMessage != "" {
+		t.Errorf("Sprint start should succeed, got error: %s", app.uiProjection.State().ErrorMessage)
+	}
+
+	// Run ticks via Space (client mode)
+	app.currentView = ViewExecution
+	app.paused = false
+	for i := 0; i < 11; i++ {
+		_, cmd := app.Update(tea.KeyMsg{Type: tea.KeySpace})
+		if cmd != nil {
+			msg := cmd()
+			app.Update(msg)
+		}
+	}
+
+	// Verify completion (client mode pauses when sprint ends)
+	if !app.paused {
+		t.Error("Should pause after sprint ends")
+	}
+
+	// Verify metrics view accessible (parity with engine mode)
+	app.Update(tea.KeyMsg{Type: tea.KeyTab}) // → Metrics
+	if app.uiProjection.State().CurrentView != ViewMetrics {
+		t.Errorf("After Tab: want ViewMetrics, got %v", app.uiProjection.State().CurrentView)
+	}
+	// Verify sprint data in state (client mode uses app.state)
+	if app.state.SprintNumber < 1 {
+		t.Error("Sprint should have completed (SprintNumber >= 1)")
+	}
+}
+
+// TestWorkflow_PolicyComparison verifies comparison workflow runs and produces results.
+func TestWorkflow_PolicyComparison(t *testing.T) {
+	app := NewAppWithSeed(42)
+
+	// Navigate to Comparison view (Tab×3: Planning → Execution → Metrics → Comparison)
+	for i := 0; i < 3; i++ {
+		app.Update(tea.KeyMsg{Type: tea.KeyTab})
+	}
+	if app.uiProjection.State().CurrentView != ViewComparison {
+		t.Fatalf("Want ViewComparison, got %v", app.uiProjection.State().CurrentView)
+	}
+
+	// Press 'c' to run comparison
+	app.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("c")})
+
+	// Verify comparison populated
+	result, ok := app.comparisonResult.Get()
+	if !ok {
+		t.Fatal("ComparisonResult should be populated after pressing 'c'")
+	}
+	// LeadTimeWinner should be one of the policies (not default zero)
+	if result.LeadTimeWinner == 0 && result.PolicyA != 0 {
+		t.Error("ComparisonResult.LeadTimeWinner should be set to a policy")
+	}
+	if result.ResultsA.FinalMetrics.LeadTimeAvg == 0 {
+		t.Error("ResultsA.FinalMetrics should be populated")
+	}
+	if result.ResultsB.FinalMetrics.LeadTimeAvg == 0 {
+		t.Error("ResultsB.FinalMetrics should be populated")
+	}
 }
