@@ -14,10 +14,11 @@
       {
         devShells.default = pkgs.mkShell {
           buildInputs = with pkgs; [
-            go
-            gopls
-            golangci-lint
             gh
+            go
+            golangci-lint
+            gopls
+            nodejs
             sqlite
           ];
         };
