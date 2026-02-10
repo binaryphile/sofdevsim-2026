@@ -170,6 +170,7 @@ func TestEventInterfaceCompliance(t *testing.T) {
 		NewIncidentStarted("s", 0, "i", "d", "", model.SeverityLow),
 		NewIncidentResolved("s", 0, "i", "d"),
 		NewSprintEnded("s", 0, 1),
+		NewBufferZoneChanged("s", 0, model.FeverGreen, model.FeverRed, 0.7),
 	}
 
 	for _, e := range events {
@@ -250,6 +251,7 @@ func TestEvents_TraceContextWorksOnAllTypes(t *testing.T) {
 		{"TicketCompleted", NewTicketCompleted("s", 0, "t", "d", 5.0).WithTrace("t", "s", "p")},
 		{"IncidentStarted", NewIncidentStarted("s", 0, "i", "d", "", model.SeverityLow).WithTrace("t", "s", "p")},
 		{"IncidentResolved", NewIncidentResolved("s", 0, "i", "d").WithTrace("t", "s", "p")},
+		{"BufferZoneChanged", NewBufferZoneChanged("s", 0, model.FeverGreen, model.FeverRed, 0.7).WithTrace("t", "s", "p")},
 	}
 
 	for _, tt := range tests {
@@ -267,7 +269,6 @@ func TestEvents_TraceContextWorksOnAllTypes(t *testing.T) {
 	}
 }
 
-// TestAllEventTypes_WithCausedBy verifies WithCausedBy works on all event types.
 func TestTraceContext_RootHasGeneratedIDs(t *testing.T) {
 	tc := NewTraceContext()
 
@@ -330,6 +331,7 @@ func TestEvents_CausedByWorksOnAllTypes(t *testing.T) {
 		{"TicketCompleted", NewTicketCompleted("s", 0, "t", "d", 5.0).WithCausedBy("cause-1")},
 		{"IncidentStarted", NewIncidentStarted("s", 0, "i", "d", "", model.SeverityLow).WithCausedBy("cause-1")},
 		{"IncidentResolved", NewIncidentResolved("s", 0, "i", "d").WithCausedBy("cause-1")},
+		{"BufferZoneChanged", NewBufferZoneChanged("s", 0, model.FeverGreen, model.FeverRed, 0.7).WithCausedBy("cause-1")},
 	}
 
 	for _, tt := range tests {
@@ -342,7 +344,7 @@ func TestEvents_CausedByWorksOnAllTypes(t *testing.T) {
 }
 
 func TestAllConstructors_ReturnVersionOne(t *testing.T) {
-	// TDD: All 19 event constructors must set Version: 1
+	// TDD: All 20 event constructors must set Version: 1
 	events := []Event{
 		NewSimulationCreated("s", 0, SimConfig{}),
 		NewSprintStarted("s", 0, 1, 2.0),
@@ -358,6 +360,7 @@ func TestAllConstructors_ReturnVersionOne(t *testing.T) {
 		NewWorkProgressed("s", 0, "t", model.PhaseImplement, 1.0),
 		NewTicketPhaseChanged("s", 0, "t", model.PhaseImplement, model.PhaseVerify),
 		NewBufferConsumed("s", 0, 1.0),
+		NewBufferZoneChanged("s", 0, model.FeverGreen, model.FeverRed, 0.7),
 		NewPolicyChanged("s", 0, model.PolicyNone, model.PolicyDORAStrict),
 		NewTicketDecomposed("s", 0, "p", nil),
 		NewSprintWIPUpdated("s", 0, 5),
@@ -369,6 +372,32 @@ func TestAllConstructors_ReturnVersionOne(t *testing.T) {
 		if e.EventVersion() != 1 {
 			t.Errorf("%s.EventVersion() = %d, want 1", e.EventType(), e.EventVersion())
 		}
+	}
+}
+
+func TestBufferZoneChangedEvent_CapturesTransition(t *testing.T) {
+	e := NewBufferZoneChanged("sim-1", 8, model.FeverYellow, model.FeverRed, 0.72)
+
+	if e.SimulationID() != "sim-1" {
+		t.Errorf("SimulationID() = %s, want sim-1", e.SimulationID())
+	}
+	if e.EventType() != "BufferZoneChanged" {
+		t.Errorf("EventType() = %s, want BufferZoneChanged", e.EventType())
+	}
+	if !strings.HasPrefix(e.EventID(), "BufferZoneChanged-") {
+		t.Errorf("EventID() = %s, want prefix BufferZoneChanged-", e.EventID())
+	}
+	if e.OccurrenceTime() != 8 {
+		t.Errorf("OccurrenceTime() = %d, want 8", e.OccurrenceTime())
+	}
+	if e.OldZone != model.FeverYellow {
+		t.Errorf("OldZone = %v, want FeverYellow", e.OldZone)
+	}
+	if e.NewZone != model.FeverRed {
+		t.Errorf("NewZone = %v, want FeverRed", e.NewZone)
+	}
+	if e.Penetration != 0.72 {
+		t.Errorf("Penetration = %f, want 0.72", e.Penetration)
 	}
 }
 

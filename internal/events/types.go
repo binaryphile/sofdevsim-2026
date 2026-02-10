@@ -780,6 +780,56 @@ func (e BufferConsumed) WithCausedBy(eventID string) BufferConsumed {
 	return e
 }
 
+// BufferZoneChanged is emitted when the fever chart zone transitions.
+type BufferZoneChanged struct {
+	Header
+	OldZone     model.FeverStatus
+	NewZone     model.FeverStatus
+	Penetration float64 // Buffer penetration ratio (0.0-1.0)
+}
+
+// NewBufferZoneChanged creates a BufferZoneChanged event with proper header.
+func NewBufferZoneChanged(simID string, tick int, oldZone, newZone model.FeverStatus, penetration float64) BufferZoneChanged {
+	return BufferZoneChanged{
+		Header: Header{
+			ID:         nextEventID("BufferZoneChanged"),
+			SimID:      simID,
+			Type:       "BufferZoneChanged",
+			OccurredAt: tick,
+			DetectedAt: time.Now(),
+			Version:    1,
+		},
+		OldZone:     oldZone,
+		NewZone:     newZone,
+		Penetration: penetration,
+	}
+}
+
+// WithTrace returns a copy with tracing fields set for fluent chaining.
+func (e BufferZoneChanged) WithTrace(traceID, spanID, parentSpanID string) BufferZoneChanged {
+	e.Header.Trace = traceID
+	e.Header.Span = spanID
+	e.Header.ParentSpan = parentSpanID
+	return e
+}
+
+// withTrace implements Event interface for polymorphic tracing.
+func (e BufferZoneChanged) withTrace(traceID, spanID, parentSpanID string) Event {
+	return e.WithTrace(traceID, spanID, parentSpanID)
+}
+
+// WithCausedBy returns a copy with causation link to parent event.
+func (e BufferZoneChanged) WithCausedBy(eventID string) BufferZoneChanged {
+	e.Header.CausedByID = eventID
+	return e
+}
+
+// IsZoneChange returns true if this event represents a zone transition.
+// This is a method expression usable as a predicate: Event.IsZoneChange
+func (e BufferZoneChanged) IsZoneChange() bool {
+	return true
+}
+
 // PolicyChanged is emitted when the simulation's sizing policy is changed.
 type PolicyChanged struct {
 	Header
