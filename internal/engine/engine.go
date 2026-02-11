@@ -302,6 +302,12 @@ func (e Engine) updateBuffer() (Engine, error) {
 	return e, nil
 }
 
+// EmitBufferConsumed directly consumes buffer days (for lesson debt carryover).
+// Returns new Engine and error (immutable pattern).
+func (e Engine) EmitBufferConsumed(days float64) (Engine, error) {
+	return e.emit(events.NewBufferConsumed(e.state().ID, e.state().CurrentTick, days))
+}
+
 // trackWIP records work-in-progress metrics for export.
 // Returns new Engine and error (immutable pattern).
 func (e Engine) trackWIP() (Engine, error) {

@@ -164,6 +164,7 @@ type SimConfig struct {
 	SprintLength int
 	Seed         int64
 	Policy       model.SizingPolicy // Sizing policy for ticket decomposition
+	BufferPct    float64            // Buffer percentage (default 0.2 = 20%)
 }
 
 // SimulationCreated is emitted when a simulation is created.

@@ -43,11 +43,17 @@ func (p Projection) Apply(evt Event) Projection {
 
 	switch e := evt.(type) {
 	case SimulationCreated:
+		// Default BufferPct to 0.2 if not specified
+		bufferPct := e.Config.BufferPct
+		if bufferPct == 0 {
+			bufferPct = 0.2
+		}
 		next.sim = model.Simulation{
 			ID:                 e.Header.SimID,
 			SizingPolicy:       e.Config.Policy,
 			Seed:               e.Config.Seed,
 			SprintLength:       e.Config.SprintLength,
+			BufferPct:          bufferPct,
 			Developers:         make([]model.Developer, 0),
 			Backlog:            make([]model.Ticket, 0),
 			ActiveTickets:      make([]model.Ticket, 0),

@@ -28,7 +28,7 @@ Sizing policy affects:
 
 ## Conceptual Model
 
-**Scope:** Single-aggregate architecture. Each simulation instance is an independent aggregate—commands operate on one simulation, no cross-instance coordination needed.
+**Scope:** Single-aggregate architecture. An **aggregate** is a self-contained unit that receives commands, enforces business rules, and emits events (ES Guide §20). Each simulation instance is one aggregate—commands operate on one simulation at a time, and everything inside stays consistent together. No cross-simulation coordination needed; this is the simplest event-sourcing setup.
 
 ### How State Works in This Simulation
 

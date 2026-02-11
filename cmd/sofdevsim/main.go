@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/binaryphile/sofdevsim-2026/internal/api"
+	"github.com/binaryphile/sofdevsim-2026/internal/lesson"
 	"github.com/binaryphile/sofdevsim-2026/internal/tui"
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -18,7 +19,27 @@ func main() {
 	port := flag.Int("port", 8080, "HTTP API port")
 	clientMode := flag.Bool("client", false, "Use HTTP client mode (creates simulation via API)")
 	localMode := flag.Bool("local", false, "Force local engine mode (for export, save/load, comparison)")
+	lessonName := flag.String("lesson", "", "Run interactive lesson (e.g., buffer-crisis)")
+	proverPath := flag.String("prover-path", "", "Path to zk-event-proofs project (default: ~/projects/zk-event-proofs)")
 	flag.Parse()
+
+	// Handle lesson mode
+	if *lessonName != "" {
+		l, ok := lesson.Lessons[*lessonName]
+		if !ok {
+			fmt.Fprintf(os.Stderr, "Unknown lesson: %s\n", *lessonName)
+			fmt.Fprintln(os.Stderr, "Available lessons:")
+			for name, les := range lesson.Lessons {
+				fmt.Fprintf(os.Stderr, "  %s - %s\n", name, les.Description())
+			}
+			os.Exit(1)
+		}
+		if err := l.Run(*proverPath); err != nil {
+			fmt.Fprintf(os.Stderr, "Lesson error: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
 
 	// Negative seeds treated as 0 (random)
 	if *seed < 0 {

@@ -28040,3 +28040,80 @@ Iterative UX improvements to the HTML report based on user feedback:
 
 **Why it matters:**
 Better visual hierarchy and clearer explanations make the report more useful for managers unfamiliar with TOC/Critical Chain concepts.
+
+---
+## Approved Plan: 2026-01-29
+
+# Plan: Define "Aggregate" in design.md
+
+## Objective
+Define the term "aggregate" at line 31 of `docs/design.md` where it's used but not explained.
+
+## Analysis
+Grepped design.md for ES terminology. Already defined:
+- Event sourcing (line 37, bank analogy) ✓
+- Projection (line 43) ✓
+- CQRS (line 71) ✓
+- Events (lines 39-42) ✓
+
+**Only undefined term: "aggregate"** (line 31)
+
+Current text:
+> **Scope:** Single-aggregate architecture. Each simulation instance is an independent aggregate—commands operate on one simulation, no cross-instance coordination needed.
+
+## Approach
+Expand line 31 to define "aggregate" inline. No new section needed.
+
+**Draft replacement for line 31:**
+```markdown
+**Scope:** Single-aggregate architecture. An **aggregate** is a self-contained unit that receives commands, enforces business rules, and emits events (ES Guide §20). Each simulation instance is one aggregate—commands operate on one simulation at a time, and everything inside stays consistent together. No cross-simulation coordination needed; this is the simplest event-sourcing setup.
+```
+
+**Changes from v1:**
+- Removed "transactional boundary" (jargon defining jargon)
+- Replaced with plain English: "everything inside stays consistent together"
+- Fixed cross-reference: §20 (DDD Connection) defines aggregate, not §6
+
+## Source
+- ES Guide §20: "Aggregate = Event-sourced entity with command handlers"
+- Greg Young, CQRS Documents: Aggregate is the consistency boundary for commands
+
+## Files to Modify
+- `docs/design.md` line 31 - Expand "aggregate" definition inline
+- `/home/ted/projects/share/tandem-protocol/tandem-protocol.md` - Remove `*-completion-contract.md` pattern from Step 0 glob
+
+## Verification
+1. Read line 31 - "aggregate" should be clear to ES newcomer
+2. Grep for other undefined ES terms (none expected)
+3. ES Guide §6 cross-reference is accurate
+
+---
+## Approved Contract: 2026-01-29
+
+# Phase 1 Contract: Define "Aggregate" in design.md
+
+**Created:** 2026-01-29
+
+## Step 1 Checklist
+- [x] 1a: Presented understanding
+- [x] 1b: Asked clarifying questions
+- [x] 1b-answer: Received answers
+- [x] 1c: Contract created (this file)
+- [x] 1d: Approval received
+- [x] 1e: Plan + contract archived
+
+## Objective
+Define the term "aggregate" at line 31 of `docs/design.md` where it's used but not explained.
+
+## Success Criteria
+- [ ] Line 31 expanded with inline definition of "aggregate"
+- [ ] Definition uses plain English, no jargon-defining-jargon
+- [ ] Cross-reference to ES Guide §20 is accurate
+- [ ] Tandem protocol Step 0 pattern fixed (remove `*-completion-contract.md`)
+
+## Approach
+1. Edit `docs/design.md` line 31 with approved draft text
+2. Edit `/home/ted/projects/share/tandem-protocol/tandem-protocol.md` to remove obsolete glob pattern
+
+## Token Budget
+Estimated: 5-10K tokens (simple text edits)

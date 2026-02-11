@@ -43,13 +43,17 @@ func (u UnderstandingLevel) String() string {
 	return [...]string{"Low", "Medium", "High"}[u]
 }
 
-// FeverStatus represents the buffer consumption state in TameFlow
+// FeverStatus represents the TameFlow fever chart state.
+// Zone is determined by comparing progress (work done) to buffer consumption:
+// - Green: progress > buffer (ahead of schedule)
+// - Yellow: progress ≈ buffer (on track)
+// - Red: progress < buffer (behind - consuming buffer faster than completing work)
 type FeverStatus int
 
 const (
-	FeverGreen  FeverStatus = iota // <33% buffer consumed
-	FeverYellow                    // 33-66% consumed
-	FeverRed                       // >66% consumed
+	FeverGreen  FeverStatus = iota // Progress ahead of buffer consumption
+	FeverYellow                    // Progress roughly equals buffer consumption
+	FeverRed                       // Progress behind buffer consumption
 )
 
 func (f FeverStatus) String() string {

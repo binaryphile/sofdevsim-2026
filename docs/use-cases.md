@@ -269,11 +269,11 @@ None (self-contained simulation, no external services)
 
 ---
 
-### UC4: Monitor Buffer Consumption
+### UC4: Monitor Buffer Consumption (Fever Chart)
 
 **Primary Actor:** Simulation Operator
 
-**Goal in Context:** Track sprint buffer consumption to identify at-risk sprints early and take corrective action.
+**Goal in Context:** Track the relationship between work progress and buffer consumption to identify at-risk sprints early and take corrective action.
 
 **Scope:** Software Development Simulation
 
@@ -282,15 +282,22 @@ None (self-contained simulation, no external services)
 **Main Success Scenario:**
 
 1. Operator observes fever chart in Execution view during active sprint
-2. System shows buffer percentage used with color indicator
-3. System displays remaining buffer days
-4. Operator identifies sprint health (Green = on track, Yellow = at risk, Red = over budget)
-5. If at risk, operator takes corrective action (decompose, reassign)
+2. System shows work progress %, buffer consumption %, and their ratio
+3. System displays color-coded status based on TameFlow fever chart model:
+   - 🟢 Green: Ratio < 1 (buffer use is less than progress - ahead)
+   - 🟡 Yellow: Ratio ≈ 1 (buffer use roughly matches progress - on track)
+   - 🔴 Red: Ratio > 1 (buffer use exceeds progress - behind)
+4. Operator interprets ratio: e.g., ratio of 2.0 means buffer consumption is 2x progress
+5. If ratio > 1 (red zone), operator takes corrective action (stop starting, focus on finishing)
 
 **Extensions:**
 
-- 2a. *Buffer exceeds 100%:* Red status indicates sprint will likely miss commitment
-- 4a. *No risk identified:* Operator continues observing; no action needed
+- 2a. *Progress < 5%:* Ratio not shown (insufficient data); zone based on diagonal thresholds
+- 2b. *Progress = 0, Buffer = 0:* Yellow (starting state, no data yet)
+- 2c. *Progress = 0, Buffer > 0:* Red (consuming buffer with no progress is dangerous)
+- 3a. *Early sprint, high buffer use:* Red zone triggers earlier due to diagonal boundaries (early buffer consumption is more dangerous than late)
+- 5a. *Ratio improving:* Operator observes trend; no action needed if trending toward green
+- 5b. *Buffer exhausted but work complete:* Using all buffer is acceptable if progress reaches 100%. Buffer exists to absorb uncertainty, not to be preserved.
 
 ---
 
