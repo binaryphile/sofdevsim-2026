@@ -269,35 +269,56 @@ None (self-contained simulation, no external services)
 
 ---
 
-### UC4: Monitor Buffer Consumption (Fever Chart)
+### UC4: Respond to Buffer Crisis
 
 **Primary Actor:** Simulation Operator
 
-**Goal in Context:** Track the relationship between work progress and buffer consumption to identify at-risk sprints early and take corrective action.
+**Goal in Context:** Recognize an at-risk sprint and take corrective action before the buffer is exhausted.
 
 **Scope:** Software Development Simulation
 
 **Level:** User Goal (Blue)
 
+**Stakeholders and Interests:**
+
+- *Scrum Master:* Wants early warning of at-risk sprints
+- *Team Lead:* Wants data-driven decision on when to intervene
+- *Developer:* Wants clear signal to stop starting, start finishing
+
+**Preconditions:**
+
+- Sprint is active
+- System is displaying Execution view with fever chart
+
+**Trigger:** Fever chart transitions to Yellow or Red zone
+
 **Main Success Scenario:**
 
-1. Operator observes fever chart in Execution view during active sprint
-2. System shows work progress %, buffer consumption %, and their ratio
-3. System displays color-coded status based on TameFlow fever chart model:
-   - 🟢 Green: Ratio < 1 (buffer use is less than progress - ahead)
-   - 🟡 Yellow: Ratio ≈ 1 (buffer use roughly matches progress - on track)
-   - 🔴 Red: Ratio > 1 (buffer use exceeds progress - behind)
-4. Operator interprets ratio: e.g., ratio of 2.0 means buffer consumption is 2x progress
-5. If ratio > 1 (red zone), operator takes corrective action (stop starting, focus on finishing)
+1. System signals zone change (Yellow or Red) during sprint
+2. Operator reviews fever chart: progress %, buffer %, ratio
+3. System shows WIP count and active ticket status to aid diagnosis
+4. Operator takes corrective action (stop starting new work, swarm on blockers)
+5. System shows ratio improving over subsequent ticks
+6. Sprint completes with buffer remaining or work finished
 
 **Extensions:**
 
-- 2a. *Progress < 5%:* Ratio not shown (insufficient data); zone based on diagonal thresholds
-- 2b. *Progress = 0, Buffer = 0:* Yellow (starting state, no data yet)
-- 2c. *Progress = 0, Buffer > 0:* Red (consuming buffer with no progress is dangerous)
-- 3a. *Early sprint, high buffer use:* Red zone triggers earlier due to diagonal boundaries (early buffer consumption is more dangerous than late)
-- 5a. *Ratio improving:* Operator observes trend; no action needed if trending toward green
-- 5b. *Buffer exhausted but work complete:* Using all buffer is acceptable if progress reaches 100%. Buffer exists to absorb uncertainty, not to be preserved.
+- 2a. *Progress < 5%:* Ratio not meaningful yet; operator waits for more data
+- 3a. *High WIP visible:* Operator stops assigning new tickets
+- 3b. *Blocked ticket visible:* Operator focuses team on unblocking
+- 4a. *Corrective action insufficient:* Zone remains Red; operator escalates or negotiates scope
+- 6a. *Buffer exhausted before work complete:* Sprint fails; operator learns for next sprint
+- 6b. *Buffer exhausted but work complete:* Success - buffer absorbed uncertainty as intended
+
+**Postconditions (Success Guarantee):**
+
+- Operator made informed decision based on fever chart data
+- If Red zone: corrective action was attempted
+
+**Minimal Guarantee:**
+
+- Fever chart state was visible to operator
+- Zone transitions were signaled
 
 ---
 
