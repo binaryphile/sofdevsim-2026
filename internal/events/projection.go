@@ -202,10 +202,10 @@ func (p Projection) Apply(evt Event) Projection {
 		next.sim.SizingPolicy = e.NewPolicy
 
 	case BufferConsumed:
-		// Update sprint buffer consumption
+		// Update sprint buffer consumption with progress-relative fever status
 		if sprint, ok := next.sim.CurrentSprintOption.Get(); ok {
-			sprint.BufferConsumed += e.DaysConsumed
-			sprint = sprint.WithUpdatedFeverStatus()
+			progress := next.calculateProgress()
+			sprint = sprint.WithConsumedBuffer(e.DaysConsumed, progress)
 			next.sim.CurrentSprintOption = option.Of(sprint)
 		}
 
@@ -323,4 +323,26 @@ func (p Projection) withProcessed(id string) []string {
 	result[i] = id
 	copy(result[i+1:], p.processed[i:])
 	return result
+}
+
+// calculateProgress returns work completion ratio (0.0 to 1.0).
+// Progress = completed effort / total effort (backlog + active + completed).
+func (p Projection) calculateProgress() float64 {
+	var completed, total float64
+
+	for _, t := range p.sim.Backlog {
+		total += t.EstimatedDays
+	}
+	for _, t := range p.sim.ActiveTickets {
+		total += t.EstimatedDays
+	}
+	for _, t := range p.sim.CompletedTickets {
+		total += t.EstimatedDays
+		completed += t.EstimatedDays
+	}
+
+	if total == 0 {
+		return 0
+	}
+	return completed / total
 }

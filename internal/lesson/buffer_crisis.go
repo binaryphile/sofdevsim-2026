@@ -54,25 +54,21 @@ func (l BufferCrisisLesson) Run(proverPath string) error {
 	display.Text("")
 	display.Text("THE FEVER CHART (TameFlow)")
 	display.Text("──────────────────────────")
-	display.Text("The fever chart compares PROGRESS (work done) to BUFFER CONSUMPTION:")
+	display.Text("The fever chart compares buffer consumption to work progress:")
 	display.Text("")
-	display.Text("  🟢 GREEN  Progress > Buffer   You're AHEAD - completing faster than consuming")
-	display.Text("  🟡 YELLOW Progress ≈ Buffer   ON TRACK - roughly balanced")
-	display.Text("  🔴 RED    Progress < Buffer   BEHIND - consuming buffer faster than finishing")
+	display.Text("  Ratio = Used% ÷ Work%")
 	display.Text("")
-	display.Text("Example: 30% work done, 50% buffer used → 🔴 RED (behind)")
-	display.Text("         50% work done, 30% buffer used → 🟢 GREEN (ahead)")
+	display.Text("  🟩🟩🟩🟩🟩🟩🟨🟨🟨🟨🟨🟨🟨🟥🟥🟥🟥🟥🟥🟥🟥🟥🟥🟥🟥")
+	display.Text("  0     0.66     1.0            1.5          2.0+")
+	display.Text("    AHEAD      ON TRACK            BEHIND")
 	display.Text("")
-	display.Text("WHAT YOU'LL SEE")
-	display.Text("───────────────")
-	display.Text("  Day  5: Work 15% (-21%) | Buffer 20% | 🔴 BEHIND")
-	display.Text("               ↑     ↑           ↑           ↑")
-	display.Text("            actual  delta     buffer      zone")
-	display.Text("            done    from      consumed")
-	display.Text("                    expected")
+	display.Text("Examples:")
+	display.Text("  Work 40%, Used 20%  →  0.5 🟢  (used half as much buffer as progress)")
+	display.Text("  Work 40%, Used 40%  →  1.0 🟡  (used same buffer as progress)")
+	display.Text("  Work 20%, Used 40%  →  2.0 🔴  (used 2x as much buffer as progress)")
 	display.Text("")
-	display.Text("The delta shows how far ahead (+) or behind (-) you are from")
-	display.Text("where you should be based on time elapsed in the sprint.")
+	display.Text("Using all your buffer isn't failure - it's what buffer is FOR.")
+	display.Text("Failure is using all buffer before finishing the work.")
 	display.Text("")
 	display.Text("Your goal: Navigate the team through a crisis using TameFlow principles.")
 	display.Text("")
@@ -194,40 +190,49 @@ func (l BufferCrisisLesson) Run(proverPath string) error {
 					progress = completedPoints / totalPoints
 				}
 
-				// Expected progress based on time elapsed in sprint
-				expectedProgress := sp.ProgressPct(sim.CurrentTick)
-				progressDelta := progress - expectedProgress
-
 				bufferPct := sp.BufferPctUsed()
 
-				// TameFlow fever chart: compare progress to buffer consumption
-				// Green = ahead (progress > buffer), Red = behind (progress < buffer)
-				diff := progress - bufferPct
+				// TameFlow fever chart uses diagonal zone boundaries:
+				// - Green-Yellow boundary: line from (0,0) to (100%, 66%)
+				//   At any progress%, buffer < progress * 0.66 is GREEN
+				// - Yellow-Red boundary: line from (0, 33%) to (100%, 100%)
+				//   At any progress%, buffer > 0.33 + progress * 0.67 is RED
 				var currentZone model.FeverStatus
 				var zoneLabel string
-				switch {
-				case diff > 0.05: // More than 5% ahead
-					currentZone = model.FeverGreen
-					zoneLabel = "🟢 AHEAD"
-				case diff < -0.05: // More than 5% behind
-					currentZone = model.FeverRed
-					zoneLabel = "🔴 BEHIND"
-				default: // Within 5% = on track
-					currentZone = model.FeverYellow
-					zoneLabel = "🟡 ON TRACK"
-				}
 
-				// Format delta with sign - only show once work has started completing
-				var deltaStr string
-				if completedPoints > 0 {
-					deltaStr = fmt.Sprintf("(%+.0f%%)", progressDelta*100)
+				greenThreshold := progress * 0.66           // below this = GREEN
+				redThreshold := 0.33 + progress*0.67        // above this = RED
+
+				// Expected progress based on time elapsed in sprint
+				expected := sp.ProgressPct(sim.CurrentTick)
+
+				// Calculate ratio = buffer% / progress%
+				// Ratio < 1 means buffer use is less than progress (good)
+				// Ratio > 1 means buffer use exceeds progress (bad)
+				// Only show ratio once we have meaningful progress (>5%)
+				var ratioStr string
+				if progress > 0.05 {
+					ratio := bufferPct / progress
+					ratioStr = fmt.Sprintf("%.1f", ratio)
 				} else {
-					deltaStr = "     " // pad to keep alignment
+					ratioStr = "-" // not enough progress for meaningful ratio
 				}
 
-				// Live status: Day, progress (delta from expected), buffer, zone
-				fmt.Printf("\r  Day %2d: Work %3.0f%% %s | Buffer %3.0f%% | %s     ",
-					sim.CurrentTick, progress*100, deltaStr, bufferPct*100, zoneLabel)
+				switch {
+				case bufferPct <= greenThreshold:
+					currentZone = model.FeverGreen
+					zoneLabel = "🟢"
+				case bufferPct >= redThreshold:
+					currentZone = model.FeverRed
+					zoneLabel = "🔴"
+				default:
+					currentZone = model.FeverYellow
+					zoneLabel = "🟡"
+				}
+
+				// Live status: Day, work (expected), buffer used, ratio, zone
+				fmt.Printf("\r  Day %2d: Work %3.0f%% (exp %2.0f%%) | Used %3.0f%% | Ratio %s %s     ",
+					sim.CurrentTick, progress*100, expected*100, bufferPct*100, ratioStr, zoneLabel)
 				if currentZone != lastZone {
 					tick := eng.Sim().CurrentTick
 					fmt.Println()

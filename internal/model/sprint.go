@@ -86,24 +86,32 @@ func (s Sprint) BufferPctUsed() float64 {
 	return s.BufferConsumed / s.BufferDays
 }
 
-// WithUpdatedFeverStatus returns sprint with fever status recalculated
-func (s Sprint) WithUpdatedFeverStatus() Sprint {
-	pctUsed := s.BufferPctUsed()
+// WithUpdatedFeverStatus returns sprint with fever status recalculated using
+// TameFlow diagonal thresholds. Zone boundaries compare buffer consumption
+// to work progress:
+//   - Green: bufferPct <= progress × 0.66 (ahead of schedule)
+//   - Red: bufferPct >= 0.33 + progress × 0.67 (behind schedule)
+//   - Yellow: between thresholds (on track)
+func (s Sprint) WithUpdatedFeverStatus(progress float64) Sprint {
+	bufferPct := s.BufferPctUsed()
+	greenThreshold := progress * 0.66
+	redThreshold := 0.33 + progress*0.67
+
 	switch {
-	case pctUsed < 0.33:
+	case bufferPct <= greenThreshold:
 		s.FeverStatus = FeverGreen
-	case pctUsed < 0.66:
-		s.FeverStatus = FeverYellow
-	default:
+	case bufferPct > redThreshold:
 		s.FeverStatus = FeverRed
+	default:
+		s.FeverStatus = FeverYellow
 	}
 	return s
 }
 
 // WithConsumedBuffer returns sprint with buffer consumed and fever updated
-func (s Sprint) WithConsumedBuffer(days float64) Sprint {
+func (s Sprint) WithConsumedBuffer(days, progress float64) Sprint {
 	s.BufferConsumed += days
-	return s.WithUpdatedFeverStatus()
+	return s.WithUpdatedFeverStatus(progress)
 }
 
 // WithTicket returns sprint with ticket added

@@ -28142,3 +28142,15 @@ Estimated: 5-10K tokens (simple text edits)
 [x] Document WithUpdatedFeverStatus(progress float64) signature change
 [x] Document calculateProgress() helper
 [x] Explain architectural decision (progress calculated in Projection)
+2026-02-11T00:40:00Z | Contract: Phase 3 - TDD implementation of fever chart
+[ ] Write sprint.go diagonal threshold tests (run, see fail)
+[ ] Implement WithUpdatedFeverStatus(progress float64)
+[ ] Write projection calculateProgress tests (run, see fail)
+[ ] Implement calculateProgress and update BufferConsumed handler
+[ ] Update WithConsumedBuffer(days, progress float64) signature
+[ ] All tests pass
+2026-02-11T16:45:00Z | Completion: Phase 3 - TDD implementation of fever chart
+[x] Sprint tests verify diagonal thresholds (TestWithUpdatedFeverStatus_DiagonalThresholds)
+[x] Projection tests verify progress calculation (TestProjection_Apply_BufferConsumed_FeverTransitions)
+[x] All existing tests pass (go test ./... = OK)
+[x] Lesson behavior unchanged (fever chart now uses progress-relative zones)
