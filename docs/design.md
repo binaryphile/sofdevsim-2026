@@ -242,6 +242,55 @@ Incidents are generated when tickets complete, based on understanding:
 | MTTR | Average of (ResolvedAt - CreatedAt) for incidents | Lower |
 | Change Fail Rate | Total incidents ÷ Total deploys | Lower |
 
+### Fever Chart (TameFlow)
+
+The fever chart tracks project health by comparing work progress to buffer consumption. Based on Critical Chain Project Management and TameFlow methodology.
+
+**Inputs:**
+- `progress` = completed story points ÷ total story points (0.0 to 1.0)
+- `bufferPct` = buffer consumed ÷ total buffer (0.0 to 1.0+)
+
+**Ratio:**
+```
+ratio = bufferPct ÷ progress
+```
+- Ratio < 1: Buffer use is less than progress (good)
+- Ratio ≈ 1: Balanced
+- Ratio > 1: Buffer use exceeds progress (bad)
+
+**Zone Boundaries (diagonal lines per Prof. Holt method):**
+
+| Zone | Condition | Meaning |
+|------|-----------|---------|
+| 🟢 Green | `bufferPct ≤ progress × 0.66` | Ahead of schedule |
+| 🟡 Yellow | Between green and red thresholds | On track |
+| 🔴 Red | `bufferPct ≥ 0.33 + progress × 0.67` | Behind schedule |
+
+**Why diagonal boundaries?** Early buffer consumption is more dangerous than late buffer consumption. At 20% progress, using 40% buffer is alarming. At 80% progress, using 90% buffer is acceptable.
+
+**Special cases:**
+- Progress = 0, Buffer = 0: Yellow (starting state)
+- Progress = 0, Buffer > 5%: Red (consuming buffer with no progress)
+- Progress < 5%: Ratio not displayed (insufficient data)
+
+**Source:** TameFlow book "Hyper-Productive Knowledge Work" Chapter 23; [TameFlow blog](https://tameflow.com/blog/2017-03-30/how-to-draw-buffer-fever-charts/)
+
+**Implementation:**
+
+Sprint owns buffer state but not progress (Sprint doesn't know total work). Therefore:
+
+1. `Sprint.WithUpdatedFeverStatus(progress float64)` - accepts progress as parameter
+2. `Projection.calculateProgress()` - computes completed ÷ total from ticket state
+3. When `BufferConsumed` event is applied, Projection calculates progress and passes to Sprint
+
+```go
+// In Projection.Apply() for BufferConsumed:
+progress := p.calculateProgress()  // completed ÷ total
+sprint = sprint.WithUpdatedFeverStatus(progress)
+```
+
+This keeps Sprint focused on buffer math while Projection handles cross-ticket calculations.
+
 ---
 
 ## Architecture
@@ -400,7 +449,7 @@ Contextual teaching that adapts to current view and simulation state. Press 'h' 
 |------|-----------|--------|
 | (any) | First enable | Orientation (simulation intro) |
 | Planning | — | Understanding levels (±5%, ±20%, ±50%) |
-| Execution | Sprint active | Fever chart (buffer consumption) |
+| Execution | Sprint active | Fever chart (progress vs buffer ratio) |
 | Execution | Sprint ended | Phase progress (ticket phases) |
 | Metrics | — | DORA metrics (4 metrics + direction) |
 | Comparison | Has results | Policy comparison (DORA vs TameFlow) |
@@ -416,7 +465,7 @@ Contextual teaching that adapts to current view and simulation state. Press 'h' 
 *Original 8 (UC13):*
 1. **Orientation** — Simulation intro, understanding→variance insight
 2. **Understanding** — Understanding levels and their variance bounds
-3. **Fever Chart** — Buffer consumption and traffic-light zones
+3. **Fever Chart** — TameFlow progress-vs-buffer ratio with diagonal zone boundaries
 4. **Phase Progress** — 8-phase ticket workflow
 5. **DORA Metrics** — Four DevOps Research metrics
 6. **Policy Comparison** — DORA-Strict vs TameFlow-Cognitive

@@ -28117,3 +28117,28 @@ Define the term "aggregate" at line 31 of `docs/design.md` where it's used but n
 
 ## Token Budget
 Estimated: 5-10K tokens (simple text edits)
+2026-02-11T00:00:00Z | Contract: Sync sprint.go with TameFlow fever chart
+[ ] Update WithUpdatedFeverStatus(progress float64) signature
+[ ] Update WithConsumedBuffer(days, progress float64) signature
+[ ] Add calculateProgress() to Projection
+[ ] Update BufferConsumed event handler to pass progress
+[ ] Tests pass
+2026-02-11T00:00:00Z | Contract: Phase 1 - Update UC4 fever chart documentation
+[ ] Review UC4 against buffer_crisis.go implementation
+[ ] Add any missing special cases/extensions
+[ ] Ensure ratio display is documented
+2026-02-11T00:15:00Z | Completion: Phase 1 - UC4 updated
+[x] UC4 covers all fever chart behavior
+[x] Added edge case extensions (2b, 2c, 5b)
+2026-02-11T00:20:00Z | Contract: Phase 2 - Update design docs for fever chart implementation
+[ ] Document WithUpdatedFeverStatus(progress float64) signature change
+[ ] Document calculateProgress() helper
+[ ] Explain architectural decision (progress calculated in Projection)
+2026-02-11T00:20:00Z | Contract: Phase 2 - Update design docs for fever chart implementation
+[ ] Document WithUpdatedFeverStatus(progress float64) signature change
+[ ] Document calculateProgress() helper
+[ ] Explain architectural decision (progress calculated in Projection)
+2026-02-11T00:35:00Z | Completion: Phase 2 - Design docs updated
+[x] Document WithUpdatedFeverStatus(progress float64) signature change
+[x] Document calculateProgress() helper
+[x] Explain architectural decision (progress calculated in Projection)
