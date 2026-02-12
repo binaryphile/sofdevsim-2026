@@ -6,10 +6,8 @@ github.com/aymanbagabas/go-osc52/v2 v2.0.1 h1:HwpRHbFMcZLEVr42D4p7XBqjyuxQH5SMiE
 github.com/aymanbagabas/go-osc52/v2 v2.0.1/go.mod h1:uYgXzlJ7ZpABp8OJ+exZzJJhRNQ2ASbcXHWsFqH8hp8=
 github.com/aymanbagabas/go-udiff v0.3.1 h1:LV+qyBQ2pqe0u42ZsUEtPiCaUoqgA9gYRDs3vj1nolY=
 github.com/aymanbagabas/go-udiff v0.3.1/go.mod h1:G0fsKmG+P6ylD0r6N/KgQD/nWzgfnl8ZBcNLgcbrw8E=
-github.com/binaryphile/fluentfp v0.14.0 h1:F9UR1Kg9Tl07S61IgtP9QKBaI7PTY9vs5bL0lrMztgU=
-github.com/binaryphile/fluentfp v0.14.0/go.mod h1:xf23adeRO0KOkBs4iyrM0c7Ed3kV0Ol4IpRID3DW+do=
-github.com/binaryphile/fluentfp v0.14.1-0.20260212210206-580bbb17851f h1:3r0WCNhJQ+fFCX8HQVqI0k1fpqlw4okRCiNC3K4vBew=
-github.com/binaryphile/fluentfp v0.14.1-0.20260212210206-580bbb17851f/go.mod h1:xf23adeRO0KOkBs4iyrM0c7Ed3kV0Ol4IpRID3DW+do=
+github.com/binaryphile/fluentfp v0.15.0 h1:QujUfSj52n4UvDpT4Ge4UvlQoea5Rl4NauSmgdi3xzA=
+github.com/binaryphile/fluentfp v0.15.0/go.mod h1:xf23adeRO0KOkBs4iyrM0c7Ed3kV0Ol4IpRID3DW+do=
 github.com/charmbracelet/bubbles v0.20.0 h1:jSZu6qD8cRQ6k9OMfR1WlM+ruM8fkPWkHvQWD9LIutE=
 github.com/charmbracelet/bubbles v0.20.0/go.mod h1:39slydyswPy+uVOHZ5x/GjwVAFkCsV8IIVy+4MhzwwU=
 github.com/charmbracelet/bubbletea v1.3.10 h1:otUDHWMMzQSB0Pkc87rm691KZ3SWa4KUlvF9nRvCICw=
