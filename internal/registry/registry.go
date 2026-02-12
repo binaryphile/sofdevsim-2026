@@ -6,6 +6,7 @@ import (
 	"math/rand"
 	"sync"
 
+	"github.com/binaryphile/fluentfp/option"
 	"github.com/binaryphile/sofdevsim-2026/internal/engine"
 	"github.com/binaryphile/sofdevsim-2026/internal/events"
 	"github.com/binaryphile/sofdevsim-2026/internal/metrics"
@@ -120,34 +121,13 @@ func (r *SimRegistry) CreateSimulation(seed int64, policy model.SizingPolicy) (s
 	return id, nil
 }
 
-// RegisterSimulation registers an existing simulation with the shared event store.
-// Returns the engine configured to emit to the shared store, and any error.
-// Use this to share simulations between TUI and API.
-func (r *SimRegistry) RegisterSimulation(sim model.Simulation, tracker metrics.Tracker) (engine.Engine, error) {
-	eng := engine.NewEngineWithStore(sim.Seed, r.store)
-	var err error
-	if eng, err = eng.EmitLoadedState(sim); err != nil {
-		return eng, fmt.Errorf("emit loaded state: %w", err)
-	}
-
-	r.mu.Lock()
-	r.instances[sim.ID] = SimInstance{
-		Sim:     sim,
-		Engine:  eng,
-		Tracker: tracker,
-	}
-	r.mu.Unlock()
-
-	return eng, nil
-}
-
-// GetInstance returns simulation instance using comma-ok pattern.
+// GetInstanceOption returns simulation instance as an option.
 // State should be read via engine.Sim() (projection), not inst.Sim.
-func (r *SimRegistry) GetInstance(id string) (SimInstance, bool) {
+func (r *SimRegistry) GetInstanceOption(id string) option.Basic[SimInstance] {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	inst, ok := r.instances[id]
-	return inst, ok
+	return option.New(inst, ok)
 }
 
 // SetInstance stores a simulation instance in the registry.

@@ -96,7 +96,7 @@ func TestClient_Assign_MovesTicketToActive(t *testing.T) {
 	}
 
 	// Get simulation state to find a ticket ID
-	inst, ok := registry.GetInstance(resp.Simulation.ID)
+	inst, ok := registry.GetInstanceOption(resp.Simulation.ID).Get()
 	if !ok {
 		t.Fatal("Simulation not in registry")
 	}
@@ -118,7 +118,7 @@ func TestClient_Assign_MovesTicketToActive(t *testing.T) {
 	// the HTTP call holds the OLD engine value. HTTP handlers update the registry
 	// with a new engine value, so we must re-fetch to see the change.
 	// This is the correct pattern when verifying state after any registry mutation.
-	inst, _ = registry.GetInstance(resp.Simulation.ID)
+	inst = registry.GetInstanceOption(resp.Simulation.ID).OrZero()
 	state = inst.Engine.Sim()
 	found := false
 	for _, at := range state.ActiveTickets {
@@ -152,7 +152,7 @@ func TestClient_StartSprint_InitializesSprintState(t *testing.T) {
 	}
 
 	// Verify sprint started
-	inst, _ := registry.GetInstance(resp.Simulation.ID)
+	inst := registry.GetInstanceOption(resp.Simulation.ID).OrZero()
 	state := inst.Engine.Sim()
 	if _, active := state.CurrentSprintOption.Get(); !active {
 		t.Error("Sprint not started")
@@ -172,7 +172,7 @@ func TestClient_Idempotency(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateSimulation failed: %v", err)
 	}
-	inst, ok := registry.GetInstance(resp.Simulation.ID)
+	inst, ok := registry.GetInstanceOption(resp.Simulation.ID).Get()
 	if !ok {
 		t.Fatal("Simulation not in registry")
 	}
@@ -397,7 +397,7 @@ func TestClient_Decompose_SplitsTicketIntoChildren(t *testing.T) {
 	}
 
 	// Get a ticket from backlog
-	inst, _ := registry.GetInstance(createResp.Simulation.ID)
+	inst := registry.GetInstanceOption(createResp.Simulation.ID).OrZero()
 	state := inst.Engine.Sim()
 
 	// Find a ticket that might be decomposable (large, unclear)

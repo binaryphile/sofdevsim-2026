@@ -121,6 +121,14 @@ None (self-contained simulation, no external services)
 
 > Alex, a developer adding a new lesson trigger, needs to verify the lesson panel displays correctly when the trigger fires. Rather than launching the TUI and manually clicking through states, Alex writes a test that constructs an `ExecutionViewModel` with the trigger conditions met, passes it to a `PlainTextRenderer`, and asserts the output contains "Understanding IS the Constraint". The test runs in milliseconds without terminal dependencies. Alex likes the ViewModel layer because it separates *what to display* from *how to display it*—the same ViewModel feeds both Bubble Tea (production) and plain text (testing). When the test passes, Alex runs the HTML renderer with the same ViewModel to verify the export looks right too. Alex realizes this architecture means new renderers (JSON API, accessibility mode) are just new implementations of the Renderer interface.
 
+### Story 9: The Workshop Presenter
+
+> Priya, a software engineering manager, projects the simulation onto a conference room screen for a workshop on flow-based development. During the planning phase, she points to the ASCII office layout: "See those colored circles gathered in the conference room? That's our virtual team in a planning meeting." She assigns a ticket to the purple developer—the class watches the circle animate smoothly from the conference room back to its cubicle. "Now watch," Priya says, starting the sprint. The developer icons pulse through different shapes (○◔◑◕●), showing work in progress. On day 8, a ticket estimated at 5 days still isn't done. A thought bubble appears next to the developer: "!@#$%". The class laughs. "That's frustration—the estimate was wrong." Priya presses '1' to slow the simulation to 10 seconds per tick so the class can follow along. She likes the office animation because it makes the abstract simulation tangible—you can *see* context switches, overruns, and idle time without reading numbers.
+
+### Story 10: The Distributed Workshop (Future)
+
+> *[Placeholder for future capability]* Morgan, running an online TOC workshop with 30 participants, starts a controller session that streams events to all connected clients. Half the participants watch the same simulation on their laptops—a "broadcast mode" where Morgan's TUI actions appear on everyone's screen simultaneously. The other half each run their own simulation with the same seed, acting as "Scrum Master" while Morgan observes as "Manager." When Morgan assigns a ticket on the broadcast simulation, all observers see it; when a participant assigns a ticket on their own simulation, only they see it, but Morgan can peek at any session. Different clients use different UIs—some prefer TUI, others use a web dashboard, one accessibility-focused participant uses a screen-reader-friendly text stream. Morgan likes this because distributed workshops finally feel as interactive as in-person ones.
+
 ---
 
 ## Actor-Goal List
@@ -141,6 +149,14 @@ None (self-contained simulation, no external services)
 | 10 | Pause/resume simulation | Indigo | No - control | - |
 | 11 | Export simulation data to CSV | Blue | Yes - have file for analysis | Researcher - validate hypotheses; Educator - teach with data |
 | 12 | Save/load simulation state | Blue | Yes - can resume later | Researcher - long experiments; All - pause/resume workflow |
+| 27 | Watch planning session (office animation) | Blue | Yes - see team gathered | Educator - visual teaching aid |
+| 28 | Watch ticket assignment animation | Blue | Yes - see developer move | Educator - visualize assignment |
+| 29 | Watch developer working animation | Blue | Yes - see work in progress | All - visual feedback |
+| 30 | Notice developer overrun frustration | Blue | Yes - see warning indicator | Scrum Master - early warning |
+| 31 | Watch ticket completion | Blue | Yes - see work finish | All - completion feedback |
+| 32 | Control simulation speed | Blue | Yes - pace set for audience | Educator - adjust for comprehension |
+| 33 | Pause/resume with animation state | Blue | Yes - can discuss frozen state | Educator - teachable moments |
+| 34 | Resize terminal gracefully | Blue | Yes - layout adapts | All - usability |
 
 **Primary Actor:** Automated Test Agent (Claude or script)
 
@@ -178,7 +194,7 @@ None (self-contained simulation, no external services)
 | 25 | Verify UI displays correct state without terminal | Blue | Yes - test passes | Developer - catch display bugs in CI |
 | 26 | Verify input produces correct state change | Blue | Yes - interaction verified | Developer - catch handler bugs in CI |
 
-**Use Cases Written:** Goals 1-12, 14-26 (Blue level)
+**Use Cases Written:** Goals 1-12, 14-34 (Blue level)
 
 ---
 
@@ -1096,6 +1112,293 @@ This use case requires event sourcing architecture:
 | Execution view, sprint active | Space | Tick advances, day increments |
 | Any view | Tab | View cycles to next |
 | Metrics view, no comparison | 'c' key | Comparison runs, results displayed |
+
+---
+
+### UC27: Watch Planning Session (Office Animation)
+
+**Primary Actor:** Simulation Operator
+
+**Goal in Context:** See developers gathered in conference room during planning phase, providing visual confirmation of simulation state.
+
+**Scope:** Software Development Simulation
+
+**Level:** User Goal (Blue)
+
+**Preconditions:**
+
+- TUI is running
+- No sprint is active
+
+**Postconditions (Guarantees):**
+
+- *Success:* All developers displayed in conference room with unique colors
+
+**Trigger:** Observer views any screen while no sprint is active
+
+**Main Success Scenario:**
+
+1. Operator views TUI while no sprint is active
+2. System renders ASCII office layout with cubicles and conference room
+3. System positions all developer icons inside conference room
+4. System displays each developer with assigned color and name label
+
+**Extensions:**
+
+- 2a. *Sprint becomes active:* System transitions developers to movement state (UC28)
+
+---
+
+### UC28: Watch Ticket Assignment Animation
+
+**Primary Actor:** Simulation Operator
+
+**Goal in Context:** See developer animate from conference room to their cubicle when assigned a ticket.
+
+**Scope:** Software Development Simulation
+
+**Level:** User Goal (Blue)
+
+**Preconditions:**
+
+- TUI is running in engine mode
+- Developer was in conference room
+
+**Postconditions (Guarantees):**
+
+- *Success:* Developer icon smoothly moves to cubicle, working animation begins
+
+**Trigger:** Operator assigns ticket to developer
+
+**Main Success Scenario:**
+
+1. Operator assigns ticket to developer
+2. System sets developer's target position to their cubicle
+3. System animates developer icon moving from conference room to cubicle
+4. Developer arrives at cubicle
+5. System transitions to working animation (UC29)
+
+**Extensions:**
+
+- 1a. *HTTP client mode:* System shows developer in cubicle immediately (no movement animation)
+
+---
+
+### UC29: Watch Developer Working Animation
+
+**Primary Actor:** Simulation Operator
+
+**Goal in Context:** See visual indication that developer is actively working via pulsing icon animation.
+
+**Scope:** Software Development Simulation
+
+**Level:** User Goal (Blue)
+
+**Preconditions:**
+
+- Developer has assigned ticket
+- Sprint is active
+- Developer is in cubicle
+
+**Postconditions (Guarantees):**
+
+- *Success:* Developer icon cycles through animation frames continuously
+
+**Trigger:** Developer is in cubicle with assigned ticket
+
+**Main Success Scenario:**
+
+1. System detects developer is working
+2. System starts animation timer (100ms per frame)
+3. System cycles developer icon through frames: ○ → ◔ → ◑ → ◕ → ● → ◕ → ◑ → ◔
+4. Animation continues until work state changes
+
+**Extensions:**
+
+- 3a. *ASCII-only terminal:* System uses fallback frames: O → o → . → o → O
+- 4a. *Ticket overruns estimate:* System triggers UC30 alongside working animation
+
+---
+
+### UC30: Notice Developer Overrun Frustration
+
+**Primary Actor:** Simulation Operator
+
+**Goal in Context:** See humorous visual indicator when developer has been working longer than estimated.
+
+**Scope:** Software Development Simulation
+
+**Level:** User Goal (Blue)
+
+**Preconditions:**
+
+- Developer has assigned ticket
+- ticket.ActualDays > ticket.EstimatedDays
+
+**Postconditions (Guarantees):**
+
+- *Success:* Thought bubble with expletive symbols appears next to developer in their color
+
+**Trigger:** Simulation tick causes ActualDays to exceed EstimatedDays
+
+**Main Success Scenario:**
+
+1. System detects ActualDays > EstimatedDays
+2. System enables frustration indicator for developer
+3. System renders thought bubble adjacent to developer icon
+4. System cycles thought bubble content: "!" → "@#" → "!@#$" → "@#" → "!"
+5. Thought bubble uses developer's assigned color
+
+**Extensions:**
+
+- 4a. *Ticket completes:* System clears frustration indicator (UC31)
+
+---
+
+### UC31: Watch Ticket Completion
+
+**Primary Actor:** Simulation Operator
+
+**Goal in Context:** See developer finish work and return to idle state.
+
+**Scope:** Software Development Simulation
+
+**Level:** User Goal (Blue)
+
+**Preconditions:**
+
+- Developer had assigned ticket
+- Ticket reached Done phase
+
+**Postconditions (Guarantees):**
+
+- *Success:* Working animation stops, frustration clears, developer shows idle
+
+**Trigger:** TicketCompleted event
+
+**Main Success Scenario:**
+
+1. System emits TicketCompleted event
+2. System clears developer's current ticket
+3. System stops working animation
+4. System clears frustration indicator if present
+5. System shows developer icon in idle state (static circle)
+
+**Extensions:**
+
+- 5a. *No sprint active:* Developer moves back to conference room (UC27)
+
+---
+
+### UC32: Control Simulation Speed
+
+**Primary Actor:** Simulation Operator
+
+**Goal in Context:** Adjust simulation pace to watch animations comfortably or skip ahead quickly.
+
+**Scope:** Software Development Simulation
+
+**Level:** User Goal (Blue)
+
+**Related:** Extends goal #7 (Adjust simulation speed, Indigo) with named presets and animation-aware timing.
+
+**Preconditions:**
+
+- TUI is running
+
+**Postconditions (Guarantees):**
+
+- *Success:* Simulation tick rate changes, animation frame rate unchanged (smooth visuals at any speed)
+
+**Trigger:** Operator presses speed key (1-5)
+
+**Main Success Scenario:**
+
+1. Operator presses number key 1-5
+2. System maps key to speed preset:
+   - 1: Turtle (10s/tick) - detailed observation
+   - 2: Slow (5s/tick) - default, comfortable watching
+   - 3: Normal (1s/tick) - original behavior
+   - 4: Fast (200ms/tick) - quick runs
+   - 5: Turbo (50ms/tick) - batch processing
+3. System updates tick interval
+4. System displays status message confirming speed name
+
+**Extensions:**
+
+- 2a. *+/- keys still work:* Fine-grained adjustment within current preset range
+
+---
+
+### UC33: Pause and Resume with Animation State
+
+**Primary Actor:** Simulation Operator
+
+**Goal in Context:** Freeze simulation to examine or discuss state, then resume without losing animation context.
+
+**Scope:** Software Development Simulation
+
+**Level:** User Goal (Blue)
+
+**Preconditions:**
+
+- TUI is running
+
+**Postconditions (Guarantees):**
+
+- *Success:* Animation state preserved during pause, resumes smoothly
+
+**Trigger:** Operator presses pause key (space or 'p')
+
+**Main Success Scenario (Pause):**
+
+1. Operator presses pause key while running
+2. System stops simulation tick timer
+3. System preserves animation frame counters
+4. System displays "Paused" indicator
+5. Developer icons freeze in current position/frame
+
+**Main Success Scenario (Resume):**
+
+1. Operator presses pause key while paused
+2. System resumes simulation tick timer
+3. System resumes animation from preserved frame
+4. System clears "Paused" indicator
+
+---
+
+### UC34: Resize Terminal Gracefully
+
+**Primary Actor:** Simulation Operator
+
+**Goal in Context:** Resize terminal window without breaking layout or losing animation state.
+
+**Scope:** Software Development Simulation
+
+**Level:** User Goal (Blue)
+
+**Preconditions:**
+
+- TUI is running
+
+**Postconditions (Guarantees):**
+
+- *Success:* Layout re-renders, positions recalculated, no crashes
+
+**Trigger:** Terminal window size changes
+
+**Main Success Scenario:**
+
+1. Operator resizes terminal
+2. System receives WindowSizeMsg
+3. System recalculates office layout dimensions
+4. System recalculates cubicle and conference room positions
+5. System updates developer positions proportionally
+6. System re-renders at new size
+
+**Extensions:**
+
+- 2a. *Terminal too narrow:* System displays "Terminal too narrow" fallback
 
 ---
 

@@ -68,7 +68,7 @@ func BenchmarkClient_Assign(b *testing.B) {
 	}
 
 	// Get ticket and dev IDs
-	inst, _ := registry.GetInstance(resp.Simulation.ID)
+	inst := registry.GetInstanceOption(resp.Simulation.ID).OrZero()
 	state := inst.Engine.Sim()
 	devID := state.Developers[0].ID
 

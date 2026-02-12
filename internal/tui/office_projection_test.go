@@ -14,7 +14,7 @@ func TestOfficeProjection_Empty(t *testing.T) {
 		t.Errorf("Animations count = %d, want 2", len(state.Animations))
 	}
 
-	anim, ok := state.GetAnimation("dev-1")
+	anim, ok := state.GetAnimationOption("dev-1").Get()
 	if !ok {
 		t.Fatal("dev-1 not found")
 	}
@@ -32,7 +32,7 @@ func TestOfficeProjection_AssignedMoving(t *testing.T) {
 	})
 
 	state := proj.State()
-	anim, _ := state.GetAnimation("dev-1")
+	anim := state.GetAnimationOption("dev-1").OrZero()
 
 	if anim.State != StateMoving {
 		t.Errorf("State = %v, want StateMoving", anim.State)
@@ -56,7 +56,7 @@ func TestOfficeProjection_MovementComplete(t *testing.T) {
 	}
 
 	state := proj.State()
-	anim, _ := state.GetAnimation("dev-1")
+	anim := state.GetAnimationOption("dev-1").OrZero()
 
 	if anim.State != StateWorking {
 		t.Errorf("After 5 advances: State = %v, want StateWorking", anim.State)
@@ -68,7 +68,7 @@ func TestOfficeProjection_StartedWorking(t *testing.T) {
 	proj = proj.Record(DevStartedWorking{DevID: "dev-1"})
 
 	state := proj.State()
-	anim, _ := state.GetAnimation("dev-1")
+	anim := state.GetAnimationOption("dev-1").OrZero()
 
 	if anim.State != StateWorking {
 		t.Errorf("State = %v, want StateWorking", anim.State)
@@ -81,7 +81,7 @@ func TestOfficeProjection_Frustrated(t *testing.T) {
 	proj = proj.Record(DevBecameFrustrated{DevID: "dev-1", TicketID: "TKT-1"})
 
 	state := proj.State()
-	anim, _ := state.GetAnimation("dev-1")
+	anim := state.GetAnimationOption("dev-1").OrZero()
 
 	if anim.State != StateFrustrated {
 		t.Errorf("State = %v, want StateFrustrated", anim.State)
@@ -94,7 +94,7 @@ func TestOfficeProjection_Completed(t *testing.T) {
 	proj = proj.Record(DevCompletedTicket{DevID: "dev-1", TicketID: "TKT-1"})
 
 	state := proj.State()
-	anim, _ := state.GetAnimation("dev-1")
+	anim := state.GetAnimationOption("dev-1").OrZero()
 
 	if anim.State != StateIdle {
 		t.Errorf("State = %v, want StateIdle", anim.State)
@@ -107,7 +107,7 @@ func TestOfficeProjection_EnteredConference(t *testing.T) {
 	proj = proj.Record(DevEnteredConference{DevID: "dev-1"})
 
 	state := proj.State()
-	anim, _ := state.GetAnimation("dev-1")
+	anim := state.GetAnimationOption("dev-1").OrZero()
 
 	if anim.State != StateConference {
 		t.Errorf("State = %v, want StateConference", anim.State)
@@ -124,7 +124,7 @@ func TestOfficeProjection_FrameAdvance(t *testing.T) {
 	}
 
 	state := proj.State()
-	anim, _ := state.GetAnimation("dev-1")
+	anim := state.GetAnimationOption("dev-1").OrZero()
 
 	if anim.Frame != 3 {
 		t.Errorf("Frame = %d, want 3", anim.Frame)
@@ -158,14 +158,14 @@ func TestOfficeProjection_ImmutableRecord(t *testing.T) {
 
 	// Original unchanged
 	state1 := proj1.State()
-	anim1, _ := state1.GetAnimation("dev-1")
+	anim1 := state1.GetAnimationOption("dev-1").OrZero()
 	if anim1.State != StateIdle {
 		t.Error("Original projection should remain unchanged")
 	}
 
 	// New has change
 	state2 := proj2.State()
-	anim2, _ := state2.GetAnimation("dev-1")
+	anim2 := state2.GetAnimationOption("dev-1").OrZero()
 	if anim2.State != StateWorking {
 		t.Error("New projection should have working state")
 	}

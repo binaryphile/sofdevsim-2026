@@ -394,13 +394,13 @@ func TestNewOfficeState(t *testing.T) {
 	}
 }
 
-func TestOfficeState_GetAnimation(t *testing.T) {
+func TestOfficeState_GetAnimationOption(t *testing.T) {
 	devIDs := []string{"dev-1", "dev-2", "dev-3"}
 	state := NewOfficeState(devIDs)
 
-	anim, ok := state.GetAnimation("dev-2")
+	anim, ok := state.GetAnimationOption("dev-2").Get()
 	if !ok {
-		t.Fatal("GetAnimation should find dev-2")
+		t.Fatal("GetAnimationOption should find dev-2")
 	}
 	if anim.DevID != "dev-2" {
 		t.Errorf("DevID = %q, want %q", anim.DevID, "dev-2")
@@ -409,9 +409,8 @@ func TestOfficeState_GetAnimation(t *testing.T) {
 		t.Errorf("ColorIndex = %d, want 1", anim.ColorIndex)
 	}
 
-	_, ok = state.GetAnimation("nonexistent")
-	if ok {
-		t.Error("GetAnimation should not find nonexistent dev")
+	if state.GetAnimationOption("nonexistent").IsOk() {
+		t.Error("GetAnimationOption should not find nonexistent dev")
 	}
 }
 
@@ -423,19 +422,19 @@ func TestOfficeState_SetDeveloperState(t *testing.T) {
 	state2 := state.SetDeveloperState("dev-2", StateWorking)
 
 	// Original unchanged
-	anim1, _ := state.GetAnimation("dev-2")
+	anim1 := state.GetAnimationOption("dev-2").OrZero()
 	if anim1.State != StateIdle {
 		t.Error("Original state should be unchanged")
 	}
 
 	// New state has change
-	anim2, _ := state2.GetAnimation("dev-2")
+	anim2 := state2.GetAnimationOption("dev-2").OrZero()
 	if anim2.State != StateWorking {
 		t.Errorf("New state = %v, want StateWorking", anim2.State)
 	}
 
 	// Other devs unchanged
-	anim3, _ := state2.GetAnimation("dev-1")
+	anim3 := state2.GetAnimationOption("dev-1").OrZero()
 	if anim3.State != StateIdle {
 		t.Error("Other devs should be unchanged")
 	}
@@ -452,13 +451,13 @@ func TestOfficeState_AdvanceFrames(t *testing.T) {
 	state = state.AdvanceFrames()
 
 	// Working dev should advance
-	anim1, _ := state.GetAnimation("dev-1")
+	anim1 := state.GetAnimationOption("dev-1").OrZero()
 	if anim1.Frame != 1 {
 		t.Errorf("Working dev frame = %d, want 1", anim1.Frame)
 	}
 
 	// Idle dev should not advance
-	anim2, _ := state.GetAnimation("dev-2")
+	anim2 := state.GetAnimationOption("dev-2").OrZero()
 	if anim2.Frame != 0 {
 		t.Errorf("Idle dev frame = %d, want 0", anim2.Frame)
 	}

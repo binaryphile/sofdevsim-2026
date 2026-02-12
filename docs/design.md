@@ -1011,22 +1011,30 @@ type SimRegistry struct {
     store     events.Store
 }
 
-// SimInstance holds simulation state
+// SimInstance holds simulation state (value semantics per FP Guide §7)
 type SimInstance struct {
-    Sim     *model.Simulation  // Pointer for registry storage
-    Engine  *engine.Engine
+    Sim     model.Simulation
+    Engine  engine.Engine
     Tracker metrics.Tracker
 }
 ```
 
 > **Note:** `Engine.Sim()` returns a value copy of current state for safe read access.
 
-### Startup Sequence
+### TUI/API Shared Access
 
-1. Create SimRegistry (empty, API creates simulations on demand)
-2. Start HTTP server on configurable port in goroutine
-3. Run TUI on main goroutine (Bubbletea requirement)
-4. Process exit terminates both
+TUI and API share simulation state through the registry. This enables API clients to query and control the running TUI simulation.
+
+**Startup:**
+1. Create SimRegistry with shared event store
+2. Start HTTP server in goroutine
+3. TUI initializes App, which populates simulation and calls `SetInstance`
+4. Run TUI on main goroutine (Bubbletea requirement)
+
+**Runtime updates:**
+After any state-mutating operation (tick, assign, decompose), the owner must call `SetInstance` to publish the new engine state.
+
+**Invariant:** Registry always holds the fully-populated engine. Never store empty state.
 
 ### Hypermedia Logic (Pure, Unit Testable)
 
@@ -1790,4 +1798,451 @@ internal/
 └── api/
     └── handlers.go    # Replay domain events, project
 ```
+
+---
+
+## TUI Office Animation
+
+Animated visualization showing developers as colored circles in ASCII cubicles with movement animations, working indicators, and overrun frustration bubbles.
+
+### Visual Layout
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  ┌───────────────────────┐                                      │
+│  │    CONFERENCE ROOM    │    ┌─────┐ ┌─────┐ ┌─────┐          │
+│  │                       │    │ Mei │ │ Amir│ │ Suki│          │
+│  │   ●  ●  ●  ●  ●  ●   │    │  ◑  │ │  ●  │ │  ○  │          │
+│  │                       │    └─────┘ └─────┘ └─────┘          │
+│  └───────────────────────┘    ┌─────┐ ┌─────┐ ┌─────┐          │
+│                               │ Jay │ │Priya│ │ Kofi│          │
+│                               │  ◕  │ │ !@# │ │  ○  │          │
+│                               └─────┘ └─────┘ └─────┘          │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Dynamic layout:** Cubicles arranged in 2 rows × 3 columns (for 6 developers). Fewer developers use subset of positions. Conference room size adjusts to team size.
+
+**Minimum terminal width:** 70 characters (warn if narrower).
+
+### Coordinate System
+
+```go
+// Data: Position represents a screen coordinate (value type)
+type Position struct {
+    X, Y int
+}
+
+// Calculation: CubicleLayout returns positions for n developers (1-6)
+// Pure function: int → []Position
+func CubicleLayout(n int) []Position {
+    // 2 rows × 3 columns, right side of screen
+    // Row 1: positions 0, 1, 2
+    // Row 2: positions 3, 4, 5
+}
+
+// Calculation: ConferencePosition returns center position in conference room
+// Pure function: (int, int) → Position
+func ConferencePosition(devIndex, total int) Position {
+    // Evenly spaced along horizontal center of conference room
+}
+```
+
+### Developer Color Palette
+
+Six colorblind-friendly colors (distinguishable with deuteranopia/protanopia):
+
+| Index | Name | Hex | ANSI 256 | Visual |
+|-------|------|-----|----------|--------|
+| 0 | Blue | #3B82F6 | 33 | 🔵 |
+| 1 | Orange | #F97316 | 208 | 🟠 |
+| 2 | Magenta | #D946EF | 165 | 🟣 |
+| 3 | Cyan | #06B6D4 | 37 | 🔷 |
+| 4 | Yellow | #EAB308 | 220 | 🟡 |
+| 5 | Green | #22C55E | 34 | 🟢 |
+
+Colors assigned by developer index (0-5), consistent across session.
+
+### Developer Names
+
+Diverse, inclusive defaults:
+
+```go
+var DefaultDeveloperNames = []string{
+    "Mei",    // East Asian
+    "Amir",   // Middle Eastern
+    "Suki",   // Japanese
+    "Jay",    // Gender-neutral English
+    "Priya",  // South Asian
+    "Kofi",   // West African
+}
+```
+
+### Animation Icons
+
+**Working animation** (cycles every 200ms):
+
+```go
+var WorkingFrames = []string{"○", "◔", "◑", "◕", "●"}
+// ASCII fallback: {"O", "o", ".", "o", "O"}
+```
+
+**Idle state:** `○` (empty circle)
+
+**Frustration bubble** (when ActualDays > EstimatedDays):
+
+```
+┌───┐
+│!@#│  ← cycles through: !@#, $%^, &*!, #$%
+└─┬─┘
+  ●    ← developer icon in developer's color
+```
+
+Bubble appears above developer, text in developer's color.
+
+### State Machine
+
+```mermaid
+stateDiagram-v2
+    [*] --> Idle: App start
+    Idle --> Conference: Planning view entered
+    Conference --> Moving: Ticket assigned
+    Moving --> Working: Arrived at cubicle
+    Working --> Working: Tick (still working)
+    Working --> Frustrated: ActualDays > EstimatedDays
+    Frustrated --> Frustrated: Tick (still overrun)
+    Working --> Idle: Ticket completed
+    Frustrated --> Idle: Ticket completed
+    Idle --> Conference: Sprint ends
+```
+
+```go
+// Data: AnimationState enum
+type AnimationState int
+
+const (
+    StateIdle AnimationState = iota
+    StateConference
+    StateMoving
+    StateWorking
+    StateFrustrated
+)
+
+// Data: DeveloperAnimation is a value type (use value receivers)
+type DeveloperAnimation struct {
+    DevID       string
+    State       AnimationState
+    Position    Position       // Current screen position
+    Target      Position       // Destination (for Moving state)
+    Frame       int            // Current animation frame
+    ColorIndex  int            // 0-5 for palette lookup
+}
+
+// Value receiver methods for state transitions (return new value)
+func (d DeveloperAnimation) WithState(s AnimationState) DeveloperAnimation
+func (d DeveloperAnimation) WithPosition(p Position) DeveloperAnimation
+func (d DeveloperAnimation) NextFrame() DeveloperAnimation
+```
+
+### Dual Timer Architecture
+
+Two independent timers:
+
+| Timer | Interval | Purpose |
+|-------|----------|---------|
+| Simulation tick | 5s default (keys 1-5 adjust) | Advances simulation day |
+| Animation frame | 100ms | Updates working animation, movement interpolation |
+
+```go
+type animationTickMsg time.Time  // Fires every 100ms
+
+func (a *App) animationTickCmd() tea.Cmd {
+    return tea.Tick(100*time.Millisecond, func(t time.Time) tea.Msg {
+        return animationTickMsg(t)
+    })
+}
+```
+
+Simulation tick handled by existing `tickMsg`. Animation tick is new, independent.
+
+### Speed Presets
+
+| Key | Tick Interval | Description |
+|-----|---------------|-------------|
+| 1 | 10s | Slowest - detailed observation |
+| 2 | 5s | Default - comfortable pace |
+| 3 | 2s | Faster |
+| 4 | 1s | Fast |
+| 5 | 500ms | Fastest - quick runs |
+
+### Event Triggers
+
+Animation state changes triggered by:
+
+| Event | Trigger | Animation Action |
+|-------|---------|------------------|
+| View → Planning | `currentView == ViewPlanning` | All devs → Conference |
+| TicketAssigned | `eventMsg` type check | Dev → Moving → Working |
+| Tick | `tickMsg` | Check ActualDays > EstimatedDays → Frustrated |
+| TicketCompleted | `eventMsg` type check | Dev → Idle |
+| Sprint ended | `!sprintActive` | Working devs → Conference |
+
+### Movement Interpolation
+
+```go
+// Calculation: Lerp linearly interpolates between two positions
+// Pure function: (Position, Position, float64) → Position
+func Lerp(from, to Position, t float64) Position {
+    return Position{
+        X: from.X + int(float64(to.X-from.X)*t),
+        Y: from.Y + int(float64(to.Y-from.Y)*t),
+    }
+}
+```
+
+Movement takes 500ms (5 animation frames). Each frame advances t by 0.2.
+
+### Integration with Views
+
+Office panel rendered in all views:
+
+```go
+func (a *App) View() string {
+    // ... existing view logic ...
+
+    // Add office panel to all views
+    office := a.officePanel()
+    content = lipgloss.JoinVertical(lipgloss.Top, content, office)
+
+    // ... rest of view composition ...
+}
+```
+
+### Client Mode Degradation
+
+Client mode (HTTP-only) lacks real-time event subscription:
+
+| Feature | Engine Mode | Client Mode |
+|---------|-------------|-------------|
+| Position | Animated movement | Instant jump |
+| Working animation | Cycling frames | Static icon |
+| Frustration detection | Per-tick check | On HTTP response only |
+| State source | `eventMsg` stream | `httpResultMsg` |
+
+```go
+func (a *App) updateOfficeAnimation() {
+    if _, isClient := a.mode.Get(); isClient {
+        // Snap positions, no interpolation
+        a.officeState = a.officeState.SnapToPositions()
+    } else {
+        // Smooth animation
+        a.officeState = a.officeState.Interpolate()
+    }
+}
+```
+
+### Pause/Resume Preservation
+
+When paused:
+- Animation timer continues (working icons still cycle)
+- Simulation timer stops (no new ticks)
+- State preserved exactly
+
+When resumed:
+- Both timers active
+- No state reset
+
+### Responsive Layout
+
+```go
+func (a *App) officePanel() string {
+    if a.width < 70 {
+        return MutedStyle.Render("Terminal too narrow for office view")
+    }
+    // ... render office ...
+}
+```
+
+### File Structure
+
+```
+internal/tui/
+├── office.go         # Data: OfficeState, DeveloperAnimation (value types)
+├── office_render.go  # Calculations: ASCII rendering, layout calculations
+├── office_test.go    # Unit tests (pure functions)
+└── app.go            # Actions: Animation timer integration (existing file)
+```
+
+### ACD Classification Summary
+
+| Component | Classification | Rationale |
+|-----------|---------------|-----------|
+| `Position`, `DeveloperAnimation` | Data | Value types, no behavior |
+| `CubicleLayout`, `Lerp`, `ConferencePosition` | Calculation | Pure functions, no I/O |
+| `officePanel()` render | Calculation | State → string, no side effects |
+| `animationTickCmd()` | Action | Starts timer (I/O) |
+| `Update()` animation handler | Action | Mutates App state |
+
+### Value Semantics
+
+All new types use **value receivers**:
+- `Position` - immutable coordinate
+- `DeveloperAnimation` - `With*` methods return new value
+- `OfficeState` - contains `[]DeveloperAnimation`, methods return new state
+
+### Event-Sourced Animation State
+
+Animation state uses the same event-sourcing pattern as `UIProjection` for:
+- **Debugging**: Inspect event log to understand why animation is in current state
+- **Replay**: Reproduce animation sequences from event history
+- **Testing**: Assert on event sequences, not just final state
+
+#### Animation Events
+
+```go
+// Data: OfficeEvent is the sealed interface for animation events.
+// All events are immutable value types with past-tense naming.
+type OfficeEvent interface {
+    officeEvent() // sealed marker
+}
+
+// DevAssignedToTicket: developer starts moving to cubicle
+type DevAssignedToTicket struct {
+    DevID    string
+    TicketID string
+    Target   Position // cubicle position
+}
+
+// DevArrivedAtCubicle: movement complete, now working
+type DevArrivedAtCubicle struct {
+    DevID string
+}
+
+// DevBecameFrustrated: ActualDays > EstimatedDays detected
+type DevBecameFrustrated struct {
+    DevID    string
+    TicketID string
+}
+
+// DevCompletedTicket: returns to idle state
+type DevCompletedTicket struct {
+    DevID    string
+    TicketID string
+}
+
+// DevEnteredConference: sprint ended or planning view
+type DevEnteredConference struct {
+    DevID string
+}
+
+// AnimationFrameAdvanced: 100ms tick for working animation
+type AnimationFrameAdvanced struct{}
+```
+
+#### Office Projection
+
+```go
+// Data: OfficeProjection accumulates animation events (ephemeral, session-scoped).
+// This is a read model that computes OfficeState via pure fold over events.
+type OfficeProjection struct {
+    events []OfficeEvent
+    devIDs []string // developer IDs for initialization
+}
+
+// Calculation: NewOfficeProjection creates projection with developer list.
+func NewOfficeProjection(devIDs []string) OfficeProjection {
+    return OfficeProjection{devIDs: devIDs}
+}
+
+// Calculation: Record returns NEW projection with event appended.
+func (p OfficeProjection) Record(evt OfficeEvent) OfficeProjection {
+    return OfficeProjection{
+        events: append(p.events, evt),
+        devIDs: p.devIDs,
+    }
+}
+
+// Calculation: State computes current OfficeState via pure fold.
+func (p OfficeProjection) State() OfficeState {
+    state := NewOfficeState(p.devIDs)
+    for _, evt := range p.events {
+        state = applyOfficeEvent(state, evt)
+    }
+    return state
+}
+
+// Calculation: Events returns event history for debugging.
+func (p OfficeProjection) Events() []OfficeEvent {
+    return p.events
+}
+```
+
+#### Event Application (Pure Fold)
+
+```go
+// Calculation: applyOfficeEvent applies one event to state.
+// Pure function: (OfficeState, OfficeEvent) → OfficeState
+func applyOfficeEvent(state OfficeState, evt OfficeEvent) OfficeState {
+    switch e := evt.(type) {
+    case DevAssignedToTicket:
+        return state.StartDeveloperMoving(e.DevID, e.Target)
+    case DevArrivedAtCubicle:
+        return state.SetDeveloperState(e.DevID, StateWorking)
+    case DevBecameFrustrated:
+        return state.SetDeveloperState(e.DevID, StateFrustrated)
+    case DevCompletedTicket:
+        return state.SetDeveloperState(e.DevID, StateIdle)
+    case DevEnteredConference:
+        return state.SetDeveloperState(e.DevID, StateConference)
+    case AnimationFrameAdvanced:
+        return state.AdvanceFrames()
+    default:
+        return state
+    }
+}
+```
+
+#### Event Triggers (Domain Event → Animation Event)
+
+Animation events are triggered by domain events in `App.Update()`:
+
+| Domain Event | Animation Event | Condition |
+|--------------|-----------------|-----------|
+| `TicketAssigned` | `DevAssignedToTicket` | Always |
+| `TicketCompleted` | `DevCompletedTicket` | Always |
+| `WorkProgressed` | `DevBecameFrustrated` | ActualDays > EstimatedDays (first time) |
+| `SprintEnded` | `DevEnteredConference` | For all working devs |
+| `animationTickMsg` | `AnimationFrameAdvanced` | Always |
+| Movement complete | `DevArrivedAtCubicle` | Progress >= 1.0 |
+
+#### Debug View (Future)
+
+Event log accessible via debug key (e.g., `ctrl+d`):
+
+```
+Office Animation Events (last 20):
+  [0] DevAssignedToTicket{DevID:"dev-1", TicketID:"TKT-42", Target:{50,2}}
+  [1] AnimationFrameAdvanced{}
+  [2] AnimationFrameAdvanced{}
+  [3] AnimationFrameAdvanced{}
+  [4] AnimationFrameAdvanced{}
+  [5] DevArrivedAtCubicle{DevID:"dev-1"}
+  [6] AnimationFrameAdvanced{}
+  [7] DevBecameFrustrated{DevID:"dev-1", TicketID:"TKT-42"}
+  ...
+```
+
+#### File Structure Update
+
+```
+internal/tui/
+├── office.go            # Data: OfficeState, DeveloperAnimation (unchanged)
+├── office_events.go     # Data: OfficeEvent types (NEW)
+├── office_projection.go # Calculation: OfficeProjection, applyOfficeEvent (NEW)
+├── office_render.go     # Calculations: ASCII rendering (unchanged)
+├── office_test.go       # Unit tests (update for projection)
+└── app.go               # Actions: Record events instead of direct state mutation
+```
+
+Pointer receivers only in `*App` (required by Bubble Tea interface).
 

@@ -160,7 +160,7 @@ func (r SimRegistry) HandleCreateSimulation(w http.ResponseWriter, req *http.Req
 		return
 	}
 
-	inst, _ := r.GetInstance(id)
+	inst, _ := r.GetInstanceOption(id).Get()
 	respondWithSimulation(w, inst, http.StatusCreated)
 }
 
@@ -169,7 +169,7 @@ func (r SimRegistry) HandleCreateSimulation(w http.ResponseWriter, req *http.Req
 func (r SimRegistry) HandleGetSimulation(w http.ResponseWriter, req *http.Request) {
 	id := req.PathValue("id")
 
-	inst, ok := r.GetInstance(id)
+	inst, ok := r.GetInstanceOption(id).Get()
 	if !ok {
 		writeError(w, http.StatusNotFound, "simulation not found")
 		return
@@ -185,7 +185,7 @@ func (r SimRegistry) HandleStartSprint(w http.ResponseWriter, req *http.Request)
 
 	const maxRetries = 3
 	for attempt := 0; attempt < maxRetries; attempt++ {
-		inst, ok := r.GetInstance(id)
+		inst, ok := r.GetInstanceOption(id).Get()
 		if !ok {
 			writeError(w, http.StatusNotFound, "simulation not found")
 			return
@@ -217,7 +217,7 @@ func (r SimRegistry) HandleTick(w http.ResponseWriter, req *http.Request) {
 
 	const maxRetries = 3
 	for attempt := 0; attempt < maxRetries; attempt++ {
-		inst, ok := r.GetInstance(id)
+		inst, ok := r.GetInstanceOption(id).Get()
 		if !ok {
 			writeError(w, http.StatusNotFound, "simulation not found")
 			return
@@ -259,7 +259,7 @@ type AssignTicketRequest struct {
 func (r SimRegistry) HandleAssignTicket(w http.ResponseWriter, req *http.Request) {
 	id := req.PathValue("id")
 
-	inst, ok := r.GetInstance(id)
+	inst, ok := r.GetInstanceOption(id).Get()
 	if !ok {
 		writeError(w, http.StatusNotFound, "simulation not found")
 		return
@@ -527,7 +527,7 @@ func (r SimRegistry) HandleUpdateSimulation(w http.ResponseWriter, req *http.Req
 
 	const maxRetries = 3
 	for attempt := 0; attempt < maxRetries; attempt++ {
-		inst, ok := r.GetInstance(id)
+		inst, ok := r.GetInstanceOption(id).Get()
 		if !ok {
 			writeError(w, http.StatusNotFound, "simulation not found")
 			return
@@ -580,7 +580,7 @@ func (r SimRegistry) HandleDecompose(w http.ResponseWriter, req *http.Request) {
 
 	const maxRetries = 3
 	for attempt := 0; attempt < maxRetries; attempt++ {
-		inst, ok := r.GetInstance(id)
+		inst, ok := r.GetInstanceOption(id).Get()
 		if !ok {
 			writeError(w, http.StatusNotFound, "simulation not found")
 			return
@@ -611,7 +611,7 @@ func (r SimRegistry) HandleDecompose(w http.ResponseWriter, req *http.Request) {
 // Reuses shared lesson selection logic - API is stateless so always starts fresh.
 func (r SimRegistry) HandleGetLessons(w http.ResponseWriter, req *http.Request) {
 	id := req.PathValue("id")
-	inst, ok := r.GetInstance(id)
+	inst, ok := r.GetInstanceOption(id).Get()
 	if !ok {
 		writeError(w, http.StatusNotFound, "simulation not found")
 		return

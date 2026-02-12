@@ -3,23 +3,37 @@ package api
 import (
 	"testing"
 
+	"github.com/binaryphile/fluentfp/must"
+	"github.com/binaryphile/sofdevsim-2026/internal/engine"
 	"github.com/binaryphile/sofdevsim-2026/internal/events"
 	"github.com/binaryphile/sofdevsim-2026/internal/metrics"
 	"github.com/binaryphile/sofdevsim-2026/internal/model"
 )
 
 func TestSharedAccess_TUISimulationAccessibleViaAPI(t *testing.T) {
-	registry := NewSimRegistry()
+	reg := NewSimRegistry()
 
-	// Simulate TUI creating a simulation via RegisterSimulation
+	// Simulate TUI creating and populating simulation, then calling SetInstance
 	sim := model.NewSimulation("sim-42", model.PolicyDORAStrict, 42)
-	sim.Developers = append(sim.Developers, model.NewDeveloper("dev-1", "Alice", 1.0))
 	tracker := metrics.NewTracker()
 
-	eng, _ := registry.RegisterSimulation(sim, tracker)
+	eng := engine.NewEngineWithStore(sim.Seed, reg.Store())
+	eng = must.Get(eng.EmitCreated(sim.ID, 0, events.SimConfig{
+		TeamSize:     1,
+		SprintLength: sim.SprintLength,
+		Seed:         sim.Seed,
+	}))
+	eng = must.Get(eng.AddDeveloper("dev-1", "Alice", 1.0))
+
+	// Store fully-populated engine (design invariant)
+	reg.SetInstance("sim-42", SimInstance{
+		Sim:     sim,
+		Engine:  eng,
+		Tracker: tracker,
+	})
 
 	// Verify simulation is accessible via registry (API's access method)
-	inst, ok := registry.GetInstance("sim-42")
+	inst, ok := reg.GetInstanceOption("sim-42").Get()
 	if !ok {
 		t.Fatal("Simulation not found in registry after TUI registration")
 	}
@@ -30,8 +44,7 @@ func TestSharedAccess_TUISimulationAccessibleViaAPI(t *testing.T) {
 	}
 
 	// Verify events are emitted to shared store
-	// EmitLoadedState emits SimulationCreated + DeveloperAdded for each developer
-	evts := registry.Store().Replay("sim-42")
+	evts := reg.Store().Replay("sim-42")
 	if len(evts) != 2 {
 		t.Fatalf("Expected 2 events (SimulationCreated + DeveloperAdded), got %d", len(evts))
 	}
@@ -42,16 +55,16 @@ func TestSharedAccess_TUISimulationAccessibleViaAPI(t *testing.T) {
 	// TUI starts sprint via engine - must update inst.Engine since engine is immutable
 	eng, _ = eng.StartSprint()
 	inst.Engine = eng
-	registry.SetInstance("sim-42", inst)
+	reg.SetInstance("sim-42", inst)
 
 	// API should see the sprint started via engine projection (not sim directly)
-	inst, _ = registry.GetInstance("sim-42")
+	inst = reg.GetInstanceOption("sim-42").OrZero()
 	if _, active := inst.Engine.Sim().CurrentSprintOption.Get(); !active {
 		t.Error("API does not see sprint started by TUI")
 	}
 
 	// Verify SprintStarted event in shared store
-	evts = registry.Store().Replay("sim-42")
+	evts = reg.Store().Replay("sim-42")
 	found := false
 	for _, e := range evts {
 		if e.EventType() == "SprintStarted" {
@@ -65,18 +78,29 @@ func TestSharedAccess_TUISimulationAccessibleViaAPI(t *testing.T) {
 }
 
 func TestSharedAccess_APIChangesVisibleToTUI(t *testing.T) {
-	registry := NewSimRegistry()
+	reg := NewSimRegistry()
 
-	// TUI registers simulation
+	// TUI creates and populates simulation
 	sim := model.NewSimulation("sim-42", model.PolicyDORAStrict, 42)
-	sim.Developers = append(sim.Developers, model.NewDeveloper("dev-1", "Alice", 1.0))
-	sim.Backlog = append(sim.Backlog, model.NewTicket("TKT-001", "Test", 3, model.HighUnderstanding))
 	tracker := metrics.NewTracker()
 
-	_, _ = registry.RegisterSimulation(sim, tracker)
+	eng := engine.NewEngineWithStore(sim.Seed, reg.Store())
+	eng = must.Get(eng.EmitCreated(sim.ID, 0, events.SimConfig{
+		TeamSize:     1,
+		SprintLength: sim.SprintLength,
+		Seed:         sim.Seed,
+	}))
+	eng = must.Get(eng.AddDeveloper("dev-1", "Alice", 1.0))
+	eng = must.Get(eng.AddTicket(model.NewTicket("TKT-001", "Test", 3, model.HighUnderstanding)))
+
+	reg.SetInstance("sim-42", SimInstance{
+		Sim:     sim,
+		Engine:  eng,
+		Tracker: tracker,
+	})
 
 	// API gets the simulation instance and modifies it
-	inst, _ := registry.GetInstance("sim-42")
+	inst := reg.GetInstanceOption("sim-42").OrZero()
 	inst.Engine, _ = inst.Engine.StartSprint()
 	inst.Engine, _ = inst.Engine.AssignTicket("TKT-001", "dev-1")
 
@@ -87,31 +111,42 @@ func TestSharedAccess_APIChangesVisibleToTUI(t *testing.T) {
 	}
 
 	// Both should see events in shared store
-	evts := registry.Store().Replay("sim-42")
+	evts := reg.Store().Replay("sim-42")
 	eventTypes := make([]string, len(evts))
 	for i, e := range evts {
 		eventTypes[i] = e.EventType()
 	}
 
-	// Should have: SimulationCreated, SprintStarted, TicketAssigned
-	if len(evts) < 3 {
-		t.Errorf("Expected at least 3 events, got %d: %v", len(evts), eventTypes)
+	// Should have: SimulationCreated, DeveloperAdded, TicketCreated, SprintStarted, TicketAssigned
+	if len(evts) < 5 {
+		t.Errorf("Expected at least 5 events, got %d: %v", len(evts), eventTypes)
 	}
 }
 
 func TestSharedAccess_BothCanSubscribe(t *testing.T) {
-	registry := NewSimRegistry()
+	reg := NewSimRegistry()
 
-	// TUI registers simulation
+	// TUI creates and populates simulation
 	sim := model.NewSimulation("sim-42", model.PolicyDORAStrict, 42)
-	sim.Developers = append(sim.Developers, model.NewDeveloper("dev-1", "Alice", 1.0))
 	tracker := metrics.NewTracker()
 
-	eng, _ := registry.RegisterSimulation(sim, tracker)
+	eng := engine.NewEngineWithStore(sim.Seed, reg.Store())
+	eng = must.Get(eng.EmitCreated(sim.ID, 0, events.SimConfig{
+		TeamSize:     1,
+		SprintLength: sim.SprintLength,
+		Seed:         sim.Seed,
+	}))
+	eng = must.Get(eng.AddDeveloper("dev-1", "Alice", 1.0))
+
+	reg.SetInstance("sim-42", SimInstance{
+		Sim:     sim,
+		Engine:  eng,
+		Tracker: tracker,
+	})
 
 	// Both TUI and API can subscribe to the shared store
-	tuiCh := registry.Store().Subscribe("sim-42")
-	apiCh := registry.Store().Subscribe("sim-42")
+	tuiCh := reg.Store().Subscribe("sim-42")
+	apiCh := reg.Store().Subscribe("sim-42")
 
 	// Engine emits event
 	_, _ = eng.StartSprint()
@@ -136,24 +171,35 @@ func TestSharedAccess_BothCanSubscribe(t *testing.T) {
 	}
 
 	// Cleanup
-	registry.Store().Unsubscribe("sim-42", tuiCh)
-	registry.Store().Unsubscribe("sim-42", apiCh)
+	reg.Store().Unsubscribe("sim-42", tuiCh)
+	reg.Store().Unsubscribe("sim-42", apiCh)
 }
 
 func TestSharedAccess_SimulationCreatedHasCorrectTeamSize(t *testing.T) {
-	registry := NewSimRegistry()
+	reg := NewSimRegistry()
 
-	// TUI creates simulation with team BEFORE registering
+	// TUI creates simulation with explicit team size in EmitCreated
 	sim := model.NewSimulation("sim-42", model.PolicyDORAStrict, 42)
-	sim.Developers = append(sim.Developers, model.NewDeveloper("dev-1", "Alice", 1.0))
-	sim.Developers = append(sim.Developers, model.NewDeveloper("dev-2", "Bob", 0.8))
-	sim.Developers = append(sim.Developers, model.NewDeveloper("dev-3", "Carol", 1.2))
 	tracker := metrics.NewTracker()
 
-	_, _ = registry.RegisterSimulation(sim, tracker)
+	eng := engine.NewEngineWithStore(sim.Seed, reg.Store())
+	eng = must.Get(eng.EmitCreated(sim.ID, 0, events.SimConfig{
+		TeamSize:     3, // Explicit team size
+		SprintLength: sim.SprintLength,
+		Seed:         sim.Seed,
+	}))
+	eng = must.Get(eng.AddDeveloper("dev-1", "Alice", 1.0))
+	eng = must.Get(eng.AddDeveloper("dev-2", "Bob", 0.8))
+	eng = must.Get(eng.AddDeveloper("dev-3", "Carol", 1.2))
+
+	reg.SetInstance("sim-42", SimInstance{
+		Sim:     sim,
+		Engine:  eng,
+		Tracker: tracker,
+	})
 
 	// Verify SimulationCreated has correct team size
-	evts := registry.Store().Replay("sim-42")
+	evts := reg.Store().Replay("sim-42")
 	if len(evts) == 0 {
 		t.Fatal("No events found")
 	}

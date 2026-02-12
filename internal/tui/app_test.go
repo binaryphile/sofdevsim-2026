@@ -104,6 +104,60 @@ func TestNewAppWithRegistry_SubscribesToEvents(t *testing.T) {
 	}
 }
 
+// TestNewAppWithRegistry_RegistryHasPopulatedState verifies API can see TUI's full state.
+// Per design doc "TUI/API Shared Access": registry always holds fully-populated engine.
+func TestNewAppWithRegistry_RegistryHasPopulatedState(t *testing.T) {
+	reg := registry.NewSimRegistry()
+	_ = NewAppWithRegistry(42, reg)
+
+	// API queries the registry - should see TUI's populated simulation
+	inst, ok := reg.GetInstanceOption("sim-42").Get()
+	if !ok {
+		t.Fatal("Registry should contain TUI's simulation")
+	}
+
+	sim := inst.Engine.Sim()
+	if len(sim.Developers) != 6 {
+		t.Errorf("Registry should have 6 developers, got %d", len(sim.Developers))
+	}
+	if len(sim.Backlog) != 12 {
+		t.Errorf("Registry should have 12 tickets, got %d", len(sim.Backlog))
+	}
+	if sim.Developers[0].Name != "Mei" {
+		t.Errorf("First developer should be Mei, got %s", sim.Developers[0].Name)
+	}
+}
+
+// TestNewAppWithRegistry_HTTPCanSeeTUISimulation verifies HTTP API returns TUI's full state.
+// Integration test: TUI creates simulation, HTTP endpoint returns it with all developers.
+func TestNewAppWithRegistry_HTTPCanSeeTUISimulation(t *testing.T) {
+	reg := api.NewSimRegistry()
+	_ = NewAppWithRegistry(42, reg.SimRegistry)
+
+	// Start HTTP server with shared registry
+	router := api.NewRouter(reg)
+	server := httptest.NewServer(router)
+	defer server.Close()
+
+	// Query via HTTP - should see TUI's simulation with 6 developers
+	client := NewClient(server.URL)
+	resp, err := client.GetSimulation("sim-42")
+	if err != nil {
+		t.Fatalf("HTTP request failed: %v", err)
+	}
+
+	sim := resp.Simulation
+	if len(sim.Developers) != 6 {
+		t.Errorf("HTTP should return 6 developers, got %d", len(sim.Developers))
+	}
+	if len(sim.Backlog) != 12 {
+		t.Errorf("HTTP should return 12 tickets, got %d", len(sim.Backlog))
+	}
+	if sim.Developers[0].Name != "Mei" {
+		t.Errorf("First developer should be Mei, got %s", sim.Developers[0].Name)
+	}
+}
+
 // TestNewAppWithSeed_ProjectionHasInitialState verifies projection has devs and tickets.
 func TestNewAppWithSeed_ProjectionHasInitialState(t *testing.T) {
 	app := NewAppWithSeed(42)

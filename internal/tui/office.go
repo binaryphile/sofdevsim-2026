@@ -1,5 +1,7 @@
 package tui
 
+import "github.com/binaryphile/fluentfp/option"
+
 // Data: Position represents a screen coordinate (value type)
 type Position struct {
 	X, Y int
@@ -174,15 +176,21 @@ func NewOfficeState(devIDs []string) OfficeState {
 	return OfficeState{Animations: anims}
 }
 
-// GetAnimation returns the animation for a specific developer.
-// Calculation: (OfficeState, string) → (DeveloperAnimation, bool)
-func (s OfficeState) GetAnimation(devID string) (DeveloperAnimation, bool) {
+// GetAnimationOption returns the animation for a specific developer.
+// Calculation: (OfficeState, string) → option.Basic[DeveloperAnimation]
+func (s OfficeState) GetAnimationOption(devID string) option.Basic[DeveloperAnimation] {
 	for _, anim := range s.Animations {
 		if anim.DevID == devID {
-			return anim, true
+			return option.Of(anim)
 		}
 	}
-	return DeveloperAnimation{}, false
+	return option.NotOk[DeveloperAnimation]()
+}
+
+// GetActiveAnimationOption returns the animation only if it's active.
+// Calculation: (OfficeState, string) → option.Basic[DeveloperAnimation]
+func (s OfficeState) GetActiveAnimationOption(devID string) option.Basic[DeveloperAnimation] {
+	return s.GetAnimationOption(devID).KeepOkIf(DeveloperAnimation.IsActive)
 }
 
 // SetDeveloperState returns a new OfficeState with the developer's state changed
