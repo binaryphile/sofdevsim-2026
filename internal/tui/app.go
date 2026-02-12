@@ -1137,12 +1137,13 @@ func (a *App) updateDeveloperAnimationStates(sim model.Simulation) {
 		state := a.officeProjection.State()
 
 		if dev.IsIdle() {
-			option.Lift(func(anim DeveloperAnimation) {
+			recordCompletion := option.Lift(func(anim DeveloperAnimation) {
 				a.officeProjection = a.officeProjection.Record(DevCompletedTicket{
 					DevID:    dev.ID,
 					TicketID: dev.CurrentTicket,
 				})
-			})(state.GetActiveAnimationOption(dev.ID))
+			})
+			recordCompletion(state.GetActiveAnimationOption(dev.ID))
 			continue
 		}
 
@@ -1153,7 +1154,7 @@ func (a *App) updateDeveloperAnimationStates(sim model.Simulation) {
 		}
 		ticket := sim.ActiveTickets[ticketIdx]
 
-		option.Lift(func(anim DeveloperAnimation) {
+		updateAnimationState := option.Lift(func(anim DeveloperAnimation) {
 			switch {
 			case anim.ShouldBecomeFrustrated(ticket.ActualDays, ticket.EstimatedDays):
 				a.officeProjection = a.officeProjection.Record(DevBecameFrustrated{
@@ -1163,7 +1164,8 @@ func (a *App) updateDeveloperAnimationStates(sim model.Simulation) {
 			case anim.ShouldStartWorking():
 				a.officeProjection = a.officeProjection.Record(DevStartedWorking{DevID: dev.ID})
 			}
-		})(state.GetAnimationOption(dev.ID))
+		})
+		updateAnimationState(state.GetAnimationOption(dev.ID))
 	}
 }
 

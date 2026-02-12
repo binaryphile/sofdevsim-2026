@@ -91,7 +91,7 @@ func BuildTriggersFromClientState(state SimulationState) TriggerState {
 	triggers.SprintCount = state.SprintNumber
 
 	// UC19: Red buffer with LOW ticket
-	option.Lift(func(sprint SprintState) {
+	checkRedBufferWithLowTicket := option.Lift(func(sprint SprintState) {
 		// Boundary defense: avoid division by zero
 		if sprint.BufferDays <= 0 {
 			return
@@ -103,7 +103,8 @@ func BuildTriggersFromClientState(state SimulationState) TriggerState {
 			understandings = append(understandings, t.Understanding)
 		}
 		triggers.HasRedBufferWithLowTicket = lessons.HasRedBufferWithLowTicketFromStrings(isRed, understandings)
-	})(state.SprintOption)
+	})
+	checkRedBufferWithLowTicket(state.SprintOption)
 
 	// UC20: Queue imbalance
 	triggers.HasQueueImbalance = HasQueueImbalanceFromTickets(state.ActiveTickets)

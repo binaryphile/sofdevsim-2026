@@ -181,18 +181,29 @@ state.GetAnimationOption(id).KeepOkIf(Animation.IsActive).Call(...)
 
 ## Lifted Functions for Side Effects
 
-Use `option.Lift` for side-effecting functions on optional values. This lifts a regular function to accept an option, executing only when ok:
+Use `option.Lift` to create named functions that accept options. The lifted function executes only when the option is ok:
 
 ```go
-// Lift moves option-handling to the call, leaving the function body clean
-option.Lift(func(anim Animation) {
+// Define a lifted function with a descriptive name
+recordCompletion := option.Lift(func(anim Animation) {
     projection = projection.Record(SomeEvent{ID: anim.ID})
-})(state.GetAnimationOption(id))
+})
+
+// Call with the option - reads as natural function call
+recordCompletion(state.GetAnimationOption(id))
 ```
 
-This reads naturally: "lift this function, then call it with the animation option."
+This pattern creates a named function at definition time, so call sites are clean function calls with option arguments.
 
-Inline lambdas are preferred with `Lift` because the lifting syntax makes the intent clear.
+**Avoid double-execute syntax:**
+```go
+// BAD: option.Lift(fn)(opt) - hard to read, anonymous
+option.Lift(func(a Animation) { ... })(state.GetAnimationOption(id))
+
+// GOOD: named function called with option
+recordCompletion := option.Lift(func(a Animation) { ... })
+recordCompletion(state.GetAnimationOption(id))
+```
 
 ## either Package
 
