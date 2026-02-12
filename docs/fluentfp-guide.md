@@ -151,6 +151,49 @@ For optional values, prefer `option.Basic[T]` over `*T`:
 **Use pointers for:** `sync.Mutex` fields, interface requirements, external handles, or profiled hot paths >10MB.
 **Use options for:** "This value may not exist" semantics.
 
+## Prefer Options Over Comma-Ok Returns
+
+Our methods should not return `(T, bool)` comma-ok for optional values. Comma-ok is for *consuming* Go builtins (map access, type assertions, channel receives), not for our own APIs.
+
+| Pattern | Problem | Solution |
+|---------|---------|----------|
+| `Get(id) (T, bool)` | Hidden option, requires wrapping | `GetOption(id) option.Basic[T]` |
+| `option.New(x.Get(id))` | Extra ceremony at call site | `x.GetOption(id).KeepOkIf(...)` |
+
+**Naming convention:** Methods returning `option.Basic[T]` use `Option` suffix: `GetAnimationOption`, `GetInstanceOption`.
+
+```go
+// BAD: comma-ok return (hidden option)
+func (s State) GetAnimation(id string) (Animation, bool)
+
+// GOOD: explicit option return
+func (s State) GetAnimationOption(id string) option.Basic[Animation]
+```
+
+Call sites become chainable:
+```go
+// Before: wrapping required
+option.New(state.GetAnimation(id)).KeepOkIf(Animation.IsActive).Call(...)
+
+// After: direct chaining
+state.GetAnimationOption(id).KeepOkIf(Animation.IsActive).Call(...)
+```
+
+## Lifted Functions for Side Effects
+
+Use `option.Lift` for side-effecting functions on optional values. This lifts a regular function to accept an option, executing only when ok:
+
+```go
+// Lift moves option-handling to the call, leaving the function body clean
+option.Lift(func(anim Animation) {
+    projection = projection.Record(SomeEvent{ID: anim.ID})
+})(state.GetAnimationOption(id))
+```
+
+This reads naturally: "lift this function, then call it with the animation option."
+
+Inline lambdas are preferred with `Lift` because the lifting syntax makes the intent clear.
+
 ## either Package
 
 Either represents a value that is one of two possible types (Left or Right). Convention: Left = failure/alternative, Right = success/primary.

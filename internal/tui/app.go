@@ -142,17 +142,17 @@ func NewAppWithRegistry(seed int64, reg *registry.SimRegistry) *App {
 	if reg != nil {
 		// Use shared registry - simulation accessible by both TUI and API
 		store = reg.Store()
-		eng = must.Get(reg.RegisterSimulation(sim, tracker))
 	} else {
 		// Standalone mode - own event store
 		store = events.NewMemoryStore()
-		eng = engine.NewEngineWithStore(sim.Seed, store)
-		eng = must.Get(eng.EmitCreated(sim.ID, sim.CurrentTick, events.SimConfig{
-			TeamSize:     len(sim.Developers),
-			SprintLength: sim.SprintLength,
-			Seed:         sim.Seed,
-		}))
 	}
+
+	eng = engine.NewEngineWithStore(sim.Seed, store)
+	eng = must.Get(eng.EmitCreated(sim.ID, sim.CurrentTick, events.SimConfig{
+		TeamSize:     6, // Will add 6 developers below
+		SprintLength: sim.SprintLength,
+		Seed:         sim.Seed,
+	}))
 
 	// Add default team via engine (emits DeveloperAdded events)
 	// Names from DefaultDeveloperNames: diverse, inclusive
@@ -169,6 +169,15 @@ func NewAppWithRegistry(seed int64, reg *registry.SimRegistry) *App {
 	tickets := gen.Generate(rng, 12)
 	for _, t := range tickets {
 		eng = must.Get(eng.AddTicket(t))
+	}
+
+	// Store fully-populated engine in registry (design invariant: never store empty)
+	if reg != nil {
+		reg.SetInstance(simID, registry.SimInstance{
+			Sim:     sim,
+			Engine:  eng,
+			Tracker: tracker,
+		})
 	}
 
 	// Subscribe to event store for live updates
@@ -680,13 +689,20 @@ func (a *App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 		if !reg.IsZero() {
 			newStore = reg.Store()
-			newEngine = must.Get(reg.RegisterSimulation(sim, tracker))
-			// RegisterSimulation already calls EmitLoadedState
 		} else {
 			newStore = events.NewMemoryStore()
-			newEngine = engine.NewEngineWithStore(sim.Seed, newStore)
-			// Emit events to populate projection from loaded state
-			newEngine = must.Get(newEngine.EmitLoadedState(sim))
+		}
+
+		newEngine = engine.NewEngineWithStore(sim.Seed, newStore)
+		newEngine = must.Get(newEngine.EmitLoadedState(sim))
+
+		// Store fully-populated engine in registry
+		if !reg.IsZero() {
+			reg.SetInstance(sim.ID, registry.SimInstance{
+				Sim:     sim,
+				Engine:  newEngine,
+				Tracker: tracker,
+			})
 		}
 
 		// Re-subscribe to new simulation's events
@@ -1121,15 +1137,12 @@ func (a *App) updateDeveloperAnimationStates(sim model.Simulation) {
 		state := a.officeProjection.State()
 
 		if dev.IsIdle() {
-			// Idle developers return to conference (planning) or stay idle
-			option.New(state.GetAnimation(dev.ID)).Call(func(anim DeveloperAnimation) {
-				if anim.IsActive() {
-					a.officeProjection = a.officeProjection.Record(DevCompletedTicket{
-						DevID:    dev.ID,
-						TicketID: dev.CurrentTicket,
-					})
-				}
-			})
+			option.Lift(func(anim DeveloperAnimation) {
+				a.officeProjection = a.officeProjection.Record(DevCompletedTicket{
+					DevID:    dev.ID,
+					TicketID: dev.CurrentTicket,
+				})
+			})(state.GetActiveAnimationOption(dev.ID))
 			continue
 		}
 
@@ -1140,8 +1153,7 @@ func (a *App) updateDeveloperAnimationStates(sim model.Simulation) {
 		}
 		ticket := sim.ActiveTickets[ticketIdx]
 
-		// Check animation state and record appropriate events
-		option.New(state.GetAnimation(dev.ID)).Call(func(anim DeveloperAnimation) {
+		option.Lift(func(anim DeveloperAnimation) {
 			switch {
 			case anim.ShouldBecomeFrustrated(ticket.ActualDays, ticket.EstimatedDays):
 				a.officeProjection = a.officeProjection.Record(DevBecameFrustrated{
@@ -1151,7 +1163,7 @@ func (a *App) updateDeveloperAnimationStates(sim model.Simulation) {
 			case anim.ShouldStartWorking():
 				a.officeProjection = a.officeProjection.Record(DevStartedWorking{DevID: dev.ID})
 			}
-		})
+		})(state.GetAnimationOption(dev.ID))
 	}
 }
 
