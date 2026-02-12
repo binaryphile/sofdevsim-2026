@@ -4,20 +4,26 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/binaryphile/fluentfp/value"
 	"github.com/charmbracelet/lipgloss"
 )
 
 func (a *App) planningView() string {
-	// Backlog table
+	// Backlog table on left (~60% width)
 	backlog := a.backlogTable()
 
-	// Developers status
-	devs := a.developersPanel()
+	// Office visualization on right (~40% width)
+	// Shows both conference room and cubicle grid
+	names := a.getDeveloperNames()
+	officeWidth := a.width * 40 / 100
+	if officeWidth < 40 {
+		officeWidth = 40
+	}
+	office := RenderOffice(a.officeProjection.State(), names, officeWidth, a.height)
 
-	// Combine
-	left := BoxStyle.Width(a.width*2/3 - 2).Render(backlog)
-	right := BoxStyle.Width(a.width/3 - 2).Render(devs)
+	// Combine: ticket list left, office right
+	ticketWidth := a.width - officeWidth - 4 // Account for box borders
+	left := BoxStyle.Width(ticketWidth).Render(backlog)
+	right := office // No box - office renders its own borders
 
 	return lipgloss.JoinHorizontal(lipgloss.Top, left, right)
 }
@@ -93,37 +99,3 @@ func (a *App) backlogTable() string {
 	return lipgloss.JoinVertical(lipgloss.Left, title, header, content)
 }
 
-func (a *App) developersPanel() string {
-	title := TitleStyle.Render("Team")
-
-	var rows []string
-	if _, isClient := a.mode.Get(); isClient {
-		// Client mode: use HTTP state
-		for _, dev := range a.state.Developers {
-			status := value.Of(GreenStyle.Render("[idle]")).When(dev.IsIdle).Or(YellowStyle.Render("[busy]"))
-			assignment := ""
-			if !dev.IsIdle {
-				assignment = MutedStyle.Render(" → " + dev.CurrentTicket)
-			}
-
-			row := fmt.Sprintf("%s (v:%.1f) %s%s", dev.Name, dev.Velocity, status, assignment)
-			rows = append(rows, row)
-		}
-	} else {
-		// Engine mode: use local simulation
-		eng, _ := a.mode.GetLeft()
-		sim := eng.Engine.Sim()
-		for _, dev := range sim.Developers {
-			status := value.Of(GreenStyle.Render("[idle]")).When(dev.IsIdle()).Or(YellowStyle.Render("[busy]"))
-			assignment := ""
-			if !dev.IsIdle() {
-				assignment = MutedStyle.Render(" → " + dev.CurrentTicket)
-			}
-
-			row := fmt.Sprintf("%s (v:%.1f) %s%s", dev.Name, dev.Velocity, status, assignment)
-			rows = append(rows, row)
-		}
-	}
-
-	return lipgloss.JoinVertical(lipgloss.Left, title, strings.Join(rows, "\n"))
-}

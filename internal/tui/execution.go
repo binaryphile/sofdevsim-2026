@@ -20,6 +20,10 @@ func (a *App) executionView() string {
 	// Events log
 	events := a.eventsPanel()
 
+	// Office visualization (computed from event-sourced projection)
+	names := a.getDeveloperNames()
+	office := RenderOffice(a.officeProjection.State(), names, a.width, a.height)
+
 	// Layout
 	top := BoxStyle.Width(a.width - 2).Render(sprintBar)
 	middle := BoxStyle.Width(a.width - 2).Render(activeWork)
@@ -28,7 +32,7 @@ func (a *App) executionView() string {
 	bottomRight := BoxStyle.Width(a.width/2 - 2).Render(events)
 	bottom := lipgloss.JoinHorizontal(lipgloss.Top, bottomLeft, bottomRight)
 
-	return lipgloss.JoinVertical(lipgloss.Left, top, middle, bottom)
+	return lipgloss.JoinVertical(lipgloss.Left, top, middle, bottom, office)
 }
 
 func (a *App) sprintProgress() string {

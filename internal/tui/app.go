@@ -9,6 +9,7 @@ import (
 	"github.com/binaryphile/fluentfp/either"
 	"github.com/binaryphile/fluentfp/must"
 	"github.com/binaryphile/fluentfp/option"
+	"github.com/binaryphile/fluentfp/slice"
 	"github.com/binaryphile/sofdevsim-2026/internal/engine"
 	"github.com/binaryphile/sofdevsim-2026/internal/events"
 	"github.com/binaryphile/sofdevsim-2026/internal/export"
@@ -94,10 +95,16 @@ type App struct {
 
 	// Input event projection (ES read model for UI state)
 	uiProjection UIProjection
+
+	// Office visualization state (event-sourced projection)
+	officeProjection OfficeProjection
 }
 
 // tickMsg is sent on each simulation tick (legacy engine mode)
 type tickMsg time.Time
+
+// animationTickMsg is sent for animation frame updates (office visualization)
+type animationTickMsg struct{}
 
 // eventMsg is sent when an event is received from the store subscription
 type eventMsg events.Event
@@ -148,9 +155,13 @@ func NewAppWithRegistry(seed int64, reg *registry.SimRegistry) *App {
 	}
 
 	// Add default team via engine (emits DeveloperAdded events)
-	eng = must.Get(eng.AddDeveloper("dev-1", "Alice", 1.0))
-	eng = must.Get(eng.AddDeveloper("dev-2", "Bob", 0.8))
-	eng = must.Get(eng.AddDeveloper("dev-3", "Carol", 1.2))
+	// Names from DefaultDeveloperNames: diverse, inclusive
+	eng = must.Get(eng.AddDeveloper("dev-1", "Mei", 1.0))
+	eng = must.Get(eng.AddDeveloper("dev-2", "Amir", 0.8))
+	eng = must.Get(eng.AddDeveloper("dev-3", "Suki", 1.2))
+	eng = must.Get(eng.AddDeveloper("dev-4", "Jay", 1.0))
+	eng = must.Get(eng.AddDeveloper("dev-5", "Priya", 0.9))
+	eng = must.Get(eng.AddDeveloper("dev-6", "Kofi", 1.1))
 
 	// Generate initial backlog via engine (emits TicketCreated events)
 	gen := engine.Scenarios["healthy"]
@@ -172,14 +183,20 @@ func NewAppWithRegistry(seed int64, reg *registry.SimRegistry) *App {
 		Registry: reg,
 	}
 
+	// Initialize office projection with developer IDs (event-sourced)
+	// Devs start in cubicles (StateIdle), will move to conference when planning begins
+	devIDs := []string{"dev-1", "dev-2", "dev-3", "dev-4", "dev-5", "dev-6"}
+	officeProjection := NewOfficeProjection(devIDs)
+
 	return &App{
-		mode:         either.Left[EngineMode, ClientMode](engineMode),
-		currentView:  ViewPlanning,
-		paused:       true,
-		speed:        1,
-		modelEvents:  make([]model.Event, 0),
-		tickInterval: 500 * time.Millisecond,
-		uiProjection: NewUIProjection(),
+		mode:             either.Left[EngineMode, ClientMode](engineMode),
+		currentView:      ViewPlanning,
+		paused:           true,
+		speed:            1,
+		modelEvents:      make([]model.Event, 0),
+		tickInterval:     500 * time.Millisecond,
+		uiProjection:     NewUIProjection(),
+		officeProjection: officeProjection,
 	}
 }
 
@@ -193,22 +210,28 @@ func NewAppWithClient(client Client, initialState SimulationState) *App {
 		SimID:  initialState.ID,
 	}
 
+	// Initialize office projection from client state (developers from HTTP response)
+	// Devs start in cubicles (StateIdle), will move to conference when planning begins
+	devIDs := slice.From(initialState.Developers).ToString(DeveloperState.GetID)
+	officeProjection := NewOfficeProjection(devIDs)
+
 	return &App{
-		mode:         either.Right[EngineMode](clientMode),
-		state:        initialState,
-		currentView:  ViewPlanning,
-		paused:       true,
-		speed:        1,
-		modelEvents:  make([]model.Event, 0),
-		tickInterval: 500 * time.Millisecond,
-		uiProjection: NewUIProjection(),
+		mode:             either.Right[EngineMode](clientMode),
+		state:            initialState,
+		currentView:      ViewPlanning,
+		paused:           true,
+		speed:            1,
+		modelEvents:      make([]model.Event, 0),
+		tickInterval:     500 * time.Millisecond,
+		uiProjection:     NewUIProjection(),
+		officeProjection: officeProjection,
 	}
 }
 
 // Init implements tea.Model
 func (a *App) Init() tea.Cmd {
-	// Start listening for events from the store subscription
-	return a.listenForEvents()
+	// Start listening for events and animation timer
+	return tea.Batch(a.listenForEvents(), a.animationTickCmd())
 }
 
 // listenForEvents returns a Cmd that waits for the next event from the subscription.
@@ -309,6 +332,11 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Continue listening for more events
 		return a, a.listenForEvents()
 
+	case animationTickMsg:
+		// Animation frame update for office visualization
+		a.officeProjection = a.officeProjection.Record(AnimationFrameAdvanced{})
+		return a, a.animationTickCmd()
+
 	case tickMsg:
 		// Automatic tick timer - only applicable in engine mode
 		// Client mode uses HTTP calls instead
@@ -325,6 +353,9 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			sim := eng.Engine.Sim()
 			eng.Tracker = eng.Tracker.Updated(sim)
 			a.mode = either.Left[EngineMode, ClientMode](eng)
+
+			// Update developer animation states based on ticket progress
+			a.updateDeveloperAnimationStates(sim)
 
 			// Check if sprint ended (SprintEnded event already cleared it in projection)
 			if _, sprintActive := sim.CurrentSprintOption.Get(); !sprintActive {
@@ -465,10 +496,18 @@ func (a *App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if a.currentView == ViewPlanning && a.selected < len(sim.Backlog) {
 			ticket := sim.Backlog[a.selected]
 			assigned := false
-			for _, dev := range sim.Developers {
+			cubiclePositions := CubicleLayout(len(sim.Developers))
+			for devIdx, dev := range sim.Developers {
 				if dev.IsIdle() {
 					eng.Engine = must.Get(eng.Engine.AssignTicket(ticket.ID, dev.ID))
 					a.mode = either.Left[EngineMode, ClientMode](eng)
+					// Record office animation event: developer moves to cubicle
+					target := cubiclePositions[devIdx]
+					a.officeProjection = a.officeProjection.Record(DevAssignedToTicket{
+						DevID:    dev.ID,
+						TicketID: ticket.ID,
+						Target:   target,
+					})
 					a.recordInputEvent(AssignmentAttempted{TicketID: ticket.ID, Outcome: Succeeded{}})
 					assigned = true
 					break
@@ -719,16 +758,19 @@ func (a *App) createSimulationEngine(policy model.SizingPolicy, seed int64) engi
 
 	eng := engine.NewEngine(sim.Seed)
 	eng = must.Get(eng.EmitCreated(sim.ID, sim.CurrentTick, events.SimConfig{
-		TeamSize:     3,
+		TeamSize:     6,
 		SprintLength: sim.SprintLength,
 		Seed:         sim.Seed,
 		Policy:       policy,
 	}))
 
-	// Same team
-	eng = must.Get(eng.AddDeveloper("dev-1", "Alice", 1.0))
-	eng = must.Get(eng.AddDeveloper("dev-2", "Bob", 0.8))
-	eng = must.Get(eng.AddDeveloper("dev-3", "Carol", 1.2))
+	// Same team (6 developers)
+	eng = must.Get(eng.AddDeveloper("dev-1", "Mei", 1.0))
+	eng = must.Get(eng.AddDeveloper("dev-2", "Amir", 0.8))
+	eng = must.Get(eng.AddDeveloper("dev-3", "Suki", 1.2))
+	eng = must.Get(eng.AddDeveloper("dev-4", "Jay", 1.0))
+	eng = must.Get(eng.AddDeveloper("dev-5", "Priya", 0.9))
+	eng = must.Get(eng.AddDeveloper("dev-6", "Kofi", 1.1))
 
 	// Same backlog (using same seed)
 	gen := engine.Scenarios["mixed"] // Use mixed for more interesting comparison
@@ -800,6 +842,14 @@ func (a *App) runSprintWithAutoAssign(eng engine.Engine, tracker metrics.Tracker
 func (a *App) tickCmd() tea.Cmd {
 	return tea.Tick(a.tickInterval, func(t time.Time) tea.Msg {
 		return tickMsg(t)
+	})
+}
+
+// animationTickCmd returns a Cmd that triggers animation frame updates.
+// Runs at 100ms intervals for smooth animation.
+func (a *App) animationTickCmd() tea.Cmd {
+	return tea.Tick(100*time.Millisecond, func(t time.Time) tea.Msg {
+		return animationTickMsg{}
 	})
 }
 
@@ -1060,4 +1110,61 @@ func extractFeverHistory(history []metrics.FeverSnapshot) []float64 {
 		result[i] = s.PercentUsed
 	}
 	return result
+}
+
+// updateDeveloperAnimationStates syncs office animation with simulation state.
+// Records animation events based on developer/ticket status using predicates.
+// Re-reads projection state after each event to avoid stale predicates.
+func (a *App) updateDeveloperAnimationStates(sim model.Simulation) {
+	for _, dev := range sim.Developers {
+		// Re-read state each iteration to see effects of prior recordings
+		state := a.officeProjection.State()
+
+		if dev.IsIdle() {
+			// Idle developers return to conference (planning) or stay idle
+			option.New(state.GetAnimation(dev.ID)).Call(func(anim DeveloperAnimation) {
+				if anim.IsActive() {
+					a.officeProjection = a.officeProjection.Record(DevCompletedTicket{
+						DevID:    dev.ID,
+						TicketID: dev.CurrentTicket,
+					})
+				}
+			})
+			continue
+		}
+
+		// Find the active ticket for this developer
+		ticketIdx := sim.FindActiveTicketIndex(dev.CurrentTicket)
+		if ticketIdx == -1 {
+			continue
+		}
+		ticket := sim.ActiveTickets[ticketIdx]
+
+		// Check animation state and record appropriate events
+		option.New(state.GetAnimation(dev.ID)).Call(func(anim DeveloperAnimation) {
+			switch {
+			case anim.ShouldBecomeFrustrated(ticket.ActualDays, ticket.EstimatedDays):
+				a.officeProjection = a.officeProjection.Record(DevBecameFrustrated{
+					DevID:    dev.ID,
+					TicketID: ticket.ID,
+				})
+			case anim.ShouldStartWorking():
+				a.officeProjection = a.officeProjection.Record(DevStartedWorking{DevID: dev.ID})
+			}
+		})
+	}
+}
+
+// getDeveloperNames returns developer names for office visualization.
+// Calculation: App → []string
+func (a *App) getDeveloperNames() []string {
+	// engineDevNames extracts developer names from engine mode simulation.
+	engineDevNames := func(eng EngineMode) []string {
+		return slice.From(eng.Engine.Sim().Developers).ToString(model.Developer.GetName)
+	}
+	// clientDevNames extracts developer names from client mode state.
+	clientDevNames := func(_ ClientMode) []string {
+		return slice.From(a.state.Developers).ToString(DeveloperState.GetName)
+	}
+	return either.Fold(a.mode, engineDevNames, clientDevNames)
 }

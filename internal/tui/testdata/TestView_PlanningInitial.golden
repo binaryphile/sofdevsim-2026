@@ -1,20 +1,33 @@
 [?25l[?2004h╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
 │  Planning  Execution  Metrics  Comparison   Policy: None | PAUSED | Day 0 | Backlog: 12 | Done: 0 | Seed 42          │
 ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
-╭──────────────────────────────────────────────────────────────────────────────╮╭──────────────────────────────────────╮
-│ Backlog (12 tickets)                                                         ││ Team                                 │
-│ ID       Title                             Est Understanding      Phase      ││ Alice (v:1.0) [idle]                 │
-│ TKT-001  Migrate to new framework         6.5d Low          Backlog          ││ Bob (v:0.8) [idle]                   │
-│ TKT-002  Update API endpoints             5.6d Low          Backlog          ││ Carol (v:1.2) [idle]                 │
-│ TKT-003  Migrate to new framework         2.2d Medium       Backlog          │╰──────────────────────────────────────╯
-│ TKT-004  Add notification system          2.0d High         Backlog          │                                        
-│ TKT-005  Update user dashboard            5.6d Low          Backlog          │                                        
-│ TKT-006  Fix payment processing bug       7.3d High         Backlog          │                                        
-│ TKT-007  Refactor database layer          2.7d High         Backlog          │                                        
-│ TKT-008  Implement webhook support        4.6d Medium       Backlog          │                                        
-│ TKT-009  Refactor database layer          2.1d Low          Backlog          │                                        
-│ TKT-010  Fix validation errors            3.8d Medium       Backlog          │                                        
-│ TKT-011  Implement webhook support        4.4d High         Backlog          │                                        
-│ TKT-012  Update security policies         3.0d Low          Backlog          │                                        
-╰──────────────────────────────────────────────────────────────────────────────╯                                        
+╭────────────────────────────────────────────────────────────────────╮┌─────────────────────────────────┐               
+│ Backlog (12 tickets)                                               ││         CONFERENCE ROOM         │               
+│ ID       Title                             Est Understanding       ││                                 │               
+│ Phase                                                              ││                                 │               
+│ TKT-001  Migrate to new framework         6.5d Low                 ││                                 │               
+│ Backlog                                                            │└─────────────────────────────────┘               
+│ TKT-002  Update API endpoints             5.6d Low                 │┌──────────────┐┌──────────────┐┌──────────────┐  
+│ Backlog                                                            ││     Mei      ││     Amir     ││     Suki     │  
+│ TKT-003  Migrate to new framework         2.2d Medium              ││              ││              ││              │  
+│ Backlog                                                            │└──────────────┘└──────────────┘└──────────────┘  
+│ TKT-004  Add notification system          2.0d High                │┌──────────────┐┌──────────────┐┌──────────────┐  
+│ Backlog                                                            ││     Jay      ││    Priya     ││     Kofi     │  
+│ TKT-005  Update user dashboard            5.6d Low                 ││              ││              ││              │  
+│ Backlog                                                            │└──────────────┘└──────────────┘└──────────────┘  
+│ TKT-006  Fix payment processing bug       7.3d High                │                                                  
+│ Backlog                                                            │                                                  
+│ TKT-007  Refactor database layer          2.7d High                │                                                  
+│ Backlog                                                            │                                                  
+│ TKT-008  Implement webhook support        4.6d Medium              │                                                  
+│ Backlog                                                            │                                                  
+│ TKT-009  Refactor database layer          2.1d Low                 │                                                  
+│ Backlog                                                            │                                                  
+│ TKT-010  Fix validation errors            3.8d Medium              │                                                  
+│ Backlog                                                            │                                                  
+│ TKT-011  Implement webhook support        4.4d High                │                                                  
+│ Backlog                                                            │                                                  
+│ TKT-012  Update security policies         3.0d Low                 │                                                  
+│ Backlog                                                            │                                                  
+╰────────────────────────────────────────────────────────────────────╯                                                  
 a assign  d decompose  p policy  s start sprint  Tab switch view  Space pause/resume  +/- speed  c compare policies  e e[2K[?2004l[?25h[?1002l[?1003l[?1006l

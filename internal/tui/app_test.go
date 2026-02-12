@@ -109,10 +109,10 @@ func TestNewAppWithSeed_ProjectionHasInitialState(t *testing.T) {
 	app := NewAppWithSeed(42)
 	eng, _ := app.mode.GetLeft()
 
-	// Projection should have the developers
+	// Projection should have the developers (6 from DefaultDeveloperNames)
 	sim := eng.Engine.Sim()
-	if len(sim.Developers) != 3 {
-		t.Errorf("Projection should have 3 developers, got %d", len(sim.Developers))
+	if len(sim.Developers) != 6 {
+		t.Errorf("Projection should have 6 developers, got %d", len(sim.Developers))
 	}
 
 	// Projection should have the backlog
@@ -120,9 +120,9 @@ func TestNewAppWithSeed_ProjectionHasInitialState(t *testing.T) {
 		t.Errorf("Projection should have 12 tickets in backlog, got %d", len(sim.Backlog))
 	}
 
-	// First developer should be Alice
-	if sim.Developers[0].Name != "Alice" {
-		t.Errorf("First developer should be Alice, got %s", sim.Developers[0].Name)
+	// First developer should be Mei (from DefaultDeveloperNames)
+	if sim.Developers[0].Name != "Mei" {
+		t.Errorf("First developer should be Mei, got %s", sim.Developers[0].Name)
 	}
 }
 

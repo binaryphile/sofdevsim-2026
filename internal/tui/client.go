@@ -60,6 +60,12 @@ type DeveloperState struct {
 	IsIdle        bool    `json:"isIdle"`
 }
 
+// GetID returns the developer ID (accessor for FluentFP).
+func (d DeveloperState) GetID() string { return d.ID }
+
+// GetName returns the developer name (accessor for FluentFP).
+func (d DeveloperState) GetName() string { return d.Name }
+
 // MetricsState mirrors api.DORAResponse for client-side decoding.
 type MetricsState struct {
 	LeadTimeAvgDays   float64             `json:"leadTimeAvgDays"`

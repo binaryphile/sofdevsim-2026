@@ -27,6 +27,9 @@ func (d Developer) IsIdle() bool {
 	return d.CurrentTicket == ""
 }
 
+// GetName returns the developer name (accessor for FluentFP).
+func (d Developer) GetName() string { return d.Name }
+
 // WithTicket returns a developer assigned to the given ticket
 func (d Developer) WithTicket(ticketID string) Developer {
 	d.CurrentTicket = ticketID
