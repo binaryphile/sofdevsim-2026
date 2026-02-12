@@ -28207,3 +28207,9 @@ $(date -Iseconds) | Contract: Event-Source Office Animation
 [x] No team panel (evidence: planning.go)
 [x] Side-by-side layout (evidence: RenderOffice)
 [x] Tests pass (evidence: go test ./... all pass)
+2026-02-12T00:00:00Z | Contract: Add option.Lift + update sofdevsim
+[ ] Phase 1: Lift in fluentfp (package.go, test, docs)
+[ ] Phase 2: Refactor sofdevsim to use Lift (app.go, lessons.go, guide)
+2026-02-12T00:00:00Z | Completion: Add option.Lift + update sofdevsim
+[x] Phase 1: Lift in fluentfp (evidence: go test ./option/... passes)
+[x] Phase 2: Refactor sofdevsim to use Lift (evidence: go test ./... passes)

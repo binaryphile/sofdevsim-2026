@@ -1,4 +1,4 @@
-@/home/ted/projects/tandem-protocol/tandem-protocol.md
+@/home/ted/projects/tandem-protocol/README.md
 
 # Software Development Simulation
 
