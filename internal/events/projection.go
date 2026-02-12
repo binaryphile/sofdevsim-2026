@@ -202,9 +202,9 @@ func (p Projection) Apply(evt Event) Projection {
 		next.sim.SizingPolicy = e.NewPolicy
 
 	case BufferConsumed:
-		// Update sprint buffer consumption with progress-relative fever status
+		// Update sprint buffer consumption with sprint-scoped progress for fever status
 		if sprint, ok := next.sim.CurrentSprintOption.Get(); ok {
-			progress := next.calculateProgress()
+			progress := next.calculateSprintProgress(sprint)
 			sprint = sprint.WithConsumedBuffer(e.DaysConsumed, progress)
 			next.sim.CurrentSprintOption = option.Of(sprint)
 		}
@@ -325,20 +325,35 @@ func (p Projection) withProcessed(id string) []string {
 	return result
 }
 
-// calculateProgress returns work completion ratio (0.0 to 1.0).
-// Progress = completed effort / total effort (backlog + active + completed).
-func (p Projection) calculateProgress() float64 {
+// calculateSprintProgress returns work completion ratio for sprint tickets only.
+// Progress = completed sprint ticket estimates / total sprint ticket estimates.
+// This is used for CCPM fever chart calculations which track sprint-scoped progress.
+func (p Projection) calculateSprintProgress(sprint model.Sprint) float64 {
+	if len(sprint.Tickets) == 0 {
+		return 0
+	}
+
+	// Build lookup set for sprint tickets
+	sprintTickets := make(map[string]bool, len(sprint.Tickets))
+	for _, id := range sprint.Tickets {
+		sprintTickets[id] = true
+	}
+
 	var completed, total float64
 
-	for _, t := range p.sim.Backlog {
-		total += t.EstimatedDays
-	}
+	// Active tickets in sprint
 	for _, t := range p.sim.ActiveTickets {
-		total += t.EstimatedDays
+		if sprintTickets[t.ID] {
+			total += t.EstimatedDays
+		}
 	}
+
+	// Completed tickets in sprint
 	for _, t := range p.sim.CompletedTickets {
-		total += t.EstimatedDays
-		completed += t.EstimatedDays
+		if sprintTickets[t.ID] {
+			total += t.EstimatedDays
+			completed += t.EstimatedDays
+		}
 	}
 
 	if total == 0 {

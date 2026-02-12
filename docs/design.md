@@ -247,8 +247,8 @@ Incidents are generated when tickets complete, based on understanding:
 The fever chart tracks project health by comparing work progress to buffer consumption. Based on Critical Chain Project Management and TameFlow methodology.
 
 **Inputs:**
-- `progress` = completed story points ÷ total story points (0.0 to 1.0)
-- `bufferPct` = buffer consumed ÷ total buffer (0.0 to 1.0+)
+- `progress` = sum(completed sprint ticket estimates) ÷ sum(all sprint ticket estimates) (0.0 to 1.0)
+- `bufferPct` = buffer consumed ÷ total buffer (can be negative if buffer reclaimed, or >1.0 if overrun)
 
 **Ratio:**
 ```
@@ -269,27 +269,105 @@ ratio = bufferPct ÷ progress
 **Why diagonal boundaries?** Early buffer consumption is more dangerous than late buffer consumption. At 20% progress, using 40% buffer is alarming. At 80% progress, using 90% buffer is acceptable.
 
 **Special cases:**
-- Progress = 0, Buffer = 0: Yellow (starting state)
-- Progress = 0, Buffer > 5%: Red (consuming buffer with no progress)
+- Progress = 0, Buffer = 0: Green (no work done, no buffer used)
+- Progress = 0, Buffer > 0: Red (consuming buffer with no progress—shouldn't happen with CCPM semantics since buffer only changes at completion)
 - Progress < 5%: Ratio not displayed (insufficient data)
+- Buffer < 0: Green (team ahead—buffer has been reclaimed beyond initial allocation; mathematically, negative bufferPct always satisfies `bufferPct ≤ progress × 0.66`)
 
 **Source:** TameFlow book "Hyper-Productive Knowledge Work" Chapter 23; [TameFlow blog](https://tameflow.com/blog/2017-03-30/how-to-draw-buffer-fever-charts/)
 
+**Buffer Adjustment (CCPM Semantics):**
+
+Buffer is the shared safety margin for estimation uncertainty. Per CCPM methodology, buffer is adjusted **at task completion** based on variance from estimate:
+
+| Task Outcome | Buffer Effect |
+|--------------|---------------|
+| Estimated 5d, actual 7d | Buffer consumed by 2d (overage) |
+| Estimated 5d, actual 4d | Buffer reclaimed by 1d (savings) |
+| Estimated 5d, actual 5d | Buffer unchanged |
+
+This reflects CCPM's core principle: buffer absorbs estimation variance bidirectionally.
+
+**When buffer is NOT adjusted:**
+- Time passing during active work
+- Tasks progressing at any rate
+- Task completing exactly on estimate
+
+**Reclaimed buffer:** Early completion credits the buffer only when follow-on work benefits. In this simulation, developers who finish early pick up new tickets, so reclaimed buffer represents real schedule protection.
+
+**Buffer can grow:** If many tasks complete early, buffer can exceed its initial allocation. This is correct CCPM behavior—the team is ahead of schedule and has built additional safety margin.
+
+**Worked Example:**
+
+Sprint with 3 tickets (total estimate: 12d), initial buffer: 2.4d (20%)
+
+| Ticket | Estimate | Actual | Buffer Δ | Buffer Total | Progress |
+|--------|----------|--------|----------|--------------|----------|
+| Start  | —        | —      | —        | 2.4d         | 0%       |
+| A      | 5d       | 6d     | +1d      | 3.4d         | 42% (5/12) |
+| B      | 3d       | 2d     | −1d      | 2.4d         | 67% (8/12) |
+| C      | 4d       | 4d     | 0        | 2.4d         | 100%     |
+
+Final state: 100% progress, 100% buffer remaining (2.4d). Ticket A's overage was offset by B's early completion. Fever chart stayed Green throughout because buffer% never exceeded progress × 0.66.
+
+**Progress Calculation:**
+
+Progress for fever chart is work-based and sprint-scoped:
+
+```
+progress = sum(completed sprint ticket estimates) / sum(all sprint ticket estimates)
+```
+
+Where "sprint tickets" means tickets assigned to the current sprint (tracked in `Sprint.Tickets`). This ensures:
+- Progress reflects deliverables, not calendar time
+- Each sprint's fever chart is independent
+- Backlog tickets don't affect current sprint's progress calculation
+
 **Implementation:**
+
+Buffer adjustment happens in Engine when a ticket completes:
+
+1. Engine compares `ticket.ActualDays` to `ticket.EstimatedDays`
+2. If different, Engine emits `BufferConsumed` event with signed adjustment (positive = consumed, negative = reclaimed)
+3. Projection applies event: updates `Sprint.BufferConsumed` and recalculates fever status
+
+**Note:** The event is named `BufferConsumed` for historical reasons but carries a signed `DaysConsumed` value. Negative values indicate buffer reclaimed (early completion).
 
 Sprint owns buffer state but not progress (Sprint doesn't know total work). Therefore:
 
 1. `Sprint.WithUpdatedFeverStatus(progress float64)` - accepts progress as parameter
-2. `Projection.calculateProgress()` - computes completed ÷ total from ticket state
-3. When `BufferConsumed` event is applied, Projection calculates progress and passes to Sprint
+2. `Projection.calculateSprintProgress(sprint)` - computes completed ÷ total for sprint tickets only
+3. When `BufferConsumed` event is applied, Projection calculates sprint progress and passes to Sprint
+
+**Implementation note:** `calculateSprintProgress(sprint)` filters by `sprint.Tickets` for correct sprint-scoped fever charts. The old global `calculateProgress()` has been removed.
 
 ```go
+// In Engine, after TicketCompleted:
+variance := ticket.ActualDays - ticket.EstimatedDays
+if variance != 0 {
+    emit(BufferConsumed{DaysConsumed: variance})  // negative = reclaimed
+}
+
 // In Projection.Apply() for BufferConsumed:
-progress := p.calculateProgress()  // completed ÷ total
-sprint = sprint.WithUpdatedFeverStatus(progress)
+progress := p.calculateSprintProgress(sprint)  // completed ÷ total for sprint tickets
+sprint = sprint.WithConsumedBuffer(e.DaysConsumed, progress)
 ```
 
 This keeps Sprint focused on buffer math while Projection handles cross-ticket calculations.
+
+**Data Available for UI Projections:**
+
+Any UI (TUI, lesson, API) can compute fever chart display from Sprint state:
+
+| Data | Source |
+|------|--------|
+| Progress % | `Sprint.Progress` (stored when fever status updated) |
+| Buffer % | `Sprint.BufferPctUsed()` |
+| Ratio | `bufferPct ÷ progress` (undefined when progress < 5%) |
+| Zone | `Sprint.FeverStatus` |
+| Remaining | `Sprint.BufferRemaining()` |
+
+Each UI decides its own presentation format.
 
 ---
 
@@ -538,16 +616,20 @@ flowchart TD
     F -->|No| G[Emit TicketPhaseChanged]
     G --> B
     F -->|Yes| H[Emit TicketCompleted]
-    H --> I[Generate random events<br/>bugs, scope creep]
+    H --> H1{Actual ≠ Estimate?}
+    H1 -->|Yes| H2[Emit BufferConsumed]
+    H1 -->|No| I
+    H2 --> I[Generate random events<br/>bugs, scope creep]
     I --> J[Check incident generation]
-    J --> K[Emit BufferConsumed]
-    K --> L[Track WIP]
+    J --> L[Track WIP]
     L --> M{Sprint ended?}
     M -->|Yes| N[Emit SprintEnded]
     M -->|No| O[Done]
 ```
 
 > **Note:** All state changes happen through events. The Projection applies each event to rebuild simulation state. The tick loop itself is an Action (advances simulation time); calculations within it (phase effort, variance bounds) are pure.
+
+> **Note:** BufferConsumed is emitted only when a ticket completes with variance from estimate (CCPM semantics). Positive variance (actual > estimate) consumes buffer; negative variance (actual < estimate) reclaims buffer. Buffer is NOT adjusted on every tick.
 
 ### Phase Transition Logic
 

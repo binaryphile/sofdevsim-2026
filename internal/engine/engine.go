@@ -6,7 +6,6 @@ import (
 
 	"github.com/binaryphile/fluentfp/either"
 	"github.com/binaryphile/fluentfp/option"
-	"github.com/binaryphile/fluentfp/slice"
 	"github.com/binaryphile/sofdevsim-2026/internal/events"
 	"github.com/binaryphile/sofdevsim-2026/internal/model"
 )
@@ -212,12 +211,7 @@ func (e Engine) Tick() (Engine, []model.Event, error) {
 		allEvents = append(allEvents, e.toUIEvent(evt))
 	}
 
-	// 4. Update sprint buffer
-	if e, err = e.updateBuffer(); err != nil {
-		return e, nil, err
-	}
-
-	// 5. Track WIP for export
+	// 4. Track WIP for export
 	if e, err = e.trackWIP(); err != nil {
 		return e, nil, err
 	}
@@ -251,6 +245,16 @@ func (e Engine) advancePhaseEmitOnly(ticket model.Ticket, dev model.Developer) (
 			return e, nil, err
 		}
 
+		// CCPM: Adjust buffer based on variance from estimate
+		// Positive variance (over estimate) consumes buffer
+		// Negative variance (under estimate) reclaims buffer
+		variance := ticket.ActualDays - ticket.EstimatedDays
+		if variance != 0 {
+			if e, err = e.emit(events.NewBufferConsumed(e.state().ID, e.state().CurrentTick, variance)); err != nil {
+				return e, nil, err
+			}
+		}
+
 		modelEvents = append(modelEvents, model.NewEvent(
 			model.EventTicketComplete,
 			fmt.Sprintf("%s completed (%.1f days actual vs %.1f estimated)", ticket.ID, ticket.ActualDays, ticket.EstimatedDays),
@@ -274,33 +278,6 @@ func (e Engine) advancePhaseEmitOnly(ticket model.Ticket, dev model.Developer) (
 	return e, modelEvents, nil
 }
 
-// updateBuffer consumes buffer when tickets are behind schedule.
-// Returns new Engine and error (immutable pattern).
-func (e Engine) updateBuffer() (Engine, error) {
-	sprint, ok := e.state().CurrentSprintOption.Get()
-	if !ok {
-		return e, nil
-	}
-
-	// Calculate expected vs actual progress
-	progressPct := sprint.ProgressPct(e.state().CurrentTick)
-	expectedComplete := progressPct * float64(len(e.state().ActiveTickets))
-
-	// completedInCurrentSprint returns true if ticket was completed after sprint started.
-	completedInCurrentSprint := func(t model.Ticket) bool { return t.CompletedTick >= sprint.StartDay }
-	completedInSprint := slice.From(e.state().CompletedTickets).
-		KeepIf(completedInCurrentSprint).
-		Len()
-
-	// If behind schedule, consume buffer
-	if float64(completedInSprint) < expectedComplete {
-		bufferConsumption := (expectedComplete - float64(completedInSprint)) * 0.1
-		// Emit BufferConsumed - projection handler updates sprint.BufferConsumed
-		return e.emit(events.NewBufferConsumed(e.state().ID, e.state().CurrentTick, bufferConsumption))
-	}
-
-	return e, nil
-}
 
 // EmitBufferConsumed directly consumes buffer days (for lesson debt carryover).
 // Returns new Engine and error (immutable pattern).

@@ -305,30 +305,38 @@ func TestProjection_Apply_BufferConsumed(t *testing.T) {
 }
 
 func TestProjection_Apply_BufferConsumed_FeverTransitions(t *testing.T) {
-	// Verify fever status transitions as buffer is consumed relative to progress.
+	// Verify fever status transitions as buffer is consumed relative to sprint progress.
 	// Diagonal thresholds:
 	//   Green: bufferPct <= progress * 0.66
 	//   Red:   bufferPct > 0.33 + progress * 0.67
 	//   Yellow: between thresholds
+	//
+	// NOTE: Progress is now sprint-scoped (only tickets in sprint.Tickets count).
+	// Tickets are added to sprint.Tickets when assigned during an active sprint.
 	proj := events.NewProjection()
 	proj = proj.Apply(events.NewSimulationCreated("sim-1", 0, events.SimConfig{
 		SprintLength: 10,
 		Seed:         42,
 	}))
+	proj = proj.Apply(events.NewDeveloperAdded("sim-1", 0, "dev-1", "Alice", 1.0))
 	proj = proj.Apply(events.NewSprintStarted("sim-1", 0, 1, 10.0)) // 10 buffer days
 
 	// Create 2 tickets with 5 days each = 10 total days of work
 	proj = proj.Apply(events.NewTicketCreated("sim-1", 0, "T-1", "Test Ticket 1", 5.0, model.HighUnderstanding))
 	proj = proj.Apply(events.NewTicketCreated("sim-1", 0, "T-2", "Test Ticket 2", 5.0, model.HighUnderstanding))
 
-	// Initially Green (0% consumed, 0% progress)
+	// Assign BOTH tickets to sprint (adds them to sprint.Tickets)
+	proj = proj.Apply(events.NewTicketAssigned("sim-1", 1, "T-1", "dev-1", time.Time{}))
+	proj = proj.Apply(events.NewTicketAssigned("sim-1", 1, "T-2", "dev-1", time.Time{}))
+
+	// Initially Green (0% consumed, 0% progress - both tickets active)
+	proj = proj.Apply(events.NewBufferConsumed("sim-1", 1, 0.0))
 	sprint, _ := proj.State().CurrentSprintOption.Get()
 	if sprint.FeverStatus != model.FeverGreen {
 		t.Errorf("Initial FeverStatus = %v, want FeverGreen", sprint.FeverStatus)
 	}
 
-	// Complete first ticket -> 50% progress
-	proj = proj.Apply(events.NewTicketAssigned("sim-1", 1, "T-1", "dev-1", time.Time{}))
+	// Complete first ticket -> 50% progress (5 of 10 days estimated)
 	proj = proj.Apply(events.NewTicketCompleted("sim-1", 5, "T-1", "dev-1", 5.0))
 
 	// At 50% progress, consume 2.0 of 10.0 = 20% buffer -> Green (20% <= 50%*0.66=33%)
@@ -350,80 +358,6 @@ func TestProjection_Apply_BufferConsumed_FeverTransitions(t *testing.T) {
 	sprint, _ = proj.State().CurrentSprintOption.Get()
 	if sprint.FeverStatus != model.FeverRed {
 		t.Errorf("After 80%% buffer at 50%% progress: FeverStatus = %v, want FeverRed", sprint.FeverStatus)
-	}
-}
-
-func TestProjection_CalculateProgress(t *testing.T) {
-	// Unit test for progress calculation: completed effort / total effort
-	tests := []struct {
-		name         string
-		backlog      int     // tickets in backlog (5 days each)
-		active       int     // tickets in progress (5 days each)
-		completed    int     // tickets completed (5 days each)
-		wantProgress float64 // expected progress ratio
-	}{
-		{"no_tickets", 0, 0, 0, 0},
-		{"all_backlog", 2, 0, 0, 0},
-		{"half_done", 0, 1, 1, 0.5},
-		{"all_done", 0, 0, 2, 1.0},
-		{"mixed", 1, 1, 2, 0.5}, // 10 of 20 days done
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			proj := events.NewProjection()
-			proj = proj.Apply(events.NewSimulationCreated("sim-1", 0, events.SimConfig{Seed: 42}))
-			proj = proj.Apply(events.NewSprintStarted("sim-1", 0, 1, 10.0))
-
-			ticketNum := 0
-			// Add backlog tickets
-			for i := 0; i < tt.backlog; i++ {
-				ticketNum++
-				proj = proj.Apply(events.NewTicketCreated("sim-1", 0,
-					fmt.Sprintf("T-%d", ticketNum), "Backlog", 5.0, model.HighUnderstanding))
-			}
-			// Add active tickets
-			for i := 0; i < tt.active; i++ {
-				ticketNum++
-				id := fmt.Sprintf("T-%d", ticketNum)
-				proj = proj.Apply(events.NewTicketCreated("sim-1", 0, id, "Active", 5.0, model.HighUnderstanding))
-				proj = proj.Apply(events.NewTicketAssigned("sim-1", 1, id, "dev-1", time.Time{}))
-			}
-			// Add completed tickets
-			for i := 0; i < tt.completed; i++ {
-				ticketNum++
-				id := fmt.Sprintf("T-%d", ticketNum)
-				proj = proj.Apply(events.NewTicketCreated("sim-1", 0, id, "Done", 5.0, model.HighUnderstanding))
-				proj = proj.Apply(events.NewTicketAssigned("sim-1", 1, id, "dev-1", time.Time{}))
-				proj = proj.Apply(events.NewTicketCompleted("sim-1", 5, id, "dev-1", 5.0))
-			}
-
-			// Trigger progress calculation via BufferConsumed
-			proj = proj.Apply(events.NewBufferConsumed("sim-1", 5, 0.0))
-
-			// Verify progress by checking fever status at known thresholds
-			// At 0% buffer, Green means progress calculation worked
-			// (Green threshold = progress * 0.66, so 0 <= any positive threshold)
-			state := proj.State()
-			sprint, _ := state.CurrentSprintOption.Get()
-
-			// Calculate expected: completed / total
-			total := float64(tt.backlog+tt.active+tt.completed) * 5.0
-			completed := float64(tt.completed) * 5.0
-			var expected float64
-			if total > 0 {
-				expected = completed / total
-			}
-
-			if expected != tt.wantProgress {
-				t.Errorf("Expected progress calc: got %.2f, want %.2f", expected, tt.wantProgress)
-			}
-
-			// Verify fever status is Green (0% buffer at any progress = Green)
-			if sprint.FeverStatus != model.FeverGreen {
-				t.Errorf("At 0%% buffer, FeverStatus = %v, want Green", sprint.FeverStatus)
-			}
-		})
 	}
 }
 
@@ -1007,6 +941,149 @@ func TestProjection_Apply_ScopeCreepOccurred(t *testing.T) {
 				t.Errorf("EstimatedDays = %.2f, want %.2f", ticket.EstimatedDays, expectedEstimate)
 			}
 		})
+	}
+}
+
+func TestProjection_CalculateSprintProgress(t *testing.T) {
+	// Unit test for sprint-scoped progress calculation.
+	// Only tickets in sprint.Tickets should be counted.
+	// Tickets are added to sprint.Tickets when assigned during an active sprint.
+	tests := []struct {
+		name         string
+		sprintActive int     // tickets assigned to sprint (active)
+		sprintDone   int     // tickets assigned to sprint (completed)
+		wantProgress float64 // expected progress ratio
+	}{
+		{"no_sprint_tickets", 0, 0, 0},   // No tickets = 0 progress
+		{"all_active", 2, 0, 0},          // No completed work
+		{"half_done", 1, 1, 0.5},         // 1 of 2 sprint tickets done
+		{"all_done", 0, 2, 1.0},          // All sprint tickets done
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			proj := events.NewProjection()
+			proj = proj.Apply(events.NewSimulationCreated("sim-1", 0, events.SimConfig{
+				SprintLength: 10,
+				Seed:         42,
+			}))
+			proj = proj.Apply(events.NewDeveloperAdded("sim-1", 0, "dev-1", "Alice", 1.0))
+
+			// Start sprint
+			proj = proj.Apply(events.NewSprintStarted("sim-1", 0, 1, 10.0))
+
+			ticketNum := 0
+
+			// Add active tickets IN sprint (assigned during sprint)
+			for i := 0; i < tt.sprintActive; i++ {
+				ticketNum++
+				id := fmt.Sprintf("T-SPRINT-%d", ticketNum)
+				proj = proj.Apply(events.NewTicketCreated("sim-1", 0, id, "Sprint Active", 5.0, model.HighUnderstanding))
+				proj = proj.Apply(events.NewTicketAssigned("sim-1", 1, id, "dev-1", time.Time{})) // During sprint
+			}
+
+			// Add completed tickets IN sprint (assigned during sprint, then completed)
+			for i := 0; i < tt.sprintDone; i++ {
+				ticketNum++
+				id := fmt.Sprintf("T-SPRINT-DONE-%d", ticketNum)
+				proj = proj.Apply(events.NewTicketCreated("sim-1", 0, id, "Sprint Done", 5.0, model.HighUnderstanding))
+				proj = proj.Apply(events.NewTicketAssigned("sim-1", 1, id, "dev-1", time.Time{})) // During sprint
+				proj = proj.Apply(events.NewTicketCompleted("sim-1", 5, id, "dev-1", 5.0))
+			}
+
+			// Trigger progress calculation via BufferConsumed
+			// (This exercises calculateSprintProgress via the handler)
+			proj = proj.Apply(events.NewBufferConsumed("sim-1", 5, 0.0))
+
+			state := proj.State()
+			sprint, ok := state.CurrentSprintOption.Get()
+			if !ok {
+				t.Fatal("CurrentSprintOption should be set")
+			}
+
+			// The Progress field is set by BufferConsumed handler
+			if sprint.Progress != tt.wantProgress {
+				t.Errorf("Sprint.Progress = %.2f, want %.2f", sprint.Progress, tt.wantProgress)
+			}
+		})
+	}
+}
+
+func TestProjection_CalculateSprintProgress_IgnoresOtherTickets(t *testing.T) {
+	// Verify that completed tickets NOT in sprint.Tickets are ignored.
+	// This is important for proper CCPM fever chart calculation.
+	proj := events.NewProjection()
+	proj = proj.Apply(events.NewSimulationCreated("sim-1", 0, events.SimConfig{
+		SprintLength: 10,
+		Seed:         42,
+	}))
+	proj = proj.Apply(events.NewDeveloperAdded("sim-1", 0, "dev-1", "Alice", 1.0))
+
+	// Create and complete tickets BEFORE sprint starts (not in sprint)
+	for i := 0; i < 3; i++ {
+		id := fmt.Sprintf("T-BEFORE-%d", i)
+		proj = proj.Apply(events.NewTicketCreated("sim-1", 0, id, "Before Sprint", 5.0, model.HighUnderstanding))
+		proj = proj.Apply(events.NewTicketAssigned("sim-1", 0, id, "dev-1", time.Time{}))
+		proj = proj.Apply(events.NewTicketCompleted("sim-1", 0, id, "dev-1", 5.0))
+	}
+
+	// Now start sprint (those tickets are NOT in sprint.Tickets)
+	proj = proj.Apply(events.NewSprintStarted("sim-1", 1, 1, 10.0))
+
+	// Add one ticket to sprint (active)
+	proj = proj.Apply(events.NewTicketCreated("sim-1", 1, "T-SPRINT-1", "Sprint", 5.0, model.HighUnderstanding))
+	proj = proj.Apply(events.NewTicketAssigned("sim-1", 2, "T-SPRINT-1", "dev-1", time.Time{}))
+
+	// Complete it
+	proj = proj.Apply(events.NewTicketCompleted("sim-1", 5, "T-SPRINT-1", "dev-1", 5.0))
+
+	// Trigger progress calculation
+	proj = proj.Apply(events.NewBufferConsumed("sim-1", 5, 0.0))
+
+	state := proj.State()
+	sprint, _ := state.CurrentSprintOption.Get()
+
+	// Sprint progress should be 100% (1 of 1 sprint ticket done)
+	// NOT 25% (4 of 4 total completed tickets)
+	if sprint.Progress != 1.0 {
+		t.Errorf("Sprint.Progress = %.2f, want 1.0 (only sprint tickets counted)", sprint.Progress)
+	}
+
+	// Verify sprint.Tickets only has the one sprint ticket
+	if len(sprint.Tickets) != 1 {
+		t.Errorf("len(sprint.Tickets) = %d, want 1", len(sprint.Tickets))
+	}
+}
+
+func TestProjection_BufferConsumed_Bidirectional(t *testing.T) {
+	// Verify buffer can be consumed (positive) or reclaimed (negative).
+	// CCPM semantics: overage consumes, underage reclaims.
+	proj := events.NewProjection()
+	proj = proj.Apply(events.NewSimulationCreated("sim-1", 0, events.SimConfig{
+		SprintLength: 10,
+		Seed:         42,
+	}))
+	proj = proj.Apply(events.NewSprintStarted("sim-1", 0, 1, 10.0)) // 10 buffer days
+
+	// Consume 2 days (ticket took longer than estimate)
+	proj = proj.Apply(events.NewBufferConsumed("sim-1", 1, 2.0))
+	sprint, _ := proj.State().CurrentSprintOption.Get()
+	if sprint.BufferConsumed != 2.0 {
+		t.Errorf("After consume 2: BufferConsumed = %.1f, want 2.0", sprint.BufferConsumed)
+	}
+
+	// Reclaim 1 day (ticket finished early)
+	proj = proj.Apply(events.NewBufferConsumed("sim-1", 2, -1.0))
+	sprint, _ = proj.State().CurrentSprintOption.Get()
+	if sprint.BufferConsumed != 1.0 {
+		t.Errorf("After reclaim 1: BufferConsumed = %.1f, want 1.0", sprint.BufferConsumed)
+	}
+
+	// Reclaim more than consumed (net negative buffer consumption)
+	proj = proj.Apply(events.NewBufferConsumed("sim-1", 3, -3.0))
+	sprint, _ = proj.State().CurrentSprintOption.Get()
+	if sprint.BufferConsumed != -2.0 {
+		t.Errorf("After reclaim 3: BufferConsumed = %.1f, want -2.0", sprint.BufferConsumed)
 	}
 }
 

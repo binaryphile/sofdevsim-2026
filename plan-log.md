@@ -28154,3 +28154,30 @@ Estimated: 5-10K tokens (simple text edits)
 [x] Projection tests verify progress calculation (TestProjection_Apply_BufferConsumed_FeverTransitions)
 [x] All existing tests pass (go test ./... = OK)
 [x] Lesson behavior unchanged (fever chart now uses progress-relative zones)
+
+2026-02-11T16:30:00Z | Completion: CCPM Buffer Semantics Documentation
+[x] Design doc specifies bidirectional buffer adjustment (actual vs estimate)
+[x] Design doc specifies when buffer is NOT adjusted (time, in-progress work, exact match)
+[x] Reclaimed buffer caveat documented (only matters if follow-on work benefits)
+[x] Progress calculation documented as work-based
+[x] Tick loop flowchart shows correct emission point (at completion, not per-tick)
+[x] Use cases remain accurate (no changes needed)
+
+Changes made:
+- docs/design.md: Added "Buffer Adjustment (CCPM Semantics)" section after line 276
+- docs/design.md: Updated Implementation section with Engine/Projection flow
+- docs/design.md: Updated tick loop flowchart to show BufferConsumed after TicketCompleted
+2026-02-11T17:00:00Z | Contract: CCPM Buffer Implementation
+[ ] Delete updateBuffer() and call from Tick()
+[ ] Add buffer adjustment to advancePhaseEmitOnly()
+[ ] Add calculateSprintProgress() to projection
+[ ] Update BufferConsumed handler
+[ ] Update/add tests
+2026-02-11T18:00:00Z | Completion: CCPM Buffer Implementation
+[x] Delete updateBuffer() and call from Tick() - removed lines 277-303 and line 216
+[x] Add buffer adjustment to advancePhaseEmitOnly() - emits BufferConsumed with variance
+[x] Add calculateSprintProgress() to projection - sprint-scoped progress calculation
+[x] Update BufferConsumed handler - uses sprint-scoped progress
+[x] Update/add tests - Q1 unit tests for projection, Q2 integration for engine
+[x] Delete dead code - removed unused calculateProgress() function
+Note: Variance model always produces positive variance (ActualDays > EstimatedDays) due to phase overshoot. Buffer reclamation code path exists but requires variance model calibration to trigger.

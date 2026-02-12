@@ -352,3 +352,91 @@ func TestEngine_Tick_ReturnsNewEngine(t *testing.T) {
 			newEng.Sim().CurrentTick, originalTick+1)
 	}
 }
+
+// Integration test: buffer adjustment emitted at ticket completion
+// CCPM semantics: buffer consumed/reclaimed based on actual vs estimated variance
+//
+// With seed 12345, the variance model produces deterministic results:
+// - Ticket with 5.0 estimated days completes with 8.07 actual days
+// - Variance = 3.07 (over estimate, consumes buffer)
+//
+// Note: The current variance model always produces ActualDays > EstimatedDays due to:
+// 1. Phase transition overshoot (work done on final tick exceeds remaining effort)
+// 2. HighUnderstanding multipliers reduce total effort to ~90% of estimate
+//
+// Buffer reclamation (negative variance) is supported by the handler
+// (TestProjection_BufferConsumed_Bidirectional) and emission code, but requires
+// variance model calibration to trigger. This is a simulation fidelity issue,
+// not a CCPM implementation bug.
+func TestEngine_BufferAdjustment_AtCompletion(t *testing.T) {
+	const seed = int64(12345)
+	sim := model.NewSimulation("buffer-test", model.PolicyNone, seed)
+
+	store := events.NewMemoryStore()
+	eng := engine.NewEngineWithStore(seed, store)
+	eng, _ = eng.EmitCreated(sim.ID, 0, events.SimConfig{
+		TeamSize:     1,
+		SprintLength: 30,
+		Seed:         seed,
+		Policy:       model.PolicyNone,
+	})
+
+	eng, _ = eng.AddDeveloper("dev-1", "Alice", 1.0)
+	eng, _ = eng.AddTicket(model.NewTicket("TKT-001", "Test task", 5.0, model.HighUnderstanding))
+
+	eng, _ = eng.StartSprint()
+	eng, _ = eng.AssignTicket("TKT-001", "dev-1")
+
+	// Run until ticket completes
+	for i := 0; i < 50; i++ {
+		eng, _, _ = eng.Tick()
+		if len(eng.Sim().CompletedTickets) > 0 {
+			break
+		}
+	}
+
+	// Verify ticket completed
+	if len(eng.Sim().CompletedTickets) == 0 {
+		t.Fatal("Ticket did not complete within expected ticks")
+	}
+
+	completedTicket := eng.Sim().CompletedTickets[0]
+
+	// With seed 12345, expect deterministic values
+	const tolerance = 0.01
+	wantActual := 8.07
+	wantVariance := 3.07 // actual - estimated = 8.07 - 5.00
+
+	if diff := completedTicket.ActualDays - wantActual; diff < -tolerance || diff > tolerance {
+		t.Errorf("ActualDays = %.2f, want %.2f (seed %d should be deterministic)",
+			completedTicket.ActualDays, wantActual, seed)
+	}
+
+	// Find BufferConsumed event immediately after TicketCompleted
+	evts := store.Replay("buffer-test")
+	var bufferConsumedAfterCompletion *events.BufferConsumed
+	foundCompletion := false
+	for _, evt := range evts {
+		if _, ok := evt.(events.TicketCompleted); ok {
+			foundCompletion = true
+			continue
+		}
+		if foundCompletion {
+			if bc, ok := evt.(events.BufferConsumed); ok {
+				bufferConsumedAfterCompletion = &bc
+				break
+			}
+		}
+	}
+
+	// Must have BufferConsumed event (variance is non-zero)
+	if bufferConsumedAfterCompletion == nil {
+		t.Fatal("Expected BufferConsumed event after TicketCompleted")
+	}
+
+	// Verify variance matches expected
+	if diff := bufferConsumedAfterCompletion.DaysConsumed - wantVariance; diff < -tolerance || diff > tolerance {
+		t.Errorf("BufferConsumed.DaysConsumed = %.2f, want %.2f",
+			bufferConsumedAfterCompletion.DaysConsumed, wantVariance)
+	}
+}
