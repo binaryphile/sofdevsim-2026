@@ -177,16 +177,26 @@ func (a *App) feverPanel() string {
 			return lipgloss.JoinVertical(lipgloss.Left, title, MutedStyle.Render("No active sprint"))
 		}
 
-		pctUsed := (sprint.BufferConsumed / sprint.BufferDays) * 100
+		bufferPct := (sprint.BufferConsumed / sprint.BufferDays) * 100
+		progressPct := sprint.Progress * 100
 
-		bar := RenderProgressBar(pctUsed/100, 20)
-		statusStyle := FeverColor(pctUsed)
-		statusLabel := FeverLabel(pctUsed)
+		// Ratio: buffer% / progress% (only meaningful when progress > 5%)
+		var ratioStr string
+		if sprint.Progress > 0.05 {
+			ratio := (sprint.BufferConsumed / sprint.BufferDays) / sprint.Progress
+			ratioStr = fmt.Sprintf("%.1f", ratio)
+		} else {
+			ratioStr = "-"
+		}
 
-		info := fmt.Sprintf("Buffer: %s %.0f%% %s",
-			bar,
-			pctUsed,
-			statusStyle.Render(statusLabel),
+		statusStyle := FeverColor(bufferPct)
+		zone := feverEmojiFromString(sprint.FeverStatus)
+
+		info := fmt.Sprintf("Work: %.0f%%  Buffer: %.0f%%  Ratio: %s %s",
+			progressPct,
+			bufferPct,
+			ratioStr,
+			statusStyle.Render(zone),
 		)
 
 		remaining := fmt.Sprintf("%.1f / %.1f days remaining",
@@ -205,16 +215,26 @@ func (a *App) feverPanel() string {
 		return lipgloss.JoinVertical(lipgloss.Left, title, MutedStyle.Render("No active sprint"))
 	}
 
-	pctUsed := sprint.BufferPctUsed() * 100
+	bufferPct := sprint.BufferPctUsed() * 100
+	progressPct := sprint.Progress * 100
 
-	bar := RenderProgressBar(sprint.BufferPctUsed(), 20)
-	statusStyle := FeverColor(pctUsed)
-	statusLabel := FeverLabel(pctUsed)
+	// Ratio: buffer% / progress% (only meaningful when progress > 5%)
+	var ratioStr string
+	if sprint.Progress > 0.05 {
+		ratio := sprint.BufferPctUsed() / sprint.Progress
+		ratioStr = fmt.Sprintf("%.1f", ratio)
+	} else {
+		ratioStr = "-"
+	}
 
-	info := fmt.Sprintf("Buffer: %s %.0f%% %s",
-		bar,
-		pctUsed,
-		statusStyle.Render(statusLabel),
+	statusStyle := FeverColor(bufferPct)
+	zone := FeverEmoji(sprint.FeverStatus)
+
+	info := fmt.Sprintf("Work: %.0f%%  Buffer: %.0f%%  Ratio: %s %s",
+		progressPct,
+		bufferPct,
+		ratioStr,
+		statusStyle.Render(zone),
 	)
 
 	remaining := fmt.Sprintf("%.1f / %.1f days remaining",

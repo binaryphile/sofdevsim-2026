@@ -85,6 +85,8 @@ type SprintState struct {
 	DurationDays   int     `json:"durationDays"`
 	BufferDays     float64 `json:"bufferDays"`
 	BufferConsumed float64 `json:"bufferConsumed"`
+	FeverStatus    string  `json:"feverStatus"`
+	Progress       float64 `json:"progress"`
 }
 
 // SimulationState mirrors api.SimulationState for client-side decoding.

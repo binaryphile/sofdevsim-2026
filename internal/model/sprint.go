@@ -12,6 +12,7 @@ type Sprint struct {
 	BufferDays     float64
 	BufferConsumed float64
 	FeverStatus    FeverStatus
+	Progress       float64 // Work progress (0.0-1.0) when fever status was last updated
 
 	// Tickets committed to sprint
 	Tickets []string // Ticket IDs
@@ -93,6 +94,7 @@ func (s Sprint) BufferPctUsed() float64 {
 //   - Red: bufferPct >= 0.33 + progress × 0.67 (behind schedule)
 //   - Yellow: between thresholds (on track)
 func (s Sprint) WithUpdatedFeverStatus(progress float64) Sprint {
+	s.Progress = progress
 	bufferPct := s.BufferPctUsed()
 	greenThreshold := progress * 0.66
 	redThreshold := 0.33 + progress*0.67

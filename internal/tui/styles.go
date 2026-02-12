@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"github.com/binaryphile/sofdevsim-2026/internal/model"
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -126,5 +127,29 @@ func FeverLabel(pctUsed float64) string {
 		return "YELLOW"
 	default:
 		return "RED"
+	}
+}
+
+// FeverEmoji returns the emoji for a FeverStatus
+func FeverEmoji(status model.FeverStatus) string {
+	switch status {
+	case model.FeverGreen:
+		return "🟢"
+	case model.FeverYellow:
+		return "🟡"
+	default:
+		return "🔴"
+	}
+}
+
+// feverEmojiFromString returns emoji for string status (client mode)
+func feverEmojiFromString(status string) string {
+	switch status {
+	case "Green":
+		return "🟢"
+	case "Yellow":
+		return "🟡"
+	default:
+		return "🔴"
 	}
 }

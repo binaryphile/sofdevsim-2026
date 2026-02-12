@@ -60,6 +60,11 @@ func (f FeverStatus) String() string {
 	return [...]string{"Green", "Yellow", "Red"}[f]
 }
 
+// MarshalJSON serializes FeverStatus as a string for API responses
+func (f FeverStatus) MarshalJSON() ([]byte, error) {
+	return []byte(`"` + f.String() + `"`), nil
+}
+
 // Severity represents incident severity levels
 type Severity int
 
