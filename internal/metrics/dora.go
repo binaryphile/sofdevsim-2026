@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/binaryphile/fluentfp/slice"
-	"github.com/binaryphile/fluentfp/ternary"
+	t "github.com/binaryphile/fluentfp/ternary"
 	"github.com/binaryphile/sofdevsim-2026/internal/model"
 )
 
@@ -117,7 +117,7 @@ func (m DORAMetrics) updatedDeployFrequency(sim model.Simulation) DORAMetrics {
 
 	// Frequency per day
 	if sim.CurrentTick > 0 {
-		days := ternary.If[int](sim.CurrentTick < 7).Then(sim.CurrentTick).Else(7)
+		days := t.IntIf(sim.CurrentTick < 7).Then(sim.CurrentTick).Else(7)
 		m.DeployFrequency = float64(m.DeploysLast7Days) / float64(days)
 	}
 	return m
