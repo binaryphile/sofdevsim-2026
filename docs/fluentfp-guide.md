@@ -292,21 +292,28 @@ sprint := sim.CurrentSprintOption.MustGet() // Option has MustGet() for invarian
 - Error handling: Error is expected and recoverable (user input, network, file I/O)
 - If you think "this error can never happen here", use `must` to enforce that invariant
 
-## ternary Package
+## value Package
+
+Value-first conditional selection. Use when rendering a value with a fallback, not for branching logic.
 
 ```go
-import "github.com/binaryphile/fluentfp/ternary"
+import "github.com/binaryphile/fluentfp/value"
 
-ternary.If[R](cond bool).Then(t R).Else(e R) R
-ternary.If[R](cond bool).ThenCall(fn).ElseCall(fn) R  // Lazy
+value.Of(t T).When(cond bool).Or(fallback T) T
 ```
 
-**Pattern:**
+Reads as plain English: "value of x when condition, or fallback"
+
+**Patterns:**
 ```go
-// Factory alias for repeated use
-If := ternary.If[string]
-status := If(done).Then("complete").Else("pending")
+// Conditional value with fallback
+days := value.Of(sim.CurrentTick).When(sim.CurrentTick < 7).Or(7)
+
+// Status rendering
+status := value.Of(GreenStyle.Render("[idle]")).When(dev.IsIdle()).Or(YellowStyle.Render("[busy]"))
 ```
+
+**When to use:** Conditional value selection with a fallback. Not for branching logic with side effects.
 
 ## lof Package (Lower-Order Functions)
 

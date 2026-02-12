@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/binaryphile/fluentfp/ternary"
+	"github.com/binaryphile/fluentfp/value"
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -100,7 +100,7 @@ func (a *App) developersPanel() string {
 	if _, isClient := a.mode.Get(); isClient {
 		// Client mode: use HTTP state
 		for _, dev := range a.state.Developers {
-			status := ternary.If[string](dev.IsIdle).Then(GreenStyle.Render("[idle]")).Else(YellowStyle.Render("[busy]"))
+			status := value.Of(GreenStyle.Render("[idle]")).When(dev.IsIdle).Or(YellowStyle.Render("[busy]"))
 			assignment := ""
 			if !dev.IsIdle {
 				assignment = MutedStyle.Render(" → " + dev.CurrentTicket)
@@ -114,7 +114,7 @@ func (a *App) developersPanel() string {
 		eng, _ := a.mode.GetLeft()
 		sim := eng.Engine.Sim()
 		for _, dev := range sim.Developers {
-			status := ternary.If[string](dev.IsIdle()).Then(GreenStyle.Render("[idle]")).Else(YellowStyle.Render("[busy]"))
+			status := value.Of(GreenStyle.Render("[idle]")).When(dev.IsIdle()).Or(YellowStyle.Render("[busy]"))
 			assignment := ""
 			if !dev.IsIdle() {
 				assignment = MutedStyle.Render(" → " + dev.CurrentTicket)

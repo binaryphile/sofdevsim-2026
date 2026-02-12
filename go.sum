@@ -8,6 +8,8 @@ github.com/aymanbagabas/go-udiff v0.3.1 h1:LV+qyBQ2pqe0u42ZsUEtPiCaUoqgA9gYRDs3v
 github.com/aymanbagabas/go-udiff v0.3.1/go.mod h1:G0fsKmG+P6ylD0r6N/KgQD/nWzgfnl8ZBcNLgcbrw8E=
 github.com/binaryphile/fluentfp v0.13.0 h1:U7FMx18I+AG6uJaP5YGLlhP47iD/SbijZC8Y9y8rBmo=
 github.com/binaryphile/fluentfp v0.13.0/go.mod h1:xf23adeRO0KOkBs4iyrM0c7Ed3kV0Ol4IpRID3DW+do=
+github.com/binaryphile/fluentfp v0.14.0 h1:F9UR1Kg9Tl07S61IgtP9QKBaI7PTY9vs5bL0lrMztgU=
+github.com/binaryphile/fluentfp v0.14.0/go.mod h1:xf23adeRO0KOkBs4iyrM0c7Ed3kV0Ol4IpRID3DW+do=
 github.com/charmbracelet/bubbles v0.20.0 h1:jSZu6qD8cRQ6k9OMfR1WlM+ruM8fkPWkHvQWD9LIutE=
 github.com/charmbracelet/bubbles v0.20.0/go.mod h1:39slydyswPy+uVOHZ5x/GjwVAFkCsV8IIVy+4MhzwwU=
 github.com/charmbracelet/bubbletea v1.3.10 h1:otUDHWMMzQSB0Pkc87rm691KZ3SWa4KUlvF9nRvCICw=
