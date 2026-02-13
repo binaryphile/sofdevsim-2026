@@ -32,6 +32,9 @@ slice.MapTo[R](ts []T) MapperTo[R,T]   // For mapping to arbitrary type R
 
 // MapperTo[R,T] additional method
 .To(fn func(T) R) Mapper[R]            // Map to type R
+
+// Standalone functions
+slice.Find[T](ts []T, fn func(T) bool) option.Basic[T]  // First matching element
 ```
 
 ## slice Patterns

@@ -51,6 +51,9 @@ type TicketState struct {
 	EstimatedDays float64  `json:"estimatedDays,omitempty"`
 }
 
+// GetUnderstanding returns the understanding level for fluentfp method expressions.
+func (t TicketState) GetUnderstanding() string { return t.Understanding }
+
 // DeveloperState mirrors api.DeveloperState for client-side decoding.
 type DeveloperState struct {
 	ID            string  `json:"id"`

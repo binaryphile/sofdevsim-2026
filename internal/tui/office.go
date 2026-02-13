@@ -1,6 +1,9 @@
 package tui
 
-import "github.com/binaryphile/fluentfp/option"
+import (
+	"github.com/binaryphile/fluentfp/option"
+	"github.com/binaryphile/fluentfp/slice"
+)
 
 // Data: Position represents a screen coordinate (value type)
 type Position struct {
@@ -179,12 +182,9 @@ func NewOfficeState(devIDs []string) OfficeState {
 // GetAnimationOption returns the animation for a specific developer.
 // Calculation: (OfficeState, string) → option.Basic[DeveloperAnimation]
 func (s OfficeState) GetAnimationOption(devID string) option.Basic[DeveloperAnimation] {
-	for _, anim := range s.Animations {
-		if anim.DevID == devID {
-			return option.Of(anim)
-		}
-	}
-	return option.NotOk[DeveloperAnimation]()
+	// hasDevID returns true if the animation belongs to the specified developer.
+	hasDevID := func(a DeveloperAnimation) bool { return a.DevID == devID }
+	return slice.Find(s.Animations, hasDevID)
 }
 
 // GetActiveAnimationOption returns the animation only if it's active.

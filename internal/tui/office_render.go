@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/binaryphile/fluentfp/slice"
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -81,16 +82,14 @@ func RenderCubicle(anim DeveloperAnimation, name string, width int) string {
 // Calculation: RenderConferenceRoom renders the conference room with developers
 // Pure function: ([]DeveloperAnimation, []string, int) → string
 func RenderConferenceRoom(anims []DeveloperAnimation, names []string, width int) string {
-	var icons []string
-	for i, anim := range anims {
-		if anim.State == StateConference {
-			color := DeveloperColors[anim.ColorIndex%len(DeveloperColors)]
-			style := lipgloss.NewStyle().Foreground(color)
-			icons = append(icons, style.Render(RenderDeveloperIcon(anim)))
-		} else {
-			_ = i // dev not in conference
-		}
+	// inConference returns true if the animation is in conference state.
+	inConference := func(a DeveloperAnimation) bool { return a.State == StateConference }
+	// renderWithColor renders a developer icon styled with their assigned color.
+	renderWithColor := func(a DeveloperAnimation) string {
+		color := DeveloperColors[a.ColorIndex%len(DeveloperColors)]
+		return lipgloss.NewStyle().Foreground(color).Render(RenderDeveloperIcon(a))
 	}
+	icons := slice.From(anims).KeepIf(inConference).ToString(renderWithColor)
 
 	iconLine := strings.Join(icons, "  ")
 

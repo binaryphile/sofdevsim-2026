@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/binaryphile/fluentfp/option"
+	"github.com/binaryphile/fluentfp/slice"
 	"github.com/binaryphile/sofdevsim-2026/internal/lessons"
 	"github.com/binaryphile/sofdevsim-2026/internal/metrics"
 	"github.com/binaryphile/sofdevsim-2026/internal/model"
@@ -98,10 +99,7 @@ func BuildTriggersFromClientState(state SimulationState) TriggerState {
 		}
 		pctUsed := (sprint.BufferConsumed / sprint.BufferDays) * 100
 		isRed := pctUsed >= BufferRedThreshold
-		var understandings []string
-		for _, t := range state.ActiveTickets {
-			understandings = append(understandings, t.Understanding)
-		}
+		understandings := slice.From(state.ActiveTickets).ToString(TicketState.GetUnderstanding)
 		triggers.HasRedBufferWithLowTicket = lessons.HasRedBufferWithLowTicketFromStrings(isRed, understandings)
 	})
 	checkRedBufferWithLowTicket(state.SprintOption)

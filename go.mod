@@ -5,7 +5,7 @@ go 1.25.5
 require (
 	github.com/NimbleMarkets/ntcharts v0.3.1
 	github.com/acarl005/stripansi v0.0.0-20180116102854-5a71ef0e047d
-	github.com/binaryphile/fluentfp v0.15.0
+	github.com/binaryphile/fluentfp v0.16.0
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/charmbracelet/x/exp/teatest v0.0.0-20260122224438-b01af16209d9
