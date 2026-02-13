@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/binaryphile/fluentfp/either"
+	"github.com/binaryphile/fluentfp/slice"
 	"github.com/binaryphile/sofdevsim-2026/internal/engine"
 	"github.com/binaryphile/sofdevsim-2026/internal/events"
 	"github.com/binaryphile/sofdevsim-2026/internal/lessons"
@@ -96,15 +97,14 @@ type SimulationListResponse struct {
 func (r SimRegistry) HandleListSimulations(w http.ResponseWriter, req *http.Request) {
 	summaries := r.ListSimulations()
 
-	items := make([]SimulationListItem, len(summaries))
-	for i, s := range summaries {
-		items[i] = SimulationListItem{
-			ID: s.ID,
-			Links: map[string]string{
-				"self": "/simulations/" + s.ID,
-			},
+	// toListItem converts registry.SimulationSummary to SimulationListItem.
+	toListItem := func(s registry.SimulationSummary) SimulationListItem {
+		return SimulationListItem{
+			ID:    s.ID,
+			Links: map[string]string{"self": "/simulations/" + s.ID},
 		}
 	}
+	items := slice.MapTo[SimulationListItem](summaries).Map(toListItem)
 
 	response := SimulationListResponse{
 		Simulations: items,
@@ -571,11 +571,7 @@ func (r SimRegistry) HandleDecompose(w http.ResponseWriter, req *http.Request) {
 
 	// toTicketStates converts model.Ticket slice to TicketState slice.
 	toTicketStates := func(tickets []model.Ticket) []TicketState {
-		states := make([]TicketState, len(tickets))
-		for i, t := range tickets {
-			states[i] = ToTicketState(t)
-		}
-		return states
+		return slice.MapTo[TicketState](tickets).Map(ToTicketState)
 	}
 
 	const maxRetries = 3

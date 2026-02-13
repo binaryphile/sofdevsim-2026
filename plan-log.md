@@ -28239,3 +28239,11 @@ $(date -Iseconds) | Contract: Event-Source Office Animation
 [ ] app.go updateAnimationState comment
 2026-02-12T19:51:39-05:00 | Completion: Lambda remediation
 [x] All changes applied (evidence: go test ./internal/tui/... passes)
+2026-02-12T20:20:42-05:00 | Contract: FluentFP missed opportunities
+[ ] api/resources.go DORAHistoryPoint → MapTo
+[ ] api/handlers.go SimulationListItem → MapTo
+[ ] api/handlers.go toTicketStates → MapTo
+[ ] engine/engine.go ChildTicket → MapTo
+[ ] zkproof/export.go ProofRequestEvent → MapTo
+2026-02-12T20:22:46-05:00 | Completion: FluentFP missed opportunities
+[x] All loops replaced (evidence: go test ./... passes)
