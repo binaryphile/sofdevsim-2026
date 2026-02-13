@@ -184,7 +184,7 @@ func NewOfficeState(devIDs []string) OfficeState {
 func (s OfficeState) GetAnimationOption(devID string) option.Basic[DeveloperAnimation] {
 	// hasDevID returns true if the animation belongs to the specified developer.
 	hasDevID := func(a DeveloperAnimation) bool { return a.DevID == devID }
-	return slice.Find(s.Animations, hasDevID)
+	return slice.From(s.Animations).Find(hasDevID)
 }
 
 // GetActiveAnimationOption returns the animation only if it's active.
