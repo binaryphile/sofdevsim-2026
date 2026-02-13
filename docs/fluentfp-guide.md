@@ -34,8 +34,18 @@ slice.MapTo[R](ts []T) MapperTo[R,T]   // For mapping to arbitrary type R
 // MapperTo[R,T] additional method
 .To(fn func(T) R) Mapper[R]            // Map to type R
 
-// Standalone functions
+// Standalone functions (prefer Mapper methods for consistency)
 slice.Find[T](ts []T, fn func(T) bool) option.Basic[T]  // First matching element
+slice.Fold[T,R](ts []T, initial R, fn func(R,T) R) R    // Reduce to single value
+```
+
+**Prefer `slice.From()` for consistency.** People expect `slice.From` as the entry point:
+```go
+// GOOD: consistent entry point
+slice.From(items).Find(predicate)
+
+// AVOID: standalone function breaks visual pattern
+slice.Find(items, predicate)
 ```
 
 ## slice Patterns
