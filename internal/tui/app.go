@@ -368,6 +368,10 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			// Check if sprint ended (SprintEnded event already cleared it in projection)
 			if _, sprintActive := sim.CurrentSprintOption.Get(); !sprintActive {
+				for _, dev := range sim.Developers {
+					a.officeProjection = a.officeProjection.Record(DevEnteredConference{DevID: dev.ID}, sim.CurrentTick)
+				}
+				a.syncOfficeToRegistry()
 				a.paused = true
 				a.statusMessage = "Sprint complete - press 's' for next sprint"
 				a.statusExpiry = time.Now().Add(5 * time.Second)
@@ -517,6 +521,7 @@ func (a *App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 						TicketID: ticket.ID,
 						Target:   target,
 					}, a.state.CurrentTick)
+					a.syncOfficeToRegistry()
 					a.recordInputEvent(AssignmentAttempted{TicketID: ticket.ID, Outcome: Succeeded{}})
 					assigned = true
 					break
@@ -1161,6 +1166,18 @@ func (a *App) updateDeveloperAnimationStates(sim model.Simulation) {
 		})
 		updateAnimationState(state.GetAnimationOption(dev.ID))
 	}
+	a.syncOfficeToRegistry()
+}
+
+// syncOfficeToRegistry updates the registry's SimInstance.Office with current projection.
+// Called after state-changing office events (not AnimationFrameAdvanced).
+func (a *App) syncOfficeToRegistry() {
+	eng, isEngine := a.mode.GetLeft()
+	if !isEngine || eng.Registry == nil {
+		return // Client mode or no registry
+	}
+	simID := fmt.Sprintf("sim-%d", eng.Engine.Sim().Seed)
+	eng.Registry.UpdateOffice(simID, a.officeProjection)
 }
 
 // getDeveloperNames returns developer names for office visualization.

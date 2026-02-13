@@ -28264,3 +28264,20 @@ $(date -Iseconds) | Contract: Event-Source Office Animation
 [x] UC36 added (evidence: grep "UC36" docs/use-cases.md → line 1448)
 [x] API Endpoint section added (evidence: grep "API Endpoint: /office" docs/design.md → line 2218)
 [x] File Structure updated (evidence: grep "internal/office/" docs/design.md → line 2289)
+2026-02-13T00:00:00Z | Contract: TUI-Registry Office Sync
+[ ] Add syncOfficeToRegistry() method to app.go
+[ ] Add UpdateOffice() method to registry.go
+[ ] Call sync after DevAssignedToTicket
+[ ] Call sync after DevCompletedTicket
+[ ] Call sync after DevBecameFrustrated
+[ ] Call sync after DevStartedWorking
+[ ] Record DevEnteredConference when sprint ends
+[ ] Verify: /office endpoint shows TUI state changes
+2026-02-13T01:00:00Z | Interaction: grade -> B+/85, flip-flopped on Fold vs for loop
+2026-02-13T01:30:00Z | Completion: TUI-Registry Office Sync
+[x] syncOfficeToRegistry() added (evidence: grep "syncOfficeToRegistry" internal/tui/app.go)
+[x] UpdateOffice() added (evidence: grep "UpdateOffice" internal/registry/registry.go)
+[x] Sync calls added (evidence: 3 call sites at lines 374, 524, 1169)
+[x] DevEnteredConference on sprint end (evidence: line 372 in for loop)
+[x] Verification passed (3 tests pass)
+[x] FluentFP guide updated with Fold vs for loop lesson

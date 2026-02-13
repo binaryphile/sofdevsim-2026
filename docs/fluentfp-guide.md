@@ -438,6 +438,25 @@ leadTimes, deployFreqs, mttrs, cfrs := slice.Unzip4(history,
 )
 ```
 
+**When to prefer a for loop over Fold:**
+
+Fold works best for pure accumulation (summing values, building maps from slice data). Prefer a plain for loop when:
+
+1. **Closure captures external state** - If the fold function needs values from outside (like a tick counter), it's not a pure fold
+2. **Line length exceeds ~120 chars** - Single-expression named functions that don't fit on one readable line defeat the purpose
+3. **Accumulator mutation is the primary action** - When you're updating `a.something` in a loop, the imperative form is clearer
+
+```go
+// BAD: Fold with closure capturing external state, long line
+recordConference := func(proj OfficeProjection, dev model.Developer) OfficeProjection { return proj.Record(DevEnteredConference{DevID: dev.ID}, sim.CurrentTick) }
+a.officeProjection = slice.Fold(sim.Developers, a.officeProjection, recordConference)
+
+// GOOD: Plain for loop when capturing external state
+for _, dev := range sim.Developers {
+    a.officeProjection = a.officeProjection.Record(DevEnteredConference{DevID: dev.ID}, sim.CurrentTick)
+}
+```
+
 ## Named Functions in FluentFP Chains
 
 **This guidance applies to FluentFP chains only.** For simple if statements, inline conditions are clearer.

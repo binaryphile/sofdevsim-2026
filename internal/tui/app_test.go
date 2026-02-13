@@ -9,6 +9,7 @@ import (
 	"github.com/binaryphile/fluentfp/must"
 	"github.com/binaryphile/fluentfp/option"
 	"github.com/binaryphile/sofdevsim-2026/internal/api"
+	"github.com/binaryphile/sofdevsim-2026/internal/office"
 	"github.com/binaryphile/sofdevsim-2026/internal/registry"
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -871,5 +872,132 @@ func TestWorkflow_PolicyComparison(t *testing.T) {
 	}
 	if result.ResultsB.FinalMetrics.LeadTimeAvg == 0 {
 		t.Error("ResultsB.FinalMetrics should be populated")
+	}
+}
+
+// TestTUI_SyncsOfficeToRegistry verifies TUI office events sync to registry.
+// UC35: Claude queries /office endpoint to see TUI animation state.
+func TestTUI_SyncsOfficeToRegistry(t *testing.T) {
+	reg := registry.NewSimRegistry()
+	app := NewAppWithRegistry(42, reg)
+
+	// Start sprint and assign ticket
+	eng, _ := app.mode.GetLeft()
+	eng.Engine = must.Get(eng.Engine.StartSprint())
+	app.mode = either.Left[EngineMode, ClientMode](eng)
+	app.currentView = ViewPlanning
+	app.selected = 0
+
+	// Press 'a' to assign ticket - this should record DevAssignedToTicket
+	app.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
+
+	// Registry office projection should have the animation state
+	inst, ok := reg.GetInstanceOption("sim-42").Get()
+	if !ok {
+		t.Fatal("Registry should contain TUI's simulation")
+	}
+
+	// Office projection should have developer animation (not empty)
+	officeState := inst.Office.State()
+	if len(officeState.Animations) == 0 {
+		t.Error("Registry office should have developer animations after assignment")
+	}
+
+	// Check the assigned developer has working/moving state (not idle)
+	devAnim, hasAnim := officeState.GetAnimationOption("dev-1").Get()
+	if !hasAnim {
+		t.Fatal("Expected dev-1 to have animation state")
+	}
+	if devAnim.State == office.StateIdle {
+		t.Errorf("Expected dev-1 state to change from Idle after assignment, got %v", devAnim.State)
+	}
+}
+
+// TestTUI_SyncsOfficeOnTick verifies office state syncs during tick processing.
+// Tests that transitions recorded during tick are synced to registry.
+func TestTUI_SyncsOfficeOnTick(t *testing.T) {
+	reg := registry.NewSimRegistry()
+	app := NewAppWithRegistry(42, reg)
+
+	// Start sprint and assign ticket
+	eng, _ := app.mode.GetLeft()
+	eng.Engine = must.Get(eng.Engine.StartSprint())
+	app.mode = either.Left[EngineMode, ClientMode](eng)
+	app.currentView = ViewPlanning
+	app.selected = 0
+
+	// Assign ticket - this syncs initial state
+	app.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
+
+	// Get initial transition count from registry
+	inst, _ := reg.GetInstanceOption("sim-42").Get()
+	initialTransitions := len(inst.Office.Transitions())
+
+	// Switch to execution view and run ticks
+	app.currentView = ViewExecution
+	app.paused = false
+
+	// Run several ticks - should trigger DevStartedWorking and sync
+	for i := 0; i < 5; i++ {
+		app.Update(tickMsg(time.Now()))
+	}
+
+	// Check registry office was updated with new transitions
+	inst, ok := reg.GetInstanceOption("sim-42").Get()
+	if !ok {
+		t.Fatal("Registry should contain TUI's simulation")
+	}
+
+	// Transitions should have increased (DevStartedWorking at minimum)
+	newTransitions := len(inst.Office.Transitions())
+	if newTransitions <= initialTransitions {
+		t.Errorf("Expected transitions to increase after ticks, got %d (was %d)", newTransitions, initialTransitions)
+	}
+}
+
+// TestTUI_SyncsOfficeOnSprintEnd verifies DevEnteredConference syncs when sprint ends.
+func TestTUI_SyncsOfficeOnSprintEnd(t *testing.T) {
+	reg := registry.NewSimRegistry()
+	app := NewAppWithRegistry(42, reg)
+
+	// Start sprint and assign ticket
+	eng, _ := app.mode.GetLeft()
+	eng.Engine = must.Get(eng.Engine.StartSprint())
+	app.mode = either.Left[EngineMode, ClientMode](eng)
+	app.currentView = ViewPlanning
+	app.selected = 0
+
+	// Assign ticket
+	app.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
+
+	// Switch to execution view
+	app.currentView = ViewExecution
+	app.paused = false
+
+	// Run ticks until sprint ends (10 day sprint)
+	for i := 0; i < 15; i++ {
+		app.Update(tickMsg(time.Now()))
+		if app.paused {
+			break // Sprint ended
+		}
+	}
+
+	// Check registry office has DevEnteredConference transition
+	inst, ok := reg.GetInstanceOption("sim-42").Get()
+	if !ok {
+		t.Fatal("Registry should contain TUI's simulation")
+	}
+
+	// Find a conference transition
+	hasConferenceTransition := false
+	for _, tr := range inst.Office.Transitions() {
+		if tr.ToState == "conference" {
+			hasConferenceTransition = true
+			break
+		}
+	}
+
+	if !hasConferenceTransition {
+		t.Error("Expected DevEnteredConference transition when sprint ends")
 	}
 }

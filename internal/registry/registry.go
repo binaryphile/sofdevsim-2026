@@ -152,6 +152,17 @@ func (r *SimRegistry) SetInstance(id string, inst SimInstance) {
 	r.instances[id] = inst
 }
 
+// UpdateOffice updates the office projection for a simulation.
+// Used by TUI to sync office state to registry for Claude vision.
+func (r *SimRegistry) UpdateOffice(simID string, proj office.OfficeProjection) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if inst, ok := r.instances[simID]; ok {
+		inst.Office = proj
+		r.instances[simID] = inst
+	}
+}
+
 // ListSimulations returns all active simulation IDs and their states.
 func (r *SimRegistry) ListSimulations() []SimulationSummary {
 	r.mu.RLock()
