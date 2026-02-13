@@ -12,6 +12,8 @@ github.com/binaryphile/fluentfp v0.16.0 h1:2vrgc6fb06+1Y4TG0UG+8GRrJEfIqWGJuR4mf
 github.com/binaryphile/fluentfp v0.16.0/go.mod h1:xf23adeRO0KOkBs4iyrM0c7Ed3kV0Ol4IpRID3DW+do=
 github.com/binaryphile/fluentfp v0.17.0 h1:tuC2AZwdnYZP5k4Yq9ZHoyz/1rjDb2x5p57QQI+wvEI=
 github.com/binaryphile/fluentfp v0.17.0/go.mod h1:xf23adeRO0KOkBs4iyrM0c7Ed3kV0Ol4IpRID3DW+do=
+github.com/binaryphile/fluentfp v0.18.0 h1:49c1vWF0StjoPFs38B6Ys10Dhoj1g08bKKWKCAsdT3c=
+github.com/binaryphile/fluentfp v0.18.0/go.mod h1:xf23adeRO0KOkBs4iyrM0c7Ed3kV0Ol4IpRID3DW+do=
 github.com/charmbracelet/bubbles v0.20.0 h1:jSZu6qD8cRQ6k9OMfR1WlM+ruM8fkPWkHvQWD9LIutE=
 github.com/charmbracelet/bubbles v0.20.0/go.mod h1:39slydyswPy+uVOHZ5x/GjwVAFkCsV8IIVy+4MhzwwU=
 github.com/charmbracelet/bubbletea v1.3.10 h1:otUDHWMMzQSB0Pkc87rm691KZ3SWa4KUlvF9nRvCICw=
