@@ -27,6 +27,9 @@ func (d Developer) IsIdle() bool {
 	return d.CurrentTicket == ""
 }
 
+// GetID returns the developer ID (accessor for FluentFP).
+func (d Developer) GetID() string { return d.ID }
+
 // GetName returns the developer name (accessor for FluentFP).
 func (d Developer) GetName() string { return d.Name }
 

@@ -28239,3 +28239,28 @@ $(date -Iseconds) | Contract: Event-Source Office Animation
 [ ] app.go updateAnimationState comment
 2026-02-12T19:51:39-05:00 | Completion: Lambda remediation
 [x] All changes applied (evidence: go test ./internal/tui/... passes)
+2026-02-12T12:00:00Z | Contract: Claude Vision - Office Animations
+[ ] Move OfficeProjection to internal/office/
+[ ] Add StateTransition tracking
+[ ] Add Office to SimInstance with lifecycle
+[ ] Add /office endpoint with rendered + structured output
+[ ] Add ANSI stripping for plain text
+[ ] Unit tests for render functions
+2026-02-12T21:15:00-05:00 | Interaction: Task 1 complete
+[x] Move OfficeProjection to internal/office/ (evidence: go build ./... && go test ./... pass)
+[x] Add ANSI stripping for plain text (evidence: StripANSI in render.go)
+2026-02-12T21:30:00-05:00 | Interaction: Task 2 complete
+[x] Add StateTransition tracking (evidence: StateTransition type in projection.go, detectTransitions(), Transitions() accessor)
+2026-02-12T21:45:00-05:00 | Interaction: Tasks 3-4 complete
+[x] Add Office to SimInstance with lifecycle (evidence: deriveOfficeEvents in handlers.go)
+[x] Add GET /office endpoint (evidence: HandleGetOffice, route registered)
+2026-02-12T23:00:00Z | Contract: Claude Vision - Documentation
+[ ] Add UC35: Query Office Animation State via API (Cockburn format)
+[ ] Add UC36: Debug Animation Timing via Transition History (Cockburn format)
+[ ] Add design.md "#### API Endpoint: /office" after Event Triggers
+[ ] Update design.md "#### File Structure" to reflect internal/office/
+2026-02-12T23:30:00Z | Completion: Claude Vision - Documentation
+[x] UC35 added (evidence: grep "UC35" docs/use-cases.md → line 1405)
+[x] UC36 added (evidence: grep "UC36" docs/use-cases.md → line 1448)
+[x] API Endpoint section added (evidence: grep "API Endpoint: /office" docs/design.md → line 2218)
+[x] File Structure updated (evidence: grep "internal/office/" docs/design.md → line 2289)

@@ -1,4 +1,4 @@
-package tui
+package office
 
 // Data: OfficeEvent is the sealed interface for animation events.
 // All events are immutable value types with past-tense naming.

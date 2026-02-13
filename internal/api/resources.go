@@ -169,15 +169,7 @@ func ToState(sim model.Simulation, tracker metrics.Tracker) SimulationState {
 	result := tracker.GetResult(sim.SizingPolicy, sim)
 
 	// Convert DORA history for sparklines
-	var history []DORAHistoryPoint
-	for _, h := range tracker.DORA.History {
-		history = append(history, DORAHistoryPoint{
-			LeadTimeAvg:    h.LeadTimeAvg,
-			DeployFrequency: h.DeployFrequency,
-			MTTR:           h.MTTR,
-			ChangeFailRate: h.ChangeFailRate,
-		})
-	}
+	history := slice.MapTo[DORAHistoryPoint](tracker.DORA.History).Map(toDORAHistoryPoint)
 
 	metricsState := DORAResponse{
 		LeadTimeAvgDays:   result.FinalMetrics.LeadTimeAvgDays(),
@@ -249,6 +241,16 @@ type DORAHistoryPoint struct {
 	ChangeFailRate float64 `json:"changeFailRate"`
 }
 
+// toDORAHistoryPoint converts metrics.DORASnapshot to DORAHistoryPoint.
+func toDORAHistoryPoint(s metrics.DORASnapshot) DORAHistoryPoint {
+	return DORAHistoryPoint{
+		LeadTimeAvg:    s.LeadTimeAvg,
+		DeployFrequency: s.DeployFrequency,
+		MTTR:           s.MTTR,
+		ChangeFailRate: s.ChangeFailRate,
+	}
+}
+
 // MetricWinners shows which policy won each metric.
 type MetricWinners struct {
 	LeadTime        string `json:"leadTime"`
@@ -271,4 +273,44 @@ type LessonsResponse struct {
 	CurrentLesson LessonResponse    `json:"currentLesson"`
 	Progress      string            `json:"progress"`
 	Links         map[string]string `json:"_links"`
+}
+
+// DeveloperAnimationState is the JSON representation of a developer's animation state.
+type DeveloperAnimationState struct {
+	DevID     string `json:"devId"`
+	DevName   string `json:"devName"`
+	State     string `json:"state"`
+	ColorName string `json:"colorName"`
+	TicketID  string `json:"ticketId,omitempty"`
+}
+
+// StateTransitionResponse is the JSON representation of a state transition.
+type StateTransitionResponse struct {
+	DevID     string `json:"devId"`
+	FromState string `json:"fromState"`
+	ToState   string `json:"toState"`
+	Tick      int    `json:"tick"`
+	Timestamp string `json:"timestamp"`
+	Reason    string `json:"reason,omitempty"`
+}
+
+// OfficeResponse is returned by GET /simulations/{id}/office.
+// Provides both rendered output and structured data for Claude vision.
+type OfficeResponse struct {
+	// Rendered output (what TUI displays)
+	RenderedOutput string `json:"renderedOutput"`
+	RenderedPlain  string `json:"renderedPlain"` // ANSI stripped
+
+	// Structured data for semantic understanding
+	Developers  []DeveloperAnimationState `json:"developers"`
+	Transitions []StateTransitionResponse `json:"recentTransitions"`
+
+	// Layout info
+	Width  int `json:"width"`
+	Height int `json:"height"`
+
+	// Current state
+	CurrentTick int `json:"currentTick"`
+
+	Links map[string]string `json:"_links"`
 }

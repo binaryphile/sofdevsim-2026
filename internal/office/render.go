@@ -1,7 +1,8 @@
-package tui
+package office
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/binaryphile/fluentfp/slice"
@@ -18,6 +19,16 @@ var DeveloperColors = []lipgloss.Color{
 	lipgloss.Color("#22C55E"), // Green
 }
 
+// DeveloperColorNames maps color indices to human-readable names
+var DeveloperColorNames = []string{
+	"blue",
+	"orange",
+	"magenta",
+	"cyan",
+	"yellow",
+	"green",
+}
+
 // Default developer names (diverse, inclusive)
 var DefaultDeveloperNames = []string{
 	"Mei",   // East Asian
@@ -26,6 +37,17 @@ var DefaultDeveloperNames = []string{
 	"Jay",   // Gender-neutral English
 	"Priya", // South Asian
 	"Kofi",  // West African
+}
+
+// MutedStyle for error/fallback messages
+var MutedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#666666"))
+
+// ansiRegex matches ANSI escape sequences
+var ansiRegex = regexp.MustCompile(`\x1b\[[0-9;]*m`)
+
+// StripANSI removes ANSI escape codes from a string
+func StripANSI(s string) string {
+	return ansiRegex.ReplaceAllString(s, "")
 }
 
 // Calculation: RenderDeveloperIcon returns the icon for a developer's current state

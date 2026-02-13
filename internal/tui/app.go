@@ -343,7 +343,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case animationTickMsg:
 		// Animation frame update for office visualization
-		a.officeProjection = a.officeProjection.Record(AnimationFrameAdvanced{})
+		a.officeProjection = a.officeProjection.Record(AnimationFrameAdvanced{}, a.state.CurrentTick)
 		return a, a.animationTickCmd()
 
 	case tickMsg:
@@ -516,7 +516,7 @@ func (a *App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 						DevID:    dev.ID,
 						TicketID: ticket.ID,
 						Target:   target,
-					})
+					}, a.state.CurrentTick)
 					a.recordInputEvent(AssignmentAttempted{TicketID: ticket.ID, Outcome: Succeeded{}})
 					assigned = true
 					break
@@ -1134,7 +1134,7 @@ func (a *App) updateDeveloperAnimationStates(sim model.Simulation) {
 				a.officeProjection = a.officeProjection.Record(DevCompletedTicket{
 					DevID:    dev.ID,
 					TicketID: dev.CurrentTicket,
-				})
+				}, sim.CurrentTick)
 			})
 			recordCompletion(state.GetActiveAnimationOption(dev.ID))
 			continue
@@ -1154,9 +1154,9 @@ func (a *App) updateDeveloperAnimationStates(sim model.Simulation) {
 				a.officeProjection = a.officeProjection.Record(DevBecameFrustrated{
 					DevID:    dev.ID,
 					TicketID: ticket.ID,
-				})
+				}, sim.CurrentTick)
 			case anim.ShouldStartWorking():
-				a.officeProjection = a.officeProjection.Record(DevStartedWorking{DevID: dev.ID})
+				a.officeProjection = a.officeProjection.Record(DevStartedWorking{DevID: dev.ID}, sim.CurrentTick)
 			}
 		})
 		updateAnimationState(state.GetAnimationOption(dev.ID))

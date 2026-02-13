@@ -2215,6 +2215,57 @@ Animation events are triggered by domain events in `App.Update()`:
 | `animationTickMsg` | `AnimationFrameAdvanced` | Always |
 | Movement complete | `DevArrivedAtCubicle` | Progress >= 1.0 |
 
+#### API Endpoint: /office
+
+The `/simulations/{id}/office` endpoint exposes office animation state for Claude vision capabilities.
+
+**Endpoint:** `GET /simulations/{id}/office`
+
+**Response:**
+
+```json
+{
+  "renderedOutput": "┌─────────────────────────────────┐\n│         CONFERENCE ROOM         │\n...",
+  "renderedPlain": "┌─────────────────────────────────┐\n│         CONFERENCE ROOM         │\n...",
+  "developers": [
+    {"devId": "dev-1", "devName": "Mei", "state": "working", "colorName": "blue", "ticketId": "TKT-001"},
+    {"devId": "dev-2", "devName": "Amir", "state": "conference", "colorName": "orange"}
+  ],
+  "transitions": [
+    {"devId": "dev-1", "fromState": "conference", "toState": "moving", "tick": 0, "timestamp": "2026-02-12T10:00:00Z", "reason": "assigned to TKT-001"},
+    {"devId": "dev-1", "fromState": "moving", "toState": "working", "tick": 0, "timestamp": "2026-02-12T10:00:00Z"}
+  ],
+  "currentTick": 5,
+  "width": 80,
+  "height": 24,
+  "_links": {
+    "self": "/simulations/sim-42/office",
+    "simulation": "/simulations/sim-42"
+  }
+}
+```
+
+**Event Derivation (API):**
+
+API handlers use `deriveOfficeEvents()` (handlers.go) to compare old/new simulation states:
+
+| Simulation Change | Office Event |
+|-------------------|--------------|
+| Sprint ends | `DevEnteredConference` for all developers |
+| Developer becomes idle | `DevCompletedTicket` |
+| Ticket exceeds estimate | `DevBecameFrustrated` |
+
+**TUI-Registry Sync:**
+
+| Event | Syncs to Registry |
+|-------|-------------------|
+| `DevAssignedToTicket` | Yes |
+| `DevStartedWorking` | Yes |
+| `DevBecameFrustrated` | Yes |
+| `DevCompletedTicket` | Yes |
+| `DevEnteredConference` | Yes |
+| `AnimationFrameAdvanced` | No (visual-only) |
+
 #### Debug View (Future)
 
 Event log accessible via debug key (e.g., `ctrl+d`):
@@ -2232,16 +2283,27 @@ Office Animation Events (last 20):
   ...
 ```
 
-#### File Structure Update
+#### File Structure
 
 ```
+internal/office/               # Shared package for TUI and API
+├── state.go                  # Data: Position, AnimationState, DeveloperAnimation, OfficeState
+├── events.go                 # Data: OfficeEvent interface, sealed event types
+├── projection.go             # Calculation: OfficeProjection, StateTransition, applyOfficeEvent
+├── layout.go                 # Calculation: CubicleLayout, ConferencePosition, Lerp
+└── render.go                 # Calculation: RenderOffice, RenderCubicleGrid, StripANSI, colors
+
 internal/tui/
-├── office.go            # Data: OfficeState, DeveloperAnimation (unchanged)
-├── office_events.go     # Data: OfficeEvent types (NEW)
-├── office_projection.go # Calculation: OfficeProjection, applyOfficeEvent (NEW)
-├── office_render.go     # Calculations: ASCII rendering (unchanged)
-├── office_test.go       # Unit tests (update for projection)
-└── app.go               # Actions: Record events instead of direct state mutation
+├── office_reexport.go        # Re-exports from internal/office for backward compatibility
+├── office_projection_test.go # Unit tests for projection
+└── app.go                    # Actions: Record events, officeProjection field
+
+internal/api/
+├── handlers.go               # HandleGetOffice, deriveOfficeEvents
+└── resources.go              # OfficeResponse, DeveloperAnimationState, StateTransitionResponse
+
+internal/registry/
+└── registry.go               # SimInstance.Office field for API access
 ```
 
 Pointer receivers only in `*App` (required by Bubble Tea interface).

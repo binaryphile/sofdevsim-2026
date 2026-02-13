@@ -1402,6 +1402,90 @@ This use case requires event sourcing architecture:
 
 ---
 
+### UC35: Query Office Animation State via API
+
+**Primary Actor:** Automated Test Agent (Claude or script)
+
+**Goal in Context:** Retrieve current office visualization state to verify developer positions and animation states match expected simulation behavior.
+
+**Scope:** Software Development Simulation
+
+**Level:** User Goal (Blue)
+
+**Preconditions:**
+
+- Simulation exists in registry
+- Agent has simulation ID
+
+**Postconditions (Guarantees):**
+
+- *Success:* Agent receives office state including rendered ASCII art and structured animation data
+- *Failure:* 404 if simulation not found
+
+**Trigger:** Agent sends GET request to /simulations/{id}/office
+
+**Main Success Scenario:**
+
+1. Agent sends GET to /simulations/{id}/office
+2. System retrieves OfficeProjection from SimInstance
+3. System calls RenderOffice() to generate ASCII visualization
+4. System builds response with:
+   - renderedOutput: ANSI-styled ASCII art
+   - renderedPlain: Plain text (ANSI stripped via StripANSI)
+   - developers[]: Animation state per developer (devId, devName, state, colorName, ticketId)
+   - transitions[]: Recent state changes (last 10) with tick, timestamp, reason
+   - currentTick: Simulation tick when state was captured
+5. System returns HAL+JSON response with _links
+6. Agent inspects developer states (Idle, Working, Frustrated, Conference)
+
+**Extensions:**
+
+- 2a. *No office events recorded:* System returns initial state (empty developers, no transitions)
+- 6a. *State mismatch detected:* Agent reports bug with specific discrepancy
+
+---
+
+### UC36: Debug Animation Timing via Transition History
+
+**Primary Actor:** Automated Test Agent (Claude or script)
+
+**Goal in Context:** Inspect state transition history to identify animation timing bugs (e.g., "developer showed frustrated before estimate was exceeded").
+
+**Scope:** Software Development Simulation
+
+**Level:** User Goal (Blue)
+
+**Preconditions:**
+
+- Simulation exists with recorded office events
+- Agent suspects timing issue in animation state
+
+**Postconditions (Guarantees):**
+
+- *Success:* Agent identifies timing discrepancy with tick/timestamp evidence
+- *Failure:* No timing issues found (transitions match expectations)
+
+**Trigger:** Agent observes unexpected animation state
+
+**Main Success Scenario:**
+
+1. Agent performs simulation operations (assign ticket, tick, etc.)
+2. Agent queries GET /simulations/{id}/office
+3. Agent inspects transitions[] array
+4. For each transition, agent examines:
+   - tick: Simulation tick when state changed
+   - timestamp: Wall-clock time of change
+   - reason: Why change occurred (e.g., "assigned to TKT-001", "ticket TKT-001 exceeded estimate")
+5. Agent correlates transition ticks with simulation events
+6. Agent identifies if state changed at wrong tick
+
+**Extensions:**
+
+- 4a. *Transition missing reason:* Agent notes which event types lack reasons
+- 6a. *Timing bug found:* Agent reports: "Developer dev-1 became frustrated at tick 5 but estimate wasn't exceeded until tick 7"
+
+---
+
 ## Goal Level Reference
 
 | Level | Name | Duration | Test |

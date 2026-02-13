@@ -3,6 +3,7 @@ package zkproof
 import (
 	"encoding/json"
 
+	"github.com/binaryphile/fluentfp/slice"
 	"github.com/binaryphile/sofdevsim-2026/internal/events"
 	"github.com/binaryphile/sofdevsim-2026/internal/model"
 )
@@ -61,10 +62,7 @@ func feverStatusString(fs model.FeverStatus) string {
 
 // ExportProofRequest creates a JSON-serialized ProofRequest from a BufferCrisisSequence.
 func ExportProofRequest(simID string, seq BufferCrisisSequence) ([]byte, error) {
-	evts := make([]ProofRequestEvent, len(seq.Events))
-	for i, e := range seq.Events {
-		evts[i] = toProofRequestEvent(e)
-	}
+	evts := slice.MapTo[ProofRequestEvent](seq.Events).Map(toProofRequestEvent)
 
 	request := ProofRequest{
 		Version:      1,

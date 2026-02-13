@@ -29,7 +29,7 @@ func TestOfficeProjection_AssignedMoving(t *testing.T) {
 		DevID:    "dev-1",
 		TicketID: "TKT-1",
 		Target:   Position{X: 50, Y: 2},
-	})
+	}, 1)
 
 	state := proj.State()
 	anim := state.GetAnimationOption("dev-1").OrZero()
@@ -48,11 +48,11 @@ func TestOfficeProjection_MovementComplete(t *testing.T) {
 		DevID:    "dev-1",
 		TicketID: "TKT-1",
 		Target:   Position{X: 50, Y: 2},
-	})
+	}, 1)
 
 	// 5 frame advances complete movement (Progress += 0.2 each)
 	for i := 0; i < 5; i++ {
-		proj = proj.Record(AnimationFrameAdvanced{})
+		proj = proj.Record(AnimationFrameAdvanced{}, 1)
 	}
 
 	state := proj.State()
@@ -65,7 +65,7 @@ func TestOfficeProjection_MovementComplete(t *testing.T) {
 
 func TestOfficeProjection_StartedWorking(t *testing.T) {
 	proj := NewOfficeProjection([]string{"dev-1"})
-	proj = proj.Record(DevStartedWorking{DevID: "dev-1"})
+	proj = proj.Record(DevStartedWorking{DevID: "dev-1"}, 1)
 
 	state := proj.State()
 	anim := state.GetAnimationOption("dev-1").OrZero()
@@ -77,8 +77,8 @@ func TestOfficeProjection_StartedWorking(t *testing.T) {
 
 func TestOfficeProjection_Frustrated(t *testing.T) {
 	proj := NewOfficeProjection([]string{"dev-1"})
-	proj = proj.Record(DevStartedWorking{DevID: "dev-1"})
-	proj = proj.Record(DevBecameFrustrated{DevID: "dev-1", TicketID: "TKT-1"})
+	proj = proj.Record(DevStartedWorking{DevID: "dev-1"}, 1)
+	proj = proj.Record(DevBecameFrustrated{DevID: "dev-1", TicketID: "TKT-1"}, 2)
 
 	state := proj.State()
 	anim := state.GetAnimationOption("dev-1").OrZero()
@@ -90,8 +90,8 @@ func TestOfficeProjection_Frustrated(t *testing.T) {
 
 func TestOfficeProjection_Completed(t *testing.T) {
 	proj := NewOfficeProjection([]string{"dev-1"})
-	proj = proj.Record(DevStartedWorking{DevID: "dev-1"})
-	proj = proj.Record(DevCompletedTicket{DevID: "dev-1", TicketID: "TKT-1"})
+	proj = proj.Record(DevStartedWorking{DevID: "dev-1"}, 1)
+	proj = proj.Record(DevCompletedTicket{DevID: "dev-1", TicketID: "TKT-1"}, 5)
 
 	state := proj.State()
 	anim := state.GetAnimationOption("dev-1").OrZero()
@@ -103,8 +103,8 @@ func TestOfficeProjection_Completed(t *testing.T) {
 
 func TestOfficeProjection_EnteredConference(t *testing.T) {
 	proj := NewOfficeProjection([]string{"dev-1"})
-	proj = proj.Record(DevStartedWorking{DevID: "dev-1"})
-	proj = proj.Record(DevEnteredConference{DevID: "dev-1"})
+	proj = proj.Record(DevStartedWorking{DevID: "dev-1"}, 1)
+	proj = proj.Record(DevEnteredConference{DevID: "dev-1"}, 10)
 
 	state := proj.State()
 	anim := state.GetAnimationOption("dev-1").OrZero()
@@ -116,11 +116,11 @@ func TestOfficeProjection_EnteredConference(t *testing.T) {
 
 func TestOfficeProjection_FrameAdvance(t *testing.T) {
 	proj := NewOfficeProjection([]string{"dev-1"})
-	proj = proj.Record(DevStartedWorking{DevID: "dev-1"})
+	proj = proj.Record(DevStartedWorking{DevID: "dev-1"}, 1)
 
 	// Advance 3 frames
 	for i := 0; i < 3; i++ {
-		proj = proj.Record(AnimationFrameAdvanced{})
+		proj = proj.Record(AnimationFrameAdvanced{}, 1)
 	}
 
 	state := proj.State()
@@ -133,9 +133,9 @@ func TestOfficeProjection_FrameAdvance(t *testing.T) {
 
 func TestOfficeProjection_Events(t *testing.T) {
 	proj := NewOfficeProjection([]string{"dev-1"})
-	proj = proj.Record(DevAssignedToTicket{DevID: "dev-1", TicketID: "TKT-1", Target: Position{50, 2}})
-	proj = proj.Record(AnimationFrameAdvanced{})
-	proj = proj.Record(DevBecameFrustrated{DevID: "dev-1", TicketID: "TKT-1"})
+	proj = proj.Record(DevAssignedToTicket{DevID: "dev-1", TicketID: "TKT-1", Target: Position{50, 2}}, 1)
+	proj = proj.Record(AnimationFrameAdvanced{}, 1)
+	proj = proj.Record(DevBecameFrustrated{DevID: "dev-1", TicketID: "TKT-1"}, 2)
 
 	events := proj.Events()
 	if len(events) != 3 {
@@ -154,7 +154,7 @@ func TestOfficeProjection_Events(t *testing.T) {
 
 func TestOfficeProjection_ImmutableRecord(t *testing.T) {
 	proj1 := NewOfficeProjection([]string{"dev-1"})
-	proj2 := proj1.Record(DevStartedWorking{DevID: "dev-1"})
+	proj2 := proj1.Record(DevStartedWorking{DevID: "dev-1"}, 1)
 
 	// Original unchanged
 	state1 := proj1.State()
@@ -173,10 +173,10 @@ func TestOfficeProjection_ImmutableRecord(t *testing.T) {
 
 func TestOfficeProjection_MultipleDevsConference(t *testing.T) {
 	devIDs := []string{"dev-1", "dev-2", "dev-3"}
-	
+
 	// Replicate app.go initialization pattern
 	recordConferenceEntry := func(proj OfficeProjection, id string) OfficeProjection {
-		return proj.Record(DevEnteredConference{DevID: id})
+		return proj.Record(DevEnteredConference{DevID: id}, 0)
 	}
 	proj := slice.Fold(devIDs, NewOfficeProjection(devIDs), recordConferenceEntry)
 	

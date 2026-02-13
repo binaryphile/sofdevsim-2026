@@ -7,10 +7,12 @@ import (
 	"sync"
 
 	"github.com/binaryphile/fluentfp/option"
+	"github.com/binaryphile/fluentfp/slice"
 	"github.com/binaryphile/sofdevsim-2026/internal/engine"
 	"github.com/binaryphile/sofdevsim-2026/internal/events"
 	"github.com/binaryphile/sofdevsim-2026/internal/metrics"
 	"github.com/binaryphile/sofdevsim-2026/internal/model"
+	"github.com/binaryphile/sofdevsim-2026/internal/office"
 )
 
 // ErrAlreadyExists is returned when attempting to create a duplicate simulation.
@@ -51,9 +53,10 @@ func (r *SimRegistry) IsZero() bool {
 // After any Engine operation, store new Engine via SetInstance.
 // State comes from engine.Sim() (projection); Sim field is for backward compat only.
 type SimInstance struct {
-	Sim     model.Simulation // Value type for consistency; state from engine.Sim()
-	Engine  engine.Engine    // Value type: immutable operations return new Engine
-	Tracker metrics.Tracker
+	Sim     model.Simulation       // Value type for consistency; state from engine.Sim()
+	Engine  engine.Engine          // Value type: immutable operations return new Engine
+	Tracker metrics.Tracker        // DORA metrics tracker
+	Office  office.OfficeProjection // Animation state for Claude vision
 }
 
 // CreateSimulation creates a new simulation with given seed and policy.
@@ -104,6 +107,16 @@ func (r *SimRegistry) CreateSimulation(seed int64, policy model.SizingPolicy) (s
 		}
 	}
 
+	// Initialize office projection with developer IDs
+	devIDs := slice.From(eng.Sim().Developers).ToString(model.Developer.GetID)
+	officeProj := office.NewOfficeProjection(devIDs)
+
+	// All developers start in conference at tick 0
+	recordConferenceEntry := func(proj office.OfficeProjection, devID string) office.OfficeProjection {
+		return proj.Record(office.DevEnteredConference{DevID: devID}, 0)
+	}
+	officeProj = slice.Fold(devIDs, officeProj, recordConferenceEntry)
+
 	// Write under lock
 	r.mu.Lock()
 	// Double-check after acquiring write lock (another goroutine may have created it)
@@ -115,6 +128,7 @@ func (r *SimRegistry) CreateSimulation(seed int64, policy model.SizingPolicy) (s
 		Sim:     sim,
 		Engine:  eng,
 		Tracker: metrics.NewTracker(),
+		Office:  officeProj,
 	}
 	r.mu.Unlock()
 

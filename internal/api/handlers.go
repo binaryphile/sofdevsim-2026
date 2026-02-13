@@ -8,11 +8,13 @@ import (
 	"time"
 
 	"github.com/binaryphile/fluentfp/either"
+	"github.com/binaryphile/fluentfp/slice"
 	"github.com/binaryphile/sofdevsim-2026/internal/engine"
 	"github.com/binaryphile/sofdevsim-2026/internal/events"
 	"github.com/binaryphile/sofdevsim-2026/internal/lessons"
 	"github.com/binaryphile/sofdevsim-2026/internal/metrics"
 	"github.com/binaryphile/sofdevsim-2026/internal/model"
+	"github.com/binaryphile/sofdevsim-2026/internal/office"
 	"github.com/binaryphile/sofdevsim-2026/internal/registry"
 )
 
@@ -85,6 +87,14 @@ type SimulationListItem struct {
 	Links map[string]string `json:"_links"`
 }
 
+// toSimulationListItem converts registry.SimulationSummary to SimulationListItem.
+func toSimulationListItem(s registry.SimulationSummary) SimulationListItem {
+	return SimulationListItem{
+		ID:    s.ID,
+		Links: map[string]string{"self": "/simulations/" + s.ID},
+	}
+}
+
 // SimulationListResponse is the response for GET /simulations.
 type SimulationListResponse struct {
 	Simulations []SimulationListItem `json:"simulations"`
@@ -95,16 +105,7 @@ type SimulationListResponse struct {
 // Per UC10: "API client lists active simulations to discover available IDs"
 func (r SimRegistry) HandleListSimulations(w http.ResponseWriter, req *http.Request) {
 	summaries := r.ListSimulations()
-
-	items := make([]SimulationListItem, len(summaries))
-	for i, s := range summaries {
-		items[i] = SimulationListItem{
-			ID: s.ID,
-			Links: map[string]string{
-				"self": "/simulations/" + s.ID,
-			},
-		}
-	}
+	items := slice.MapTo[SimulationListItem](summaries).Map(toSimulationListItem)
 
 	response := SimulationListResponse{
 		Simulations: items,
@@ -224,8 +225,8 @@ func (r SimRegistry) HandleTick(w http.ResponseWriter, req *http.Request) {
 		}
 
 		// Check if sprint is active
-		sim := inst.Engine.Sim()
-		if _, active := sim.CurrentSprintOption.Get(); !active {
+		oldSim := inst.Engine.Sim()
+		if _, active := oldSim.CurrentSprintOption.Get(); !active {
 			writeError(w, http.StatusConflict, "no active sprint")
 			return
 		}
@@ -237,8 +238,12 @@ func (r SimRegistry) HandleTick(w http.ResponseWriter, req *http.Request) {
 		}
 
 		// SprintEnded event clears sprint in projection automatically
-		sim = inst.Engine.Sim()
-		inst.Tracker = inst.Tracker.Updated(sim)
+		newSim := inst.Engine.Sim()
+		inst.Tracker = inst.Tracker.Updated(newSim)
+
+		// Update office animation state based on simulation changes
+		inst.Office = deriveOfficeEvents(inst.Office, oldSim, newSim)
+
 		r.SetInstance(id, inst)
 
 		respondWithSimulation(w, inst, http.StatusOK)
@@ -289,9 +294,34 @@ func (r SimRegistry) HandleAssignTicket(w http.ResponseWriter, req *http.Request
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+
+	// Record office event: developer assigned to ticket, starts working
+	sim := inst.Engine.Sim()
+	devIdx := findDeveloperIndex(sim.Developers, devID)
+	if devIdx >= 0 {
+		target := office.CubicleLayout(len(sim.Developers))[devIdx]
+		inst.Office = inst.Office.Record(office.DevAssignedToTicket{
+			DevID:    devID,
+			TicketID: body.TicketID,
+			Target:   target,
+		}, sim.CurrentTick)
+		// Immediately transition to working (API doesn't animate movement)
+		inst.Office = inst.Office.Record(office.DevStartedWorking{DevID: devID}, sim.CurrentTick)
+	}
+
 	r.SetInstance(id, inst)
 
 	respondWithSimulation(w, inst, http.StatusOK)
+}
+
+// findDeveloperIndex returns the index of a developer by ID, or -1 if not found.
+func findDeveloperIndex(devs []model.Developer, id string) int {
+	for i := range devs {
+		if devs[i].ID == id {
+			return i
+		}
+	}
+	return -1
 }
 
 // HandleCompare runs two simulations with different policies and compares them.
@@ -570,12 +600,9 @@ func (r SimRegistry) HandleDecompose(w http.ResponseWriter, req *http.Request) {
 	}
 
 	// toTicketStates converts model.Ticket slice to TicketState slice.
+	// toTicketStates converts model.Ticket slice to TicketState slice.
 	toTicketStates := func(tickets []model.Ticket) []TicketState {
-		states := make([]TicketState, len(tickets))
-		for i, t := range tickets {
-			states[i] = ToTicketState(t)
-		}
-		return states
+		return slice.MapTo[TicketState](tickets).Map(ToTicketState)
 	}
 
 	const maxRetries = 3
@@ -646,4 +673,162 @@ func (r SimRegistry) HandleGetLessons(w http.ResponseWriter, req *http.Request) 
 			"simulation": "/simulations/" + id,
 		},
 	})
+}
+
+// deriveOfficeEvents compares old and new simulation states to derive office animation events.
+// Returns updated OfficeProjection with events recorded.
+// Calculation: (OfficeProjection, oldSim, newSim) → OfficeProjection
+func deriveOfficeEvents(proj office.OfficeProjection, oldSim, newSim model.Simulation) office.OfficeProjection {
+	tick := newSim.CurrentTick
+
+	// Check for sprint end - all developers return to conference
+	oldSprintActive := oldSim.CurrentSprintOption.IsOk()
+	newSprintActive := newSim.CurrentSprintOption.IsOk()
+	if oldSprintActive && !newSprintActive {
+		for _, dev := range newSim.Developers {
+			proj = proj.Record(office.DevEnteredConference{DevID: dev.ID}, tick)
+		}
+		return proj
+	}
+
+	// Check each developer for state changes
+	for _, newDev := range newSim.Developers {
+		oldDev := findDeveloper(oldSim.Developers, newDev.ID)
+		if oldDev == nil {
+			continue
+		}
+
+		// Developer became idle (completed ticket)
+		if !oldDev.IsIdle() && newDev.IsIdle() {
+			proj = proj.Record(office.DevCompletedTicket{
+				DevID:    newDev.ID,
+				TicketID: oldDev.CurrentTicket,
+			}, tick)
+			continue
+		}
+
+		// Developer still working - check for frustration
+		if !newDev.IsIdle() {
+			ticket := findActiveTicket(newSim.ActiveTickets, newDev.CurrentTicket)
+			if ticket != nil && ticket.ActualDays > ticket.EstimatedDays {
+				// Check if already frustrated
+				if anim, ok := proj.State().GetAnimationOption(newDev.ID).Get(); ok {
+					if anim.State != office.StateFrustrated {
+						proj = proj.Record(office.DevBecameFrustrated{
+							DevID:    newDev.ID,
+							TicketID: ticket.ID,
+						}, tick)
+					}
+				}
+			}
+		}
+	}
+
+	return proj
+}
+
+// findDeveloper finds a developer by ID in a slice.
+func findDeveloper(devs []model.Developer, id string) *model.Developer {
+	for i := range devs {
+		if devs[i].ID == id {
+			return &devs[i]
+		}
+	}
+	return nil
+}
+
+// findActiveTicket finds a ticket by ID in the active tickets slice.
+func findActiveTicket(tickets []model.Ticket, id string) *model.Ticket {
+	for i := range tickets {
+		if tickets[i].ID == id {
+			return &tickets[i]
+		}
+	}
+	return nil
+}
+
+// HandleGetOffice returns the office animation state for Claude vision.
+// Includes both rendered output and structured data.
+func (r SimRegistry) HandleGetOffice(w http.ResponseWriter, req *http.Request) {
+	id := req.PathValue("id")
+
+	inst, ok := r.GetInstanceOption(id).Get()
+	if !ok {
+		writeError(w, http.StatusNotFound, "simulation not found")
+		return
+	}
+
+	sim := inst.Engine.Sim()
+	state := inst.Office.State()
+
+	// Default dimensions (standard terminal size)
+	width := 80
+	height := 24
+
+	// Get developer names
+	names := slice.From(sim.Developers).ToString(model.Developer.GetName)
+
+	// Render office view
+	rendered := office.RenderOffice(state, names, width, height)
+	plain := office.StripANSI(rendered)
+
+	// Build developer animation states
+	devStates := make([]DeveloperAnimationState, 0, len(state.Animations))
+	for i, anim := range state.Animations {
+		name := ""
+		if i < len(names) {
+			name = names[i]
+		}
+		colorName := ""
+		if anim.ColorIndex < len(office.DeveloperColorNames) {
+			colorName = office.DeveloperColorNames[anim.ColorIndex]
+		}
+		// Find current ticket if working
+		ticketID := ""
+		if dev := findDeveloper(sim.Developers, anim.DevID); dev != nil {
+			ticketID = dev.CurrentTicket
+		}
+		devStates = append(devStates, DeveloperAnimationState{
+			DevID:     anim.DevID,
+			DevName:   name,
+			State:     anim.State.String(),
+			ColorName: colorName,
+			TicketID:  ticketID,
+		})
+	}
+
+	// Build recent transitions (last 10)
+	transitions := inst.Office.Transitions()
+	recentCount := 10
+	if len(transitions) < recentCount {
+		recentCount = len(transitions)
+	}
+	recentTransitions := make([]StateTransitionResponse, recentCount)
+	for i := 0; i < recentCount; i++ {
+		t := transitions[len(transitions)-recentCount+i]
+		recentTransitions[i] = StateTransitionResponse{
+			DevID:     t.DevID,
+			FromState: t.FromState,
+			ToState:   t.ToState,
+			Tick:      t.Tick,
+			Timestamp: t.Timestamp.Format("2006-01-02T15:04:05Z07:00"),
+			Reason:    t.Reason,
+		}
+	}
+
+	response := OfficeResponse{
+		RenderedOutput: rendered,
+		RenderedPlain:  plain,
+		Developers:     devStates,
+		Transitions:    recentTransitions,
+		Width:          width,
+		Height:         height,
+		CurrentTick:    inst.Office.CurrentTick(),
+		Links: map[string]string{
+			"self":       "/simulations/" + id + "/office",
+			"simulation": "/simulations/" + id,
+		},
+	}
+
+	writeJSON(w, http.StatusOK, response)
 }
