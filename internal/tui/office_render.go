@@ -83,14 +83,14 @@ func RenderCubicle(anim DeveloperAnimation, name string, width int) string {
 // Calculation: RenderConferenceRoom renders the conference room with developers
 // Pure function: ([]DeveloperAnimation, []string, int) → string
 func RenderConferenceRoom(anims []DeveloperAnimation, names []string, width int) string {
-	// inConference returns true if the animation is in conference state.
-	inConference := func(a DeveloperAnimation) bool { return a.State == StateConference }
 	// renderWithColor renders a developer icon styled with their assigned color.
 	renderWithColor := func(a DeveloperAnimation) string {
 		color := DeveloperColors[a.ColorIndex%len(DeveloperColors)]
 		return lipgloss.NewStyle().Foreground(color).Render(RenderDeveloperIcon(a))
 	}
-	icons := slice.From(anims).KeepIf(inConference).ToString(renderWithColor)
+	icons := slice.From(anims).
+		KeepIf(DeveloperAnimation.IsInConference).
+		ToString(renderWithColor)
 
 	iconLine := strings.Join(icons, "  ")
 

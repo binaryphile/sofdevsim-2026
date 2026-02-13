@@ -1129,6 +1129,7 @@ func (a *App) updateDeveloperAnimationStates(sim model.Simulation) {
 		state := a.officeProjection.State()
 
 		if dev.IsIdle() {
+			// recordCompletion records ticket completion event for the animation.
 			recordCompletion := option.Lift(func(anim DeveloperAnimation) {
 				a.officeProjection = a.officeProjection.Record(DevCompletedTicket{
 					DevID:    dev.ID,
@@ -1146,6 +1147,7 @@ func (a *App) updateDeveloperAnimationStates(sim model.Simulation) {
 		}
 		ticket := sim.ActiveTickets[ticketIdx]
 
+		// updateAnimationState transitions animation to frustrated or working state.
 		updateAnimationState := option.Lift(func(anim DeveloperAnimation) {
 			switch {
 			case anim.ShouldBecomeFrustrated(ticket.ActualDays, ticket.EstimatedDays):

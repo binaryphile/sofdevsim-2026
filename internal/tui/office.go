@@ -165,6 +165,11 @@ func (d DeveloperAnimation) IsActive() bool {
 	return d.State == StateWorking || d.State == StateFrustrated
 }
 
+// IsInConference returns true if developer is in conference room.
+func (d DeveloperAnimation) IsInConference() bool {
+	return d.State == StateConference
+}
+
 // NewOfficeState creates a new OfficeState with animations for all developers.
 // Developers start at conference room positions.
 // Calculation: []string → OfficeState
