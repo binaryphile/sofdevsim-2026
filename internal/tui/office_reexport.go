@@ -26,11 +26,12 @@ type OfficeProjection = office.OfficeProjection
 
 // Re-export constants
 const (
-	StateIdle       = office.StateIdle
-	StateConference = office.StateConference
-	StateMoving     = office.StateMoving
-	StateWorking    = office.StateWorking
-	StateFrustrated = office.StateFrustrated
+	StateIdle               = office.StateIdle
+	StateConference         = office.StateConference
+	StateMovingToConference = office.StateMovingToConference
+	StateMovingToCubicle    = office.StateMovingToCubicle
+	StateWorking            = office.StateWorking
+	StateFrustrated         = office.StateFrustrated
 )
 
 // Re-export layout constants
@@ -49,7 +50,7 @@ const (
 // Re-export variables
 var (
 	WorkingFrames         = office.WorkingFrames
-	FrustrationText       = office.FrustrationText
+	FrustratedFrames      = office.FrustratedFrames
 	DeveloperColors       = office.DeveloperColors
 	DeveloperColorNames   = office.DeveloperColorNames
 	DefaultDeveloperNames = office.DefaultDeveloperNames
@@ -64,7 +65,6 @@ var (
 	ConferencePosition    = office.ConferencePosition
 	Lerp                  = office.Lerp
 	RenderDeveloperIcon   = office.RenderDeveloperIcon
-	RenderFrustrationBubble = office.RenderFrustrationBubble
 	RenderCubicle         = office.RenderCubicle
 	RenderConferenceRoom  = office.RenderConferenceRoom
 	RenderCubicleGrid     = office.RenderCubicleGrid

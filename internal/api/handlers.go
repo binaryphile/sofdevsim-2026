@@ -298,15 +298,16 @@ func (r SimRegistry) HandleAssignTicket(w http.ResponseWriter, req *http.Request
 	// Record office event: developer assigned to ticket, starts working
 	sim := inst.Engine.Sim()
 	devIdx := findDeveloperIndex(sim.Developers, devID)
+	now := time.Now()
 	if devIdx >= 0 {
 		target := office.CubicleLayout(len(sim.Developers))[devIdx]
 		inst.Office = inst.Office.Record(office.DevAssignedToTicket{
 			DevID:    devID,
 			TicketID: body.TicketID,
 			Target:   target,
-		}, sim.CurrentTick)
+		}, sim.CurrentTick, now)
 		// Immediately transition to working (API doesn't animate movement)
-		inst.Office = inst.Office.Record(office.DevStartedWorking{DevID: devID}, sim.CurrentTick)
+		inst.Office = inst.Office.Record(office.DevStartedWorking{DevID: devID}, sim.CurrentTick, now)
 	}
 
 	r.SetInstance(id, inst)
@@ -680,13 +681,14 @@ func (r SimRegistry) HandleGetLessons(w http.ResponseWriter, req *http.Request) 
 // Calculation: (OfficeProjection, oldSim, newSim) → OfficeProjection
 func deriveOfficeEvents(proj office.OfficeProjection, oldSim, newSim model.Simulation) office.OfficeProjection {
 	tick := newSim.CurrentTick
+	now := time.Now()
 
 	// Check for sprint end - all developers return to conference
 	oldSprintActive := oldSim.CurrentSprintOption.IsOk()
 	newSprintActive := newSim.CurrentSprintOption.IsOk()
 	if oldSprintActive && !newSprintActive {
 		for _, dev := range newSim.Developers {
-			proj = proj.Record(office.DevEnteredConference{DevID: dev.ID}, tick)
+			proj = proj.Record(office.DevEnteredConference{DevID: dev.ID}, tick, now)
 		}
 		return proj
 	}
@@ -703,7 +705,7 @@ func deriveOfficeEvents(proj office.OfficeProjection, oldSim, newSim model.Simul
 			proj = proj.Record(office.DevCompletedTicket{
 				DevID:    newDev.ID,
 				TicketID: oldDev.CurrentTicket,
-			}, tick)
+			}, tick, now)
 			continue
 		}
 
@@ -717,7 +719,7 @@ func deriveOfficeEvents(proj office.OfficeProjection, oldSim, newSim model.Simul
 						proj = proj.Record(office.DevBecameFrustrated{
 							DevID:    newDev.ID,
 							TicketID: ticket.ID,
-						}, tick)
+						}, tick, now)
 					}
 				}
 			}

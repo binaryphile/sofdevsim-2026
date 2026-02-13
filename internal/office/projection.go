@@ -29,12 +29,13 @@ func NewOfficeProjection(devIDs []string) OfficeProjection {
 // Calculation: Record returns a NEW projection with the event applied.
 // Computes new state immediately (compute-on-write pattern).
 // Value semantics - does not mutate the receiver.
-func (p OfficeProjection) Record(evt OfficeEvent, tick int) OfficeProjection {
+// now is injected for time-based animations (caller passes time.Now() in production).
+func (p OfficeProjection) Record(evt OfficeEvent, tick int, now time.Time) OfficeProjection {
 	newEvents := make([]OfficeEvent, len(p.events)+1)
 	copy(newEvents, p.events)
 	newEvents[len(p.events)] = evt
 
-	newState := applyOfficeEvent(p.state, evt)
+	newState := applyOfficeEvent(p.state, evt, now)
 	newTransitions := p.detectTransitions(evt, newState, tick)
 
 	return OfficeProjection{
@@ -141,11 +142,11 @@ func (p OfficeProjection) CurrentTick() int {
 }
 
 // Calculation: applyOfficeEvent applies one event to state.
-// Pure function: (OfficeState, OfficeEvent) → OfficeState
-func applyOfficeEvent(state OfficeState, evt OfficeEvent) OfficeState {
+// Pure function: (OfficeState, OfficeEvent, time.Time) → OfficeState
+func applyOfficeEvent(state OfficeState, evt OfficeEvent, now time.Time) OfficeState {
 	switch e := evt.(type) {
 	case DevAssignedToTicket:
-		return state.StartDeveloperMoving(e.DevID, e.Target)
+		return state.StartDeveloperMovingToCubicle(e.DevID, e.Target, now)
 	case DevStartedWorking:
 		return state.SetDeveloperState(e.DevID, StateWorking)
 	case DevBecameFrustrated:
@@ -155,7 +156,7 @@ func applyOfficeEvent(state OfficeState, evt OfficeEvent) OfficeState {
 	case DevEnteredConference:
 		return state.SetDeveloperState(e.DevID, StateConference)
 	case AnimationFrameAdvanced:
-		return state.AdvanceFrames()
+		return state.AdvanceFrames(now)
 	default:
 		return state
 	}

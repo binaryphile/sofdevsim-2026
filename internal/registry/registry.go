@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math/rand"
 	"sync"
+	"time"
 
 	"github.com/binaryphile/fluentfp/option"
 	"github.com/binaryphile/fluentfp/slice"
@@ -112,8 +113,9 @@ func (r *SimRegistry) CreateSimulation(seed int64, policy model.SizingPolicy) (s
 	officeProj := office.NewOfficeProjection(devIDs)
 
 	// All developers start in conference at tick 0
+	now := time.Now()
 	recordConferenceEntry := func(proj office.OfficeProjection, devID string) office.OfficeProjection {
-		return proj.Record(office.DevEnteredConference{DevID: devID}, 0)
+		return proj.Record(office.DevEnteredConference{DevID: devID}, 0, now)
 	}
 	officeProj = slice.Fold(devIDs, officeProj, recordConferenceEntry)
 

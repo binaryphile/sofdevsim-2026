@@ -2,9 +2,13 @@ package tui
 
 import (
 	"testing"
+	"time"
 
 	"github.com/binaryphile/fluentfp/slice"
 )
+
+// testTime is a fixed time for deterministic tests.
+var testTime = time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
 
 func TestOfficeProjection_Empty(t *testing.T) {
 	proj := NewOfficeProjection([]string{"dev-1", "dev-2"})
@@ -18,8 +22,8 @@ func TestOfficeProjection_Empty(t *testing.T) {
 	if !ok {
 		t.Fatal("dev-1 not found")
 	}
-	if anim.State != StateIdle {
-		t.Errorf("Initial state = %v, want StateIdle", anim.State)
+	if anim.State != StateConference {
+		t.Errorf("Initial state = %v, want StateConference", anim.State)
 	}
 }
 
@@ -29,13 +33,13 @@ func TestOfficeProjection_AssignedMoving(t *testing.T) {
 		DevID:    "dev-1",
 		TicketID: "TKT-1",
 		Target:   Position{X: 50, Y: 2},
-	}, 1)
+	}, 1, testTime)
 
 	state := proj.State()
 	anim := state.GetAnimationOption("dev-1").OrZero()
 
-	if anim.State != StateMoving {
-		t.Errorf("State = %v, want StateMoving", anim.State)
+	if anim.State != StateMovingToCubicle {
+		t.Errorf("State = %v, want StateMovingToCubicle", anim.State)
 	}
 	if anim.Target.X != 50 || anim.Target.Y != 2 {
 		t.Errorf("Target = %v, want {50, 2}", anim.Target)
@@ -44,28 +48,28 @@ func TestOfficeProjection_AssignedMoving(t *testing.T) {
 
 func TestOfficeProjection_MovementComplete(t *testing.T) {
 	proj := NewOfficeProjection([]string{"dev-1"})
+	now := testTime
 	proj = proj.Record(DevAssignedToTicket{
 		DevID:    "dev-1",
 		TicketID: "TKT-1",
 		Target:   Position{X: 50, Y: 2},
-	}, 1)
+	}, 1, now)
 
-	// 5 frame advances complete movement (Progress += 0.2 each)
-	for i := 0; i < 5; i++ {
-		proj = proj.Record(AnimationFrameAdvanced{}, 1)
-	}
+	// Advance time past MovementDuration (500ms)
+	now = now.Add(600 * time.Millisecond)
+	proj = proj.Record(AnimationFrameAdvanced{}, 1, now)
 
 	state := proj.State()
 	anim := state.GetAnimationOption("dev-1").OrZero()
 
 	if anim.State != StateWorking {
-		t.Errorf("After 5 advances: State = %v, want StateWorking", anim.State)
+		t.Errorf("After movement duration: State = %v, want StateWorking", anim.State)
 	}
 }
 
 func TestOfficeProjection_StartedWorking(t *testing.T) {
 	proj := NewOfficeProjection([]string{"dev-1"})
-	proj = proj.Record(DevStartedWorking{DevID: "dev-1"}, 1)
+	proj = proj.Record(DevStartedWorking{DevID: "dev-1"}, 1, testTime)
 
 	state := proj.State()
 	anim := state.GetAnimationOption("dev-1").OrZero()
@@ -77,8 +81,8 @@ func TestOfficeProjection_StartedWorking(t *testing.T) {
 
 func TestOfficeProjection_Frustrated(t *testing.T) {
 	proj := NewOfficeProjection([]string{"dev-1"})
-	proj = proj.Record(DevStartedWorking{DevID: "dev-1"}, 1)
-	proj = proj.Record(DevBecameFrustrated{DevID: "dev-1", TicketID: "TKT-1"}, 2)
+	proj = proj.Record(DevStartedWorking{DevID: "dev-1"}, 1, testTime)
+	proj = proj.Record(DevBecameFrustrated{DevID: "dev-1", TicketID: "TKT-1"}, 2, testTime)
 
 	state := proj.State()
 	anim := state.GetAnimationOption("dev-1").OrZero()
@@ -90,12 +94,13 @@ func TestOfficeProjection_Frustrated(t *testing.T) {
 
 func TestOfficeProjection_Completed(t *testing.T) {
 	proj := NewOfficeProjection([]string{"dev-1"})
-	proj = proj.Record(DevStartedWorking{DevID: "dev-1"}, 1)
-	proj = proj.Record(DevCompletedTicket{DevID: "dev-1", TicketID: "TKT-1"}, 5)
+	proj = proj.Record(DevStartedWorking{DevID: "dev-1"}, 1, testTime)
+	proj = proj.Record(DevCompletedTicket{DevID: "dev-1", TicketID: "TKT-1"}, 5, testTime)
 
 	state := proj.State()
 	anim := state.GetAnimationOption("dev-1").OrZero()
 
+	// After completing ticket, dev goes to Idle (not Conference - that's for sprint end)
 	if anim.State != StateIdle {
 		t.Errorf("State = %v, want StateIdle", anim.State)
 	}
@@ -103,8 +108,8 @@ func TestOfficeProjection_Completed(t *testing.T) {
 
 func TestOfficeProjection_EnteredConference(t *testing.T) {
 	proj := NewOfficeProjection([]string{"dev-1"})
-	proj = proj.Record(DevStartedWorking{DevID: "dev-1"}, 1)
-	proj = proj.Record(DevEnteredConference{DevID: "dev-1"}, 10)
+	proj = proj.Record(DevStartedWorking{DevID: "dev-1"}, 1, testTime)
+	proj = proj.Record(DevEnteredConference{DevID: "dev-1"}, 10, testTime)
 
 	state := proj.State()
 	anim := state.GetAnimationOption("dev-1").OrZero()
@@ -116,11 +121,11 @@ func TestOfficeProjection_EnteredConference(t *testing.T) {
 
 func TestOfficeProjection_FrameAdvance(t *testing.T) {
 	proj := NewOfficeProjection([]string{"dev-1"})
-	proj = proj.Record(DevStartedWorking{DevID: "dev-1"}, 1)
+	proj = proj.Record(DevStartedWorking{DevID: "dev-1"}, 1, testTime)
 
 	// Advance 3 frames
 	for i := 0; i < 3; i++ {
-		proj = proj.Record(AnimationFrameAdvanced{}, 1)
+		proj = proj.Record(AnimationFrameAdvanced{}, 1, testTime)
 	}
 
 	state := proj.State()
@@ -133,9 +138,9 @@ func TestOfficeProjection_FrameAdvance(t *testing.T) {
 
 func TestOfficeProjection_Events(t *testing.T) {
 	proj := NewOfficeProjection([]string{"dev-1"})
-	proj = proj.Record(DevAssignedToTicket{DevID: "dev-1", TicketID: "TKT-1", Target: Position{50, 2}}, 1)
-	proj = proj.Record(AnimationFrameAdvanced{}, 1)
-	proj = proj.Record(DevBecameFrustrated{DevID: "dev-1", TicketID: "TKT-1"}, 2)
+	proj = proj.Record(DevAssignedToTicket{DevID: "dev-1", TicketID: "TKT-1", Target: Position{50, 2}}, 1, testTime)
+	proj = proj.Record(AnimationFrameAdvanced{}, 1, testTime)
+	proj = proj.Record(DevBecameFrustrated{DevID: "dev-1", TicketID: "TKT-1"}, 2, testTime)
 
 	events := proj.Events()
 	if len(events) != 3 {
@@ -154,12 +159,12 @@ func TestOfficeProjection_Events(t *testing.T) {
 
 func TestOfficeProjection_ImmutableRecord(t *testing.T) {
 	proj1 := NewOfficeProjection([]string{"dev-1"})
-	proj2 := proj1.Record(DevStartedWorking{DevID: "dev-1"}, 1)
+	proj2 := proj1.Record(DevStartedWorking{DevID: "dev-1"}, 1, testTime)
 
 	// Original unchanged
 	state1 := proj1.State()
 	anim1 := state1.GetAnimationOption("dev-1").OrZero()
-	if anim1.State != StateIdle {
+	if anim1.State != StateConference {
 		t.Error("Original projection should remain unchanged")
 	}
 
@@ -176,16 +181,16 @@ func TestOfficeProjection_MultipleDevsConference(t *testing.T) {
 
 	// Replicate app.go initialization pattern
 	recordConferenceEntry := func(proj OfficeProjection, id string) OfficeProjection {
-		return proj.Record(DevEnteredConference{DevID: id}, 0)
+		return proj.Record(DevEnteredConference{DevID: id}, 0, testTime)
 	}
 	proj := slice.Fold(devIDs, NewOfficeProjection(devIDs), recordConferenceEntry)
-	
+
 	state := proj.State()
-	
+
 	if len(state.Animations) != 3 {
 		t.Fatalf("Animations count = %d, want 3", len(state.Animations))
 	}
-	
+
 	for _, anim := range state.Animations {
 		if anim.State != StateConference {
 			t.Errorf("%s: State = %v, want StateConference", anim.DevID, anim.State)

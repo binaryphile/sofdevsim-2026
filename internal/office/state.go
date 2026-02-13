@@ -1,6 +1,8 @@
 package office
 
 import (
+	"time"
+
 	"github.com/binaryphile/fluentfp/option"
 	"github.com/binaryphile/fluentfp/slice"
 )
@@ -10,13 +12,52 @@ type Position struct {
 	X, Y int
 }
 
+// Data: Accessory represents a developer's drink
+type Accessory int
+
+const (
+	AccessoryNone Accessory = iota
+	AccessoryCoffee // ☕
+	AccessorySoda   // 🥤
+)
+
+// Emoji returns the emoji representation of the accessory.
+func (a Accessory) Emoji() string {
+	switch a {
+	case AccessoryCoffee:
+		return "☕"
+	case AccessorySoda:
+		return "🥤"
+	default:
+		return ""
+	}
+}
+
+// Data: SipPhase tracks drink animation state
+type SipPhase int
+
+const (
+	SipNone SipPhase = iota
+	SipPreparing // 😙 kissy lips
+	SipDrinking  // drink emoji only
+	SipRefreshed // 😌 relieved face
+)
+
+// Time constants (frame-rate independent)
+const (
+	SipPhaseDuration   = 500 * time.Millisecond // Each phase lasts 500ms
+	MovementDuration   = 500 * time.Millisecond // Movement completes in 500ms
+	LateBubbleDuration = 1 * time.Second        // "Late!" bubble visible for 1s
+)
+
 // Data: AnimationState enum
 type AnimationState int
 
 const (
 	StateIdle AnimationState = iota
 	StateConference
-	StateMoving
+	StateMovingToConference
+	StateMovingToCubicle
 	StateWorking
 	StateFrustrated
 )
@@ -28,8 +69,10 @@ func (s AnimationState) String() string {
 		return "idle"
 	case StateConference:
 		return "conference"
-	case StateMoving:
-		return "moving"
+	case StateMovingToConference:
+		return "movingToConference"
+	case StateMovingToCubicle:
+		return "movingToCubicle"
 	case StateWorking:
 		return "working"
 	case StateFrustrated:
@@ -41,14 +84,20 @@ func (s AnimationState) String() string {
 
 // Data: DeveloperAnimation is a value type (use value receivers)
 type DeveloperAnimation struct {
-	DevID       string
-	State       AnimationState
-	Position    Position // Current screen position
-	Target      Position // Destination (for Moving state)
-	Frame       int      // Current animation frame
-	ColorIndex  int      // 0-5 for palette lookup
-	Progress    float64  // 0.0-1.0 for movement interpolation
-	FrameOffset int      // Offset for visual variety (devs don't cycle in unison)
+	DevID           string
+	State           AnimationState
+	Position        Position // Current screen position
+	Target          Position // Destination (for Moving state)
+	Frame           int      // Current animation frame
+	ColorIndex      int      // 0-5 for palette lookup
+	Progress        float64  // 0.0-1.0 for movement interpolation
+	FrameOffset      int       // Offset for visual variety (devs don't cycle in unison)
+	LateBubbleFrames int       // Countdown for "Late!" bubble (0 = hidden)
+	Accessory        Accessory // Developer's drink (coffee/soda)
+	SipPhase         SipPhase  // Current sip animation phase
+	SipStartTime     time.Time // When current sip phase started
+	MovementStart    time.Time // When movement started (for time-based interpolation)
+	LateBubbleStart  time.Time // When "Late!" bubble appeared
 }
 
 // Data: OfficeState holds all developer animations
@@ -56,11 +105,34 @@ type OfficeState struct {
 	Animations []DeveloperAnimation
 }
 
-// Working animation frames
-var WorkingFrames = []string{"○", "◔", "◑", "◕", "●"}
+// Data: StaggeredAnimator tracks which developer animates next (value type)
+type StaggeredAnimator struct {
+	LastChangedIndex int // -1 = start before dev 0
+	TicksSinceChange int // For tracking pauses
+}
 
-// Frustration bubble text cycles
-var FrustrationText = []string{"!@#", "$%^", "&*!", "#$%"}
+// NextToAnimate returns (newAnimator, devIndex, shouldAnimate).
+// devIndex=-1 and shouldAnimate=false when pausing.
+// shouldPause is injected by caller for testability.
+func (s StaggeredAnimator) NextToAnimate(devCount int, shouldPause bool) (StaggeredAnimator, int, bool) {
+	if shouldPause {
+		return StaggeredAnimator{
+			LastChangedIndex: s.LastChangedIndex,
+			TicksSinceChange: s.TicksSinceChange + 1,
+		}, -1, false
+	}
+	nextIndex := (s.LastChangedIndex + 1) % devCount
+	return StaggeredAnimator{
+		LastChangedIndex: nextIndex,
+		TicksSinceChange: 0,
+	}, nextIndex, true
+}
+
+// Working animation frames - happy/silly faces for on-schedule work
+var WorkingFrames = []string{"😊", "😄", "😁", "🙂", "😀"}
+
+// Frustrated animation frames - unhappy faces for over-estimate work
+var FrustratedFrames = []string{"😤", "😠", "😡", "😩", "😖"}
 
 // NewDeveloperAnimation creates a new developer animation in Idle state.
 // Calculation: (string, int) → DeveloperAnimation
@@ -81,6 +153,14 @@ func (d DeveloperAnimation) WithState(s AnimationState) DeveloperAnimation {
 	return d
 }
 
+// BecomeFrustrated transitions to frustrated state with "Late!" bubble.
+// Bubble shows for ~1 second (10 frames at 100ms).
+func (d DeveloperAnimation) BecomeFrustrated() DeveloperAnimation {
+	d.State = StateFrustrated
+	d.LateBubbleFrames = 10
+	return d
+}
+
 // WithPosition returns a new DeveloperAnimation with the given position
 func (d DeveloperAnimation) WithPosition(p Position) DeveloperAnimation {
 	d.Position = p
@@ -93,17 +173,37 @@ func (d DeveloperAnimation) WithTarget(t Position) DeveloperAnimation {
 	return d
 }
 
-// StartMoving begins movement animation from current position to target
-func (d DeveloperAnimation) StartMoving(target Position) DeveloperAnimation {
-	d.Target = target
-	d.State = StateMoving
-	d.Progress = 0.0
+// WithAccessory returns a new DeveloperAnimation with the given accessory.
+func (d DeveloperAnimation) WithAccessory(a Accessory) DeveloperAnimation {
+	d.Accessory = a
 	return d
 }
 
-// NextFrame advances the animation frame, wrapping at the end
+// StartMovingToCubicle begins movement animation toward a cubicle.
+func (d DeveloperAnimation) StartMovingToCubicle(target Position, now time.Time) DeveloperAnimation {
+	d.Target = target
+	d.State = StateMovingToCubicle
+	d.Progress = 0.0
+	d.MovementStart = now
+	return d
+}
+
+// StartMovingToConference begins movement animation toward the conference room.
+func (d DeveloperAnimation) StartMovingToConference(target Position, now time.Time) DeveloperAnimation {
+	d.Target = target
+	d.State = StateMovingToConference
+	d.Progress = 0.0
+	d.MovementStart = now
+	return d
+}
+
+// NextFrame advances the animation frame, wrapping at the end.
+// Also decrements LateBubbleFrames if active.
 func (d DeveloperAnimation) NextFrame() DeveloperAnimation {
 	d.Frame = (d.Frame + 1) % len(WorkingFrames)
+	if d.LateBubbleFrames > 0 {
+		d.LateBubbleFrames--
+	}
 	return d
 }
 
@@ -122,7 +222,10 @@ func (d DeveloperAnimation) ShouldBecomeFrustrated(actualDays, estimatedDays flo
 // ShouldStartWorking returns true if developer should transition to working.
 // Predicate: for detecting when dev needs DevStartedWorking event.
 func (d DeveloperAnimation) ShouldStartWorking() bool {
-	return d.State != StateWorking && d.State != StateMoving && d.State != StateFrustrated
+	return d.State != StateWorking &&
+		d.State != StateMovingToConference &&
+		d.State != StateMovingToCubicle &&
+		d.State != StateFrustrated
 }
 
 // IsActive returns true if developer is actively working (not idle/conference).
@@ -136,14 +239,19 @@ func (d DeveloperAnimation) IsInConference() bool {
 	return d.State == StateConference
 }
 
-// AdvanceMovement interpolates position toward target.
-// Movement completes in ~500ms (5 frames at 100ms).
-func (d DeveloperAnimation) AdvanceMovement() DeveloperAnimation {
-	d.Progress += 0.2 // 5 steps to complete
+// AdvanceMovement interpolates position toward target using time-based animation.
+// Movement completes after MovementDuration (500ms).
+func (d DeveloperAnimation) AdvanceMovement(now time.Time) DeveloperAnimation {
+	elapsed := now.Sub(d.MovementStart)
+	d.Progress = float64(elapsed) / float64(MovementDuration)
 	if d.Progress >= 1.0 {
 		d.Progress = 1.0
 		d.Position = d.Target
-		d.State = StateWorking // Arrived at cubicle
+		if d.State == StateMovingToConference {
+			d.State = StateConference
+		} else {
+			d.State = StateWorking
+		}
 	} else {
 		d.Position = Lerp(d.Position, d.Target, d.Progress)
 	}
@@ -151,13 +259,13 @@ func (d DeveloperAnimation) AdvanceMovement() DeveloperAnimation {
 }
 
 // NewOfficeState creates a new OfficeState with animations for all developers.
-// Developers start at conference room positions.
+// Developers start in the conference room (StateConference).
 // Calculation: []string → OfficeState
 func NewOfficeState(devIDs []string) OfficeState {
 	anims := make([]DeveloperAnimation, len(devIDs))
 	for i, id := range devIDs {
 		anim := NewDeveloperAnimation(id, i)
-		// Set initial position in conference room
+		anim.State = StateConference
 		anim.Position = ConferencePosition(i, len(devIDs))
 		anims[i] = anim
 	}
@@ -178,26 +286,44 @@ func (s OfficeState) GetActiveAnimationOption(devID string) option.Basic[Develop
 	return s.GetAnimationOption(devID).KeepOkIf(DeveloperAnimation.IsActive)
 }
 
-// SetDeveloperState returns a new OfficeState with the developer's state changed
+// SetDeveloperState returns a new OfficeState with the developer's state changed.
+// Uses BecomeFrustrated for StateFrustrated to show "Late!" bubble.
 func (s OfficeState) SetDeveloperState(devID string, state AnimationState) OfficeState {
 	newAnims := make([]DeveloperAnimation, len(s.Animations))
 	copy(newAnims, s.Animations)
 	for i, anim := range newAnims {
 		if anim.DevID == devID {
-			newAnims[i] = anim.WithState(state)
+			if state == StateFrustrated {
+				newAnims[i] = anim.BecomeFrustrated()
+			} else {
+				newAnims[i] = anim.WithState(state)
+			}
 			break
 		}
 	}
 	return OfficeState{Animations: newAnims}
 }
 
-// StartDeveloperMoving returns a new OfficeState with the developer moving to target
-func (s OfficeState) StartDeveloperMoving(devID string, target Position) OfficeState {
+// StartDeveloperMovingToCubicle returns a new OfficeState with the developer moving to cubicle.
+func (s OfficeState) StartDeveloperMovingToCubicle(devID string, target Position, now time.Time) OfficeState {
 	newAnims := make([]DeveloperAnimation, len(s.Animations))
 	copy(newAnims, s.Animations)
 	for i, anim := range newAnims {
 		if anim.DevID == devID {
-			newAnims[i] = anim.StartMoving(target)
+			newAnims[i] = anim.StartMovingToCubicle(target, now)
+			break
+		}
+	}
+	return OfficeState{Animations: newAnims}
+}
+
+// StartDeveloperMovingToConference returns a new OfficeState with the developer moving to conference.
+func (s OfficeState) StartDeveloperMovingToConference(devID string, target Position, now time.Time) OfficeState {
+	newAnims := make([]DeveloperAnimation, len(s.Animations))
+	copy(newAnims, s.Animations)
+	for i, anim := range newAnims {
+		if anim.DevID == devID {
+			newAnims[i] = anim.StartMovingToConference(target, now)
 			break
 		}
 	}
@@ -205,15 +331,15 @@ func (s OfficeState) StartDeveloperMoving(devID string, target Position) OfficeS
 }
 
 // AdvanceFrames advances animation frames for all working/frustrated developers
-// and interpolates movement for Moving developers
-func (s OfficeState) AdvanceFrames() OfficeState {
+// and interpolates movement for moving developers.
+func (s OfficeState) AdvanceFrames(now time.Time) OfficeState {
 	// advanceFrame advances animation based on current state.
 	advanceFrame := func(anim DeveloperAnimation) DeveloperAnimation {
 		switch anim.State {
 		case StateWorking, StateFrustrated:
 			return anim.NextFrame()
-		case StateMoving:
-			return anim.AdvanceMovement()
+		case StateMovingToConference, StateMovingToCubicle:
+			return anim.AdvanceMovement(now)
 		default:
 			return anim
 		}

@@ -28281,3 +28281,20 @@ $(date -Iseconds) | Contract: Event-Source Office Animation
 [x] DevEnteredConference on sprint end (evidence: line 372 in for loop)
 [x] Verification passed (3 tests pass)
 [x] FluentFP guide updated with Fold vs for loop lesson
+
+2026-02-13T12:00:00Z | Contract: Office Animation Enhancement
+[ ] State machine with directional movement
+[ ] Developer accessories (coffee/soda)
+[ ] Sip animation
+[ ] Staggered face animation
+[ ] Enhanced visual layout
+2026-02-13T12:00:00-06:00 | Contract: Phase 1 - State Machine
+[ ] StateMovingToConference and StateMovingToCubicle replace StateMoving
+[ ] Time-based movement with MovementDuration constant
+[ ] New types: Accessory, SipPhase, StaggeredAnimator
+[ ] ./internal/office/... tests pass
+2026-02-13T14:30:00-06:00 | Completion: Phase 1 - State Machine
+[x] StateMovingToConference/ToCubicle (state.go enum updated)
+[x] Time-based movement (AdvanceMovement receives time.Time)
+[x] New types defined (Accessory, SipPhase, StaggeredAnimator)
+[x] Tests pass: go test ./internal/office/...

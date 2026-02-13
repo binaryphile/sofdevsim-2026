@@ -1,6 +1,9 @@
 package office
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestShouldBecomeFrustrated(t *testing.T) {
 	tests := []struct {
@@ -36,9 +39,10 @@ func TestShouldStartWorking(t *testing.T) {
 	}{
 		{"idle", StateIdle, true},
 		{"conference", StateConference, true},
-		{"already working", StateWorking, false},    // key case: don't re-trigger
-		{"moving", StateMoving, false},              // still in transit
-		{"frustrated", StateFrustrated, false},      // don't downgrade from frustrated
+		{"already working", StateWorking, false},              // key case: don't re-trigger
+		{"movingToConference", StateMovingToConference, false}, // still in transit
+		{"movingToCubicle", StateMovingToCubicle, false},       // still in transit
+		{"frustrated", StateFrustrated, false},                 // don't downgrade from frustrated
 	}
 
 	for _, tt := range tests {
@@ -62,7 +66,8 @@ func TestIsActive(t *testing.T) {
 		{"frustrated", StateFrustrated, true},
 		{"idle", StateIdle, false},
 		{"conference", StateConference, false},
-		{"moving", StateMoving, false},
+		{"movingToConference", StateMovingToConference, false},
+		{"movingToCubicle", StateMovingToCubicle, false},
 	}
 
 	for _, tt := range tests {
@@ -73,5 +78,69 @@ func TestIsActive(t *testing.T) {
 				t.Errorf("IsActive() = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestAccessory_Emoji(t *testing.T) {
+	tests := []struct {
+		a    Accessory
+		want string
+	}{
+		{AccessoryNone, ""},
+		{AccessoryCoffee, "☕"},
+		{AccessorySoda, "🥤"},
+	}
+	for _, tt := range tests {
+		if got := tt.a.Emoji(); got != tt.want {
+			t.Errorf("Accessory(%d).Emoji() = %q, want %q", tt.a, got, tt.want)
+		}
+	}
+}
+
+func TestStaggeredAnimator_RoundRobin(t *testing.T) {
+	s := StaggeredAnimator{LastChangedIndex: -1}
+	for i := 0; i < 6; i++ {
+		var idx int
+		var ok bool
+		s, idx, ok = s.NextToAnimate(3, false)
+		if !ok || idx != i%3 {
+			t.Errorf("tick %d: idx=%d ok=%v, want idx=%d ok=true", i, idx, ok, i%3)
+		}
+	}
+}
+
+func TestStaggeredAnimator_Pauses(t *testing.T) {
+	s := StaggeredAnimator{LastChangedIndex: 0}
+	s, idx, ok := s.NextToAnimate(3, true)
+	if ok || idx != -1 {
+		t.Errorf("pause: idx=%d ok=%v, want idx=-1 ok=false", idx, ok)
+	}
+	if s.TicksSinceChange != 1 {
+		t.Errorf("TicksSinceChange=%d, want 1", s.TicksSinceChange)
+	}
+}
+
+func TestAdvanceMovement_ToConference(t *testing.T) {
+	start := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	d := DeveloperAnimation{
+		State:         StateMovingToConference,
+		MovementStart: start,
+	}
+	// Advance past MovementDuration
+	d = d.AdvanceMovement(start.Add(MovementDuration + time.Millisecond))
+	if d.State != StateConference {
+		t.Errorf("State = %v, want StateConference", d.State)
+	}
+}
+
+func TestAdvanceMovement_ToCubicle(t *testing.T) {
+	start := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	d := DeveloperAnimation{
+		State:         StateMovingToCubicle,
+		MovementStart: start,
+	}
+	d = d.AdvanceMovement(start.Add(MovementDuration + time.Millisecond))
+	if d.State != StateWorking {
+		t.Errorf("State = %v, want StateWorking", d.State)
 	}
 }
