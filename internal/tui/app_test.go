@@ -106,7 +106,8 @@ func TestNewAppWithRegistry_SubscribesToEvents(t *testing.T) {
 }
 
 // TestNewAppWithRegistry_RegistryHasPopulatedState verifies API can see TUI's full state.
-// Per design doc "TUI/API Shared Access": registry always holds fully-populated engine.
+// Per design doc "TUI/API Shared Access": registry always holds fully-populated SimInstance.
+// Tests ALL SimInstance fields at initialization (Khorikov: test boundary conditions).
 func TestNewAppWithRegistry_RegistryHasPopulatedState(t *testing.T) {
 	reg := registry.NewSimRegistry()
 	_ = NewAppWithRegistry(42, reg)
@@ -117,15 +118,27 @@ func TestNewAppWithRegistry_RegistryHasPopulatedState(t *testing.T) {
 		t.Fatal("Registry should contain TUI's simulation")
 	}
 
+	// Check Engine (primary state)
 	sim := inst.Engine.Sim()
 	if len(sim.Developers) != 6 {
-		t.Errorf("Registry should have 6 developers, got %d", len(sim.Developers))
+		t.Errorf("Engine should have 6 developers, got %d", len(sim.Developers))
 	}
 	if len(sim.Backlog) != 12 {
-		t.Errorf("Registry should have 12 tickets, got %d", len(sim.Backlog))
+		t.Errorf("Engine should have 12 tickets, got %d", len(sim.Backlog))
 	}
 	if sim.Developers[0].Name != "Mei" {
 		t.Errorf("First developer should be Mei, got %s", sim.Developers[0].Name)
+	}
+
+	// Check Tracker (metrics)
+	if inst.Tracker.DORA.DeploysLast7Days != 0 {
+		t.Errorf("Initial tracker should have 0 deploys, got %d", inst.Tracker.DORA.DeploysLast7Days)
+	}
+
+	// Check Office (animation state) - regression: was missing, caused empty /office
+	officeState := inst.Office.State()
+	if len(officeState.Animations) != 6 {
+		t.Errorf("Office should have 6 developer animations, got %d", len(officeState.Animations))
 	}
 }
 

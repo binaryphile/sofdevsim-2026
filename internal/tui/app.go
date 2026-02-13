@@ -171,12 +171,18 @@ func NewAppWithRegistry(seed int64, reg *registry.SimRegistry) *App {
 		eng = must.Get(eng.AddTicket(t))
 	}
 
+	// Initialize office projection with developer IDs (event-sourced)
+	// Devs start in cubicles (StateIdle), will move to conference when planning begins
+	devIDs := []string{"dev-1", "dev-2", "dev-3", "dev-4", "dev-5", "dev-6"}
+	officeProjection := NewOfficeProjection(devIDs)
+
 	// Store fully-populated engine in registry (design invariant: never store empty)
 	if reg != nil {
 		reg.SetInstance(simID, registry.SimInstance{
 			Sim:     sim,
 			Engine:  eng,
 			Tracker: tracker,
+			Office:  officeProjection,
 		})
 	}
 
@@ -191,11 +197,6 @@ func NewAppWithRegistry(seed int64, reg *registry.SimRegistry) *App {
 		EventSub: eventSub,
 		Registry: reg,
 	}
-
-	// Initialize office projection with developer IDs (event-sourced)
-	// Devs start in cubicles (StateIdle), will move to conference when planning begins
-	devIDs := []string{"dev-1", "dev-2", "dev-3", "dev-4", "dev-5", "dev-6"}
-	officeProjection := NewOfficeProjection(devIDs)
 
 	return &App{
 		mode:             either.Left[EngineMode, ClientMode](engineMode),
