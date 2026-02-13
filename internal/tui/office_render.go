@@ -59,9 +59,10 @@ func RenderCubicle(anim DeveloperAnimation, name string, width int) string {
 	// Add frustration bubble if frustrated
 	if anim.State == StateFrustrated {
 		bubble := RenderFrustrationBubble(anim.Frame)
-		for _, line := range strings.Split(bubble, "\n") {
-			lines = append(lines, style.Render(line))
-		}
+		// renderLine applies style to a single line.
+		renderLine := func(line string) string { return style.Render(line) }
+		bubbleLines := slice.From(strings.Split(bubble, "\n")).ToString(renderLine)
+		lines = append(lines, bubbleLines...)
 	}
 
 	// Cubicle box

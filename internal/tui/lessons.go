@@ -221,10 +221,9 @@ func (a *App) lessonsPanel(lesson Lesson) string {
 	// Build tips section
 	var tipsSection string
 	if len(lesson.Tips) > 0 {
-		tips := make([]string, len(lesson.Tips))
-		for i, tip := range lesson.Tips {
-			tips[i] = MutedStyle.Render("• " + tip)
-		}
+		// renderTip renders a tip with bullet and muted style.
+		renderTip := func(tip string) string { return MutedStyle.Render("• " + tip) }
+		tips := slice.From(lesson.Tips).ToString(renderTip)
 		tipsSection = strings.Join(tips, "\n")
 	}
 

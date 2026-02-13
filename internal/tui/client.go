@@ -80,11 +80,16 @@ type MetricsState struct {
 
 // DORAHistoryPoint mirrors api.DORAHistoryPoint for sparklines.
 type DORAHistoryPoint struct {
-	LeadTimeAvg    float64 `json:"leadTimeAvg"`
+	LeadTimeAvg     float64 `json:"leadTimeAvg"`
 	DeployFrequency float64 `json:"deployFrequency"`
-	MTTR           float64 `json:"mttr"`
-	ChangeFailRate float64 `json:"changeFailRate"`
+	MTTR            float64 `json:"mttr"`
+	ChangeFailRate  float64 `json:"changeFailRate"`
 }
+
+func (h DORAHistoryPoint) GetLeadTimeAvg() float64     { return h.LeadTimeAvg }
+func (h DORAHistoryPoint) GetDeployFrequency() float64 { return h.DeployFrequency }
+func (h DORAHistoryPoint) GetMTTR() float64            { return h.MTTR }
+func (h DORAHistoryPoint) GetChangeFailRate() float64  { return h.ChangeFailRate }
 
 // SprintState mirrors model.Sprint for client-side decoding.
 type SprintState struct {

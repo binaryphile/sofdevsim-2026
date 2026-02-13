@@ -1111,21 +1111,13 @@ func (a *App) selectedTicketID() string {
 // extractLeadTimeHistory extracts lead time values from DORA snapshots.
 // Calculation: []DORASnapshot → []float64
 func extractLeadTimeHistory(history []metrics.DORASnapshot) []float64 {
-	result := make([]float64, len(history))
-	for i, s := range history {
-		result[i] = s.LeadTimeAvg
-	}
-	return result
+	return slice.From(history).ToFloat64(metrics.DORASnapshot.GetLeadTimeAvg)
 }
 
 // extractFeverHistory extracts percent used values from fever snapshots.
 // Calculation: []FeverSnapshot → []float64
 func extractFeverHistory(history []metrics.FeverSnapshot) []float64 {
-	result := make([]float64, len(history))
-	for i, s := range history {
-		result[i] = s.PercentUsed
-	}
-	return result
+	return slice.From(history).ToFloat64(metrics.FeverSnapshot.GetPercentUsed)
 }
 
 // updateDeveloperAnimationStates syncs office animation with simulation state.

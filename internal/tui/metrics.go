@@ -37,13 +37,13 @@ func (a *App) doraPanel() string {
 		cfrPct = a.state.Metrics.ChangeFailRatePct
 
 		// Extract history for sparklines
-		var leadTimes, deployFreqs, mttrs, cfrs []float64
-		for _, h := range a.state.Metrics.History {
-			leadTimes = append(leadTimes, h.LeadTimeAvg)
-			deployFreqs = append(deployFreqs, h.DeployFrequency)
-			mttrs = append(mttrs, h.MTTR)
-			cfrs = append(cfrs, h.ChangeFailRate)
-		}
+		leadTimes, deployFreqs, mttrs, cfrs := slice.Unzip4(
+			a.state.Metrics.History,
+			DORAHistoryPoint.GetLeadTimeAvg,
+			DORAHistoryPoint.GetDeployFrequency,
+			DORAHistoryPoint.GetMTTR,
+			DORAHistoryPoint.GetChangeFailRate,
+		)
 
 		leadTimeSparkline = a.sparkline(leadTimes)
 		deployFreqSparkline = a.sparkline(deployFreqs)

@@ -28213,3 +28213,22 @@ $(date -Iseconds) | Contract: Event-Source Office Animation
 2026-02-12T00:00:00Z | Completion: Add option.Lift + update sofdevsim
 [x] Phase 1: Lift in fluentfp (evidence: go test ./option/... passes)
 [x] Phase 2: Refactor sofdevsim to use Lift (evidence: go test ./... passes)
+2026-02-12T00:00:00Z | Contract: Add slice.Find + refactor loops
+[ ] slice.Find in fluentfp (new option import in slice pkg)
+[ ] TicketState.GetUnderstanding accessor
+[ ] lessons.go: loop → ToString (add slice import)
+[ ] office.go: loop → slice.Find (add slice import)
+[ ] office_render.go: loop → KeepIf+ToString (add slice import)
+2026-02-12T00:00:00Z | Completion: Add slice.Find + refactor loops
+[x] slice.Find (evidence: go test ./slice/... passes)
+[x] sofdevsim refactored (evidence: go test ./... passes)
+2026-02-12T19:38:28-05:00 | Contract: FluentFP loop refactoring
+[ ] app.go extractLeadTimeHistory → ToFloat64
+[ ] app.go extractFeverHistory → ToFloat64
+[ ] client.go DORAHistoryPoint accessors
+[ ] metrics.go → Unzip4 for 4 fields
+[ ] office.go AdvanceFrames → Convert
+[ ] lessons.go tips → ToString
+[ ] office_render.go bubble lines → ToString
+2026-02-12T19:39:40-05:00 | Completion: FluentFP loop refactoring
+[x] All loops refactored (evidence: go test ./internal/tui/... passes)

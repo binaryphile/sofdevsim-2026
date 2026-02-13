@@ -222,18 +222,18 @@ func (s OfficeState) StartDeveloperMoving(devID string, target Position) OfficeS
 // AdvanceFrames advances animation frames for all working/frustrated developers
 // and interpolates movement for Moving developers
 func (s OfficeState) AdvanceFrames() OfficeState {
-	newAnims := make([]DeveloperAnimation, len(s.Animations))
-	for i, anim := range s.Animations {
+	// advanceFrame advances animation based on current state.
+	advanceFrame := func(anim DeveloperAnimation) DeveloperAnimation {
 		switch anim.State {
 		case StateWorking, StateFrustrated:
-			newAnims[i] = anim.NextFrame()
+			return anim.NextFrame()
 		case StateMoving:
-			newAnims[i] = anim.AdvanceMovement()
+			return anim.AdvanceMovement()
 		default:
-			newAnims[i] = anim
+			return anim
 		}
 	}
-	return OfficeState{Animations: newAnims}
+	return OfficeState{Animations: slice.From(s.Animations).Convert(advanceFrame)}
 }
 
 // AdvanceMovement interpolates position toward target.
