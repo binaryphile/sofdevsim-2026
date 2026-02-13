@@ -28298,3 +28298,37 @@ $(date -Iseconds) | Contract: Event-Source Office Animation
 [x] Time-based movement (AdvanceMovement receives time.Time)
 [x] New types defined (Accessory, SipPhase, StaggeredAnimator)
 [x] Tests pass: go test ./internal/office/...
+2026-02-13T15:00:00-06:00 | Interaction: improve -> Phase 1 test coverage
+[x] Added TestAdvanceMovement_MidProgress (Lerp interpolation)
+[x] Added TestStartMovingToConference (missing path coverage)
+[x] Fixed time.Now() in detectTransitions - now injects time parameter
+2026-02-13T15:15:00-06:00 | Interaction: improve -> FluentFP refactoring
+[x] SetDeveloperState: replaced loop with slice.From().Convert()
+[x] StartDeveloperMovingToCubicle: replaced loop with slice.From().Convert()
+[x] StartDeveloperMovingToConference: replaced loop with slice.From().Convert()
+[x] NewOfficeState: kept loop (requires index for ConferencePosition)
+2026-02-13T15:30:00-06:00 | Interaction: improve -> Event sourcing purity
+[x] NewOfficeState now starts developers at cubicles (StateIdle)
+[x] Conference state achieved via DevEnteredConference events (event-driven)
+[x] Updated tests in office_projection_test.go and office_test.go
+[x] registry.go pattern now correct: create projection, then record events
+2026-02-13T15:45:00-06:00 | Interaction: improve analysis -> verified against design.md
+[x] design.md lines 1813, 2062-2067 confirm: developers start in cubicles (Idle)
+[x] Flow: Idle → MovingToConference → Conference → MovingToCubicle → Working
+[x] Lesson: check design docs before defending implementation assumptions
+2026-02-13T16:00:00-06:00 | Contract: Phase 5 - TUI Integration
+[ ] App.clock field added (line ~101)
+[ ] NewAppWithRegistry sets clock: time.Now (line ~210)
+[ ] NewAppWithClient sets clock: time.Now (line ~240)
+[ ] office_test.go API updates (lines 283, 285, 294, 440)
+[ ] 6 Record() calls use a.clock()
+[ ] go build ./... succeeds
+[ ] go test ./internal/tui/... passes
+2026-02-13T16:30:00-06:00 | Completion: Phase 5 - TUI Integration
+[x] App.clock field added
+[x] Constructors set clock: time.Now
+[x] office_test.go API updates (lines 283, 285, 294, 440)
+[x] app.go Record() calls use a.clock() (lines 352, 378, 529, 1148, 1168, 1170)
+[x] app.go initialization: DevEnteredConference events for planning state
+[x] Build succeeds
+[x] Tests pass

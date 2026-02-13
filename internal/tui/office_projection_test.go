@@ -22,8 +22,9 @@ func TestOfficeProjection_Empty(t *testing.T) {
 	if !ok {
 		t.Fatal("dev-1 not found")
 	}
-	if anim.State != StateConference {
-		t.Errorf("Initial state = %v, want StateConference", anim.State)
+	// Developers start at their cubicles (Idle), move to conference via events
+	if anim.State != StateIdle {
+		t.Errorf("Initial state = %v, want StateIdle", anim.State)
 	}
 }
 
@@ -161,10 +162,10 @@ func TestOfficeProjection_ImmutableRecord(t *testing.T) {
 	proj1 := NewOfficeProjection([]string{"dev-1"})
 	proj2 := proj1.Record(DevStartedWorking{DevID: "dev-1"}, 1, testTime)
 
-	// Original unchanged
+	// Original unchanged (starts at cubicle/Idle)
 	state1 := proj1.State()
 	anim1 := state1.GetAnimationOption("dev-1").OrZero()
-	if anim1.State != StateConference {
+	if anim1.State != StateIdle {
 		t.Error("Original projection should remain unchanged")
 	}
 

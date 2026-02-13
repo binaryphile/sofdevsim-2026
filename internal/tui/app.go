@@ -98,6 +98,9 @@ type App struct {
 
 	// Office visualization state (event-sourced projection)
 	officeProjection OfficeProjection
+
+	// Clock for time injection (defaults to time.Now, injectable for tests)
+	clock func() time.Time
 }
 
 // tickMsg is sent on each simulation tick (legacy engine mode)
@@ -172,9 +175,16 @@ func NewAppWithRegistry(seed int64, reg *registry.SimRegistry) *App {
 	}
 
 	// Initialize office projection with developer IDs (event-sourced)
-	// Devs start in cubicles (StateIdle), will move to conference when planning begins
+	// Devs start at cubicles then move to conference for initial planning
 	devIDs := []string{"dev-1", "dev-2", "dev-3", "dev-4", "dev-5", "dev-6"}
 	officeProjection := NewOfficeProjection(devIDs)
+
+	// Move all developers to conference for initial sprint planning
+	now := time.Now()
+	recordConferenceEntry := func(proj OfficeProjection, devID string) OfficeProjection {
+		return proj.Record(DevEnteredConference{DevID: devID}, 0, now)
+	}
+	officeProjection = slice.Fold(devIDs, officeProjection, recordConferenceEntry)
 
 	// Store fully-populated engine in registry (design invariant: never store empty)
 	if reg != nil {
@@ -207,6 +217,7 @@ func NewAppWithRegistry(seed int64, reg *registry.SimRegistry) *App {
 		tickInterval:     500 * time.Millisecond,
 		uiProjection:     NewUIProjection(),
 		officeProjection: officeProjection,
+		clock:            time.Now,
 	}
 }
 
@@ -235,6 +246,7 @@ func NewAppWithClient(client Client, initialState SimulationState) *App {
 		tickInterval:     500 * time.Millisecond,
 		uiProjection:     NewUIProjection(),
 		officeProjection: officeProjection,
+		clock:            time.Now,
 	}
 }
 
@@ -344,7 +356,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case animationTickMsg:
 		// Animation frame update for office visualization
-		a.officeProjection = a.officeProjection.Record(AnimationFrameAdvanced{}, a.state.CurrentTick)
+		a.officeProjection = a.officeProjection.Record(AnimationFrameAdvanced{}, a.state.CurrentTick, a.clock())
 		return a, a.animationTickCmd()
 
 	case tickMsg:
@@ -370,7 +382,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Check if sprint ended (SprintEnded event already cleared it in projection)
 			if _, sprintActive := sim.CurrentSprintOption.Get(); !sprintActive {
 				for _, dev := range sim.Developers {
-					a.officeProjection = a.officeProjection.Record(DevEnteredConference{DevID: dev.ID}, sim.CurrentTick)
+					a.officeProjection = a.officeProjection.Record(DevEnteredConference{DevID: dev.ID}, sim.CurrentTick, a.clock())
 				}
 				a.syncOfficeToRegistry()
 				a.paused = true
@@ -521,7 +533,7 @@ func (a *App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 						DevID:    dev.ID,
 						TicketID: ticket.ID,
 						Target:   target,
-					}, a.state.CurrentTick)
+					}, a.state.CurrentTick, a.clock())
 					a.syncOfficeToRegistry()
 					a.recordInputEvent(AssignmentAttempted{TicketID: ticket.ID, Outcome: Succeeded{}})
 					assigned = true
@@ -1140,7 +1152,7 @@ func (a *App) updateDeveloperAnimationStates(sim model.Simulation) {
 				a.officeProjection = a.officeProjection.Record(DevCompletedTicket{
 					DevID:    dev.ID,
 					TicketID: dev.CurrentTicket,
-				}, sim.CurrentTick)
+				}, sim.CurrentTick, a.clock())
 			})
 			recordCompletion(state.GetActiveAnimationOption(dev.ID))
 			continue
@@ -1160,9 +1172,9 @@ func (a *App) updateDeveloperAnimationStates(sim model.Simulation) {
 				a.officeProjection = a.officeProjection.Record(DevBecameFrustrated{
 					DevID:    dev.ID,
 					TicketID: ticket.ID,
-				}, sim.CurrentTick)
+				}, sim.CurrentTick, a.clock())
 			case anim.ShouldStartWorking():
-				a.officeProjection = a.officeProjection.Record(DevStartedWorking{DevID: dev.ID}, sim.CurrentTick)
+				a.officeProjection = a.officeProjection.Record(DevStartedWorking{DevID: dev.ID}, sim.CurrentTick, a.clock())
 			}
 		})
 		updateAnimationState(state.GetAnimationOption(dev.ID))

@@ -36,7 +36,7 @@ func (p OfficeProjection) Record(evt OfficeEvent, tick int, now time.Time) Offic
 	newEvents[len(p.events)] = evt
 
 	newState := applyOfficeEvent(p.state, evt, now)
-	newTransitions := p.detectTransitions(evt, newState, tick)
+	newTransitions := p.detectTransitions(evt, newState, tick, now)
 
 	return OfficeProjection{
 		events:      newEvents,
@@ -48,7 +48,8 @@ func (p OfficeProjection) Record(evt OfficeEvent, tick int, now time.Time) Offic
 
 // Calculation: detectTransitions identifies state changes from an event.
 // Returns new transitions slice with any new transitions appended.
-func (p OfficeProjection) detectTransitions(evt OfficeEvent, newState OfficeState, tick int) []StateTransition {
+// now is injected for testability (no internal time.Now() calls).
+func (p OfficeProjection) detectTransitions(evt OfficeEvent, newState OfficeState, tick int, now time.Time) []StateTransition {
 	var newTrans *StateTransition
 
 	switch e := evt.(type) {
@@ -61,7 +62,7 @@ func (p OfficeProjection) detectTransitions(evt OfficeEvent, newState OfficeStat
 						FromState: before.State.String(),
 						ToState:   after.State.String(),
 						Tick:      tick,
-						Timestamp: time.Now(),
+						Timestamp: now,
 						Reason:    "assigned to " + e.TicketID,
 					}
 				}
@@ -74,7 +75,7 @@ func (p OfficeProjection) detectTransitions(evt OfficeEvent, newState OfficeStat
 				FromState: before.State.String(),
 				ToState:   StateWorking.String(),
 				Tick:      tick,
-				Timestamp: time.Now(),
+				Timestamp: now,
 			}
 		}
 	case DevBecameFrustrated:
@@ -84,7 +85,7 @@ func (p OfficeProjection) detectTransitions(evt OfficeEvent, newState OfficeStat
 				FromState: before.State.String(),
 				ToState:   StateFrustrated.String(),
 				Tick:      tick,
-				Timestamp: time.Now(),
+				Timestamp: now,
 				Reason:    "ticket " + e.TicketID + " exceeded estimate",
 			}
 		}
@@ -95,7 +96,7 @@ func (p OfficeProjection) detectTransitions(evt OfficeEvent, newState OfficeStat
 				FromState: before.State.String(),
 				ToState:   StateIdle.String(),
 				Tick:      tick,
-				Timestamp: time.Now(),
+				Timestamp: now,
 				Reason:    "completed " + e.TicketID,
 			}
 		}
@@ -106,7 +107,7 @@ func (p OfficeProjection) detectTransitions(evt OfficeEvent, newState OfficeStat
 				FromState: before.State.String(),
 				ToState:   StateConference.String(),
 				Tick:      tick,
-				Timestamp: time.Now(),
+				Timestamp: now,
 			}
 		}
 	}

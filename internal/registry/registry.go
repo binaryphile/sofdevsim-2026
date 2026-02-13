@@ -108,11 +108,11 @@ func (r *SimRegistry) CreateSimulation(seed int64, policy model.SizingPolicy) (s
 		}
 	}
 
-	// Initialize office projection with developer IDs
+	// Initialize office projection with developer IDs (developers start at cubicles)
 	devIDs := slice.From(eng.Sim().Developers).ToString(model.Developer.GetID)
 	officeProj := office.NewOfficeProjection(devIDs)
 
-	// All developers start in conference at tick 0
+	// Move all developers to conference for initial sprint planning
 	now := time.Now()
 	recordConferenceEntry := func(proj office.OfficeProjection, devID string) office.OfficeProjection {
 		return proj.Record(office.DevEnteredConference{DevID: devID}, 0, now)

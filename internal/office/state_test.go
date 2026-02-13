@@ -144,3 +144,51 @@ func TestAdvanceMovement_ToCubicle(t *testing.T) {
 		t.Errorf("State = %v, want StateWorking", d.State)
 	}
 }
+
+func TestAdvanceMovement_MidProgress(t *testing.T) {
+	start := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	d := DeveloperAnimation{
+		State:         StateMovingToCubicle,
+		Position:      Position{X: 0, Y: 0},
+		Target:        Position{X: 100, Y: 50},
+		MovementStart: start,
+	}
+
+	// Advance to 50% of MovementDuration
+	d = d.AdvanceMovement(start.Add(MovementDuration / 2))
+
+	if d.State != StateMovingToCubicle {
+		t.Errorf("Mid-progress: State = %v, want StateMovingToCubicle", d.State)
+	}
+	if d.Progress < 0.49 || d.Progress > 0.51 {
+		t.Errorf("Mid-progress: Progress = %f, want ~0.5", d.Progress)
+	}
+	// Position should be interpolated (Lerp)
+	if d.Position.X < 40 || d.Position.X > 60 {
+		t.Errorf("Mid-progress: Position.X = %d, want ~50", d.Position.X)
+	}
+}
+
+func TestStartMovingToConference(t *testing.T) {
+	start := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	d := DeveloperAnimation{
+		State:    StateWorking,
+		Position: Position{X: 50, Y: 10},
+	}
+	target := Position{X: 5, Y: 5}
+
+	d = d.StartMovingToConference(target, start)
+
+	if d.State != StateMovingToConference {
+		t.Errorf("State = %v, want StateMovingToConference", d.State)
+	}
+	if d.Target != target {
+		t.Errorf("Target = %v, want %v", d.Target, target)
+	}
+	if d.Progress != 0.0 {
+		t.Errorf("Progress = %f, want 0.0", d.Progress)
+	}
+	if d.MovementStart != start {
+		t.Errorf("MovementStart = %v, want %v", d.MovementStart, start)
+	}
+}

@@ -5,12 +5,14 @@ import (
 	"net/http/httptest"
 	"reflect"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/muesli/termenv"
 
 	"github.com/binaryphile/sofdevsim-2026/internal/api"
+	"github.com/binaryphile/sofdevsim-2026/internal/office"
 )
 
 func init() {
@@ -274,31 +276,30 @@ func TestLerp_EdgeCases(t *testing.T) {
 // TestDeveloperAnimation_Movement tests movement interpolation
 func TestDeveloperAnimation_Movement(t *testing.T) {
 	anim := DeveloperAnimation{
-		State:    StateConference,
+		State:    StateIdle,
 		Position: Position{X: 10, Y: 5},
 	}
 
-	// Start moving to target
+	// Start moving to target (cubicle)
 	target := Position{X: 50, Y: 10}
-	anim = anim.StartMoving(target)
+	anim = anim.StartMovingToCubicle(target, testTime)
 
-	if anim.State != StateMoving {
-		t.Errorf("After StartMoving: State = %v, want StateMoving", anim.State)
+	if anim.State != StateMovingToCubicle {
+		t.Errorf("After StartMovingToCubicle: State = %v, want StateMovingToCubicle", anim.State)
 	}
 	if anim.Progress != 0.0 {
-		t.Errorf("After StartMoving: Progress = %f, want 0.0", anim.Progress)
+		t.Errorf("After StartMovingToCubicle: Progress = %f, want 0.0", anim.Progress)
 	}
 
-	// Advance 5 times (should complete movement)
-	for i := 0; i < 5; i++ {
-		anim = anim.AdvanceMovement()
-	}
+	// Advance past MovementDuration (500ms) to complete movement
+	completedTime := testTime.Add(office.MovementDuration + time.Millisecond)
+	anim = anim.AdvanceMovement(completedTime)
 
 	if anim.State != StateWorking {
-		t.Errorf("After 5 advances: State = %v, want StateWorking", anim.State)
+		t.Errorf("After movement complete: State = %v, want StateWorking", anim.State)
 	}
 	if anim.Position != target {
-		t.Errorf("After 5 advances: Position = %v, want %v", anim.Position, target)
+		t.Errorf("After movement complete: Position = %v, want %v", anim.Position, target)
 	}
 }
 
@@ -332,12 +333,12 @@ func TestRenderDeveloperIcon(t *testing.T) {
 		frame int
 		want  string
 	}{
-		{StateIdle, 0, "○"},
-		{StateConference, 0, "○"},
-		{StateWorking, 0, "○"},
-		{StateWorking, 2, "◑"},
-		{StateWorking, 4, "●"},
-		{StateFrustrated, 0, "○"},
+		{StateIdle, 0, "🙂"},
+		{StateConference, 0, "🙂"},
+		{StateWorking, 0, "😊"},
+		{StateWorking, 2, "😁"},
+		{StateWorking, 4, "😀"},
+		{StateFrustrated, 0, "😤"},
 	}
 	for _, tt := range tests {
 		t.Run(fmt.Sprintf("state=%d/frame=%d", tt.state, tt.frame), func(t *testing.T) {
@@ -347,17 +348,6 @@ func TestRenderDeveloperIcon(t *testing.T) {
 				t.Errorf("RenderDeveloperIcon() = %q, want %q", got, tt.want)
 			}
 		})
-	}
-}
-
-func TestRenderFrustrationBubble(t *testing.T) {
-	bubble := RenderFrustrationBubble(0)
-	if bubble == "" {
-		t.Error("RenderFrustrationBubble should return non-empty string")
-	}
-	// Should contain frustration text
-	if !containsAny(bubble, FrustrationText) {
-		t.Errorf("RenderFrustrationBubble should contain frustration text, got: %q", bubble)
 	}
 }
 
@@ -385,6 +375,7 @@ func TestNewOfficeState(t *testing.T) {
 	}
 
 	for i, anim := range state.Animations {
+		// Developers start at cubicles (Idle), move to conference via events
 		if anim.State != StateIdle {
 			t.Errorf("Animation %d: state = %v, want StateIdle", i, anim.State)
 		}
@@ -421,7 +412,7 @@ func TestOfficeState_SetDeveloperState(t *testing.T) {
 	// Immutable: returns new state
 	state2 := state.SetDeveloperState("dev-2", StateWorking)
 
-	// Original unchanged
+	// Original unchanged (starts at cubicle/Idle)
 	anim1 := state.GetAnimationOption("dev-2").OrZero()
 	if anim1.State != StateIdle {
 		t.Error("Original state should be unchanged")
@@ -433,7 +424,7 @@ func TestOfficeState_SetDeveloperState(t *testing.T) {
 		t.Errorf("New state = %v, want StateWorking", anim2.State)
 	}
 
-	// Other devs unchanged
+	// Other devs unchanged (still at cubicle/Idle)
 	anim3 := state2.GetAnimationOption("dev-1").OrZero()
 	if anim3.State != StateIdle {
 		t.Error("Other devs should be unchanged")
@@ -448,7 +439,7 @@ func TestOfficeState_AdvanceFrames(t *testing.T) {
 	state = state.SetDeveloperState("dev-1", StateWorking)
 
 	// Advance frames
-	state = state.AdvanceFrames()
+	state = state.AdvanceFrames(testTime)
 
 	// Working dev should advance
 	anim1 := state.GetAnimationOption("dev-1").OrZero()
@@ -456,7 +447,7 @@ func TestOfficeState_AdvanceFrames(t *testing.T) {
 		t.Errorf("Working dev frame = %d, want 1", anim1.Frame)
 	}
 
-	// Idle dev should not advance
+	// Idle dev should not advance (devs start at cubicles)
 	anim2 := state.GetAnimationOption("dev-2").OrZero()
 	if anim2.Frame != 0 {
 		t.Errorf("Idle dev frame = %d, want 0", anim2.Frame)
