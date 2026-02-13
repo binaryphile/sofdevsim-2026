@@ -6,7 +6,6 @@ import (
 
 	"github.com/binaryphile/fluentfp/either"
 	"github.com/binaryphile/fluentfp/option"
-	"github.com/binaryphile/fluentfp/slice"
 	"github.com/binaryphile/sofdevsim-2026/internal/events"
 	"github.com/binaryphile/sofdevsim-2026/internal/model"
 )
@@ -400,16 +399,15 @@ func (e Engine) TryDecompose(ticketID string) (Engine, either.Either[NotDecompos
 	children := e.policies.Decompose(ticket)
 
 	// Build ChildTicket slice for event
-	// toChildTicket converts model.Ticket to events.ChildTicket.
-	toChildTicket := func(c model.Ticket) events.ChildTicket {
-		return events.ChildTicket{
+	childTickets := make([]events.ChildTicket, len(children))
+	for i, c := range children {
+		childTickets[i] = events.ChildTicket{
 			ID:            c.ID,
 			Title:         c.Title,
 			EstimatedDays: c.EstimatedDays,
 			Understanding: c.UnderstandingLevel,
 		}
 	}
-	childTickets := slice.MapTo[events.ChildTicket](children).Map(toChildTicket)
 
 	// Emit TicketDecomposed - projection handler removes parent, adds children
 	var err error

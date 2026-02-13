@@ -169,16 +169,15 @@ func ToState(sim model.Simulation, tracker metrics.Tracker) SimulationState {
 	result := tracker.GetResult(sim.SizingPolicy, sim)
 
 	// Convert DORA history for sparklines
-	// toDORAHistoryPoint converts metrics.DORASnapshot to api.DORAHistoryPoint.
-	toDORAHistoryPoint := func(h metrics.DORASnapshot) DORAHistoryPoint {
-		return DORAHistoryPoint{
-			LeadTimeAvg:     h.LeadTimeAvg,
+	var history []DORAHistoryPoint
+	for _, h := range tracker.DORA.History {
+		history = append(history, DORAHistoryPoint{
+			LeadTimeAvg:    h.LeadTimeAvg,
 			DeployFrequency: h.DeployFrequency,
-			MTTR:            h.MTTR,
-			ChangeFailRate:  h.ChangeFailRate,
-		}
+			MTTR:           h.MTTR,
+			ChangeFailRate: h.ChangeFailRate,
+		})
 	}
-	history := slice.MapTo[DORAHistoryPoint](tracker.DORA.History).Map(toDORAHistoryPoint)
 
 	metricsState := DORAResponse{
 		LeadTimeAvgDays:   result.FinalMetrics.LeadTimeAvgDays(),
