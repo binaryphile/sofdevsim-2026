@@ -209,23 +209,20 @@ func RenderCubicleCompact(anim DeveloperAnimation, name string, width int) strin
 	color := developerColor(anim.ColorIndex)
 	style := lipgloss.NewStyle().Foreground(color)
 
-	var lines []string
-
-	// Show "Late!" bubble briefly when transitioning to frustrated
-	if anim.LateBubbleFrames > 0 {
-		bubble := RenderLateBubble()
-		for _, line := range strings.Split(bubble, "\n") {
-			lines = append(lines, style.Render(line))
-		}
-	}
-
 	// Cubicle box
 	innerWidth := width - 2
 	topBorder := "┌" + strings.Repeat("─", innerWidth) + "┐"
 	bottomBorder := "└" + strings.Repeat("─", innerWidth) + "┘"
 
-	// Center name in cubicle (always shown)
-	nameLine := "│" + centerText(style.Render(name), innerWidth) + "│"
+	// Name line - shows bubble overlay when frustrated, otherwise truncated name
+	var nameContent string
+	if anim.LateBubbleFrames > 0 {
+		nameContent = style.Render(RenderLateBubbleInline())
+	} else {
+		displayName := truncateText(name, innerWidth-2)
+		nameContent = style.Render(displayName)
+	}
+	nameLine := "│" + centerText(nameContent, innerWidth) + "│"
 
 	// Icon line: show icon unless in conference (dev is in conference room)
 	var iconContent string
@@ -234,7 +231,7 @@ func RenderCubicleCompact(anim DeveloperAnimation, name string, width int) strin
 	}
 	iconLine := "│" + centerText(iconContent, innerWidth) + "│"
 
-	lines = append(lines, topBorder, nameLine, iconLine, bottomBorder)
+	lines := []string{topBorder, nameLine, iconLine, bottomBorder}
 	return strings.Join(lines, "\n")
 }
 
