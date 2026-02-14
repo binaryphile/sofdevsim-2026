@@ -97,6 +97,12 @@ func RenderLateBubble() string {
 	return "┌──────┐\n│Late! │\n└──┬───┘"
 }
 
+// RenderLateBubbleInline returns a compact inline bubble for overlay rendering.
+// Uses distinct characters (rounded corners) to stand out from cubicle walls.
+func RenderLateBubbleInline() string {
+	return "╭Late!╮"
+}
+
 
 // Calculation: RenderCubicle renders a single cubicle with developer
 // Pure function: (DeveloperAnimation, string, int) → string
@@ -411,24 +417,22 @@ func renderCubicleDetailed(anim DeveloperAnimation, name string, width int, door
 	color := DeveloperColors[anim.ColorIndex%len(DeveloperColors)]
 	style := lipgloss.NewStyle().Foreground(color)
 
-	var lines []string
-
-	// Show "Late!" bubble briefly when transitioning to frustrated
-	if anim.LateBubbleFrames > 0 {
-		bubble := RenderLateBubble()
-		for _, line := range strings.Split(bubble, "\n") {
-			lines = append(lines, style.Render(line))
-		}
-	}
-
 	innerWidth := width - 2
 	topBorder := "┌" + strings.Repeat("─", innerWidth) + "┐"
 	bottomBorder := "└" + strings.Repeat("─", innerWidth) + "┘"
 	doorBorder := "└" + centerText("🚪", innerWidth) + "┘"
 	doorBorderTop := "┌" + centerText("🚪", innerWidth) + "┐"
 
-	// Name line
-	nameLine := "│" + centerText(style.Render(name), innerWidth) + "│"
+	// Name line - shows bubble overlay when frustrated, otherwise name
+	// Truncate long names to fit cubicle width
+	var nameContent string
+	if anim.LateBubbleFrames > 0 {
+		nameContent = style.Render(RenderLateBubbleInline())
+	} else {
+		displayName := truncateText(name, innerWidth-2)
+		nameContent = style.Render(displayName)
+	}
+	nameLine := "│" + centerText(nameContent, innerWidth) + "│"
 
 	// Face + trash line (face only if dev is in cubicle)
 	// Away states: conference, moving to conference, moving to cubicle
@@ -453,12 +457,13 @@ func renderCubicleDetailed(anim DeveloperAnimation, name string, width int, door
 	}
 	deskLine := "│" + centerText(deskContent, innerWidth) + "│"
 
+	var lines []string
 	if doorOnTop {
 		// Row 1: door on top (facing hallway above)
-		lines = append(lines, doorBorderTop, nameLine, faceLine, deskLine, bottomBorder)
+		lines = []string{doorBorderTop, nameLine, faceLine, deskLine, bottomBorder}
 	} else {
 		// Row 0: door on bottom (facing hallway below)
-		lines = append(lines, topBorder, nameLine, faceLine, deskLine, doorBorder)
+		lines = []string{topBorder, nameLine, faceLine, deskLine, doorBorder}
 	}
 
 	return strings.Join(lines, "\n")
@@ -474,4 +479,21 @@ func centerText(text string, width int) string {
 	}
 	padding := (width - textLen) / 2
 	return strings.Repeat(" ", padding) + text + strings.Repeat(" ", width-padding-textLen)
+}
+
+// truncateText truncates plain text to fit within maxWidth, adding "…" if truncated.
+// Uses rune-aware truncation to handle Unicode correctly.
+func truncateText(text string, maxWidth int) string {
+	if lipgloss.Width(text) <= maxWidth {
+		return text
+	}
+	// Truncate rune by rune until it fits with ellipsis
+	runes := []rune(text)
+	for i := len(runes) - 1; i > 0; i-- {
+		candidate := string(runes[:i]) + "…"
+		if lipgloss.Width(candidate) <= maxWidth {
+			return candidate
+		}
+	}
+	return "…"
 }
