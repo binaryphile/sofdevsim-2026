@@ -97,6 +97,26 @@ func TestAccessory_Emoji(t *testing.T) {
 	}
 }
 
+func TestNewDeveloperAnimation_Accessories(t *testing.T) {
+	tests := []struct {
+		colorIndex int
+		want       Accessory
+	}{
+		{0, AccessoryNone},   // Mei - no accessory
+		{1, AccessoryCoffee}, // Amir - coffee
+		{2, AccessoryNone},   // Suki - no accessory
+		{3, AccessorySoda},   // Jay - soda
+		{4, AccessoryNone},   // Priya - no accessory
+		{5, AccessoryNone},   // Kofi - no accessory
+	}
+	for _, tt := range tests {
+		anim := NewDeveloperAnimation("dev", tt.colorIndex)
+		if anim.Accessory != tt.want {
+			t.Errorf("colorIndex %d: Accessory = %v, want %v", tt.colorIndex, anim.Accessory, tt.want)
+		}
+	}
+}
+
 func TestStaggeredAnimator_RoundRobin(t *testing.T) {
 	s := StaggeredAnimator{LastChangedIndex: -1}
 	for i := 0; i < 6; i++ {

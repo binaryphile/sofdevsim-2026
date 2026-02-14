@@ -33,11 +33,11 @@ func TestRenderDeveloperIcon(t *testing.T) {
 		anim DeveloperAnimation
 		want string
 	}{
-		{"idle", DeveloperAnimation{State: StateIdle}, "○"},
-		{"conference", DeveloperAnimation{State: StateConference}, "○"},
-		{"working frame 0", DeveloperAnimation{State: StateWorking, Frame: 0}, "○"},
-		{"working frame 2", DeveloperAnimation{State: StateWorking, Frame: 2}, "◑"},
-		{"frustrated", DeveloperAnimation{State: StateFrustrated, Frame: 1}, "◔"},
+		{"idle", DeveloperAnimation{State: StateIdle}, "🙂"},
+		{"conference", DeveloperAnimation{State: StateConference}, "🙂"},
+		{"working frame 0", DeveloperAnimation{State: StateWorking, Frame: 0}, "😊"},
+		{"working frame 2", DeveloperAnimation{State: StateWorking, Frame: 2}, "😁"},
+		{"frustrated frame 1", DeveloperAnimation{State: StateFrustrated, Frame: 1}, "😠"},
 	}
 
 	for _, tt := range tests {
@@ -50,17 +50,43 @@ func TestRenderDeveloperIcon(t *testing.T) {
 	}
 }
 
-func TestRenderFrustrationBubble(t *testing.T) {
-	bubble := RenderFrustrationBubble(0)
+func TestRenderDeveloperIcon_WithAccessory(t *testing.T) {
+	tests := []struct {
+		name       string
+		accessory  Accessory
+		state      AnimationState
+		wantSuffix string
+	}{
+		{"coffee working", AccessoryCoffee, StateWorking, "☕"},
+		{"soda idle", AccessorySoda, StateIdle, "🥤"},
+		{"none working", AccessoryNone, StateWorking, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			anim := DeveloperAnimation{State: tt.state, Accessory: tt.accessory}
+			got := RenderDeveloperIcon(anim)
+			if tt.wantSuffix != "" && !strings.HasSuffix(got, tt.wantSuffix) {
+				t.Errorf("RenderDeveloperIcon() = %q, want suffix %q", got, tt.wantSuffix)
+			}
+			if tt.wantSuffix == "" && (strings.Contains(got, "☕") || strings.Contains(got, "🥤")) {
+				t.Errorf("RenderDeveloperIcon() = %q, want no accessory", got)
+			}
+		})
+	}
+}
 
-	if !strings.Contains(bubble, "!@#") {
-		t.Error("Frame 0 should contain !@#")
+func TestRenderCubicleCompact_IdleState(t *testing.T) {
+	anim := NewDeveloperAnimation("dev-1", 0) // Starts idle
+
+	cubicle := RenderCubicleCompact(anim, "Mei", 10)
+	plain := StripANSI(cubicle)
+
+	if !strings.Contains(plain, "Mei") {
+		t.Error("Should contain developer name")
 	}
-	if !strings.Contains(bubble, "┌───┐") {
-		t.Error("Should have top border")
-	}
-	if !strings.Contains(bubble, "└─┬─┘") {
-		t.Error("Should have bottom border with pointer")
+	// Idle state shows neutral face
+	if !strings.Contains(plain, "🙂") {
+		t.Errorf("Idle state should show neutral face 🙂, got:\n%s", plain)
 	}
 }
 
@@ -78,11 +104,37 @@ func TestRenderCubicleCompact_WorkingState(t *testing.T) {
 	if !strings.Contains(plain, "Mei") {
 		t.Error("Should contain developer name")
 	}
-	if !strings.Contains(plain, "○") {
-		t.Error("Working state should show icon")
+	// Working state cycles through happy faces (😊😄😁🙂😀)
+	hasWorkingIcon := strings.Contains(plain, "😊") || strings.Contains(plain, "😄") ||
+		strings.Contains(plain, "😁") || strings.Contains(plain, "🙂") || strings.Contains(plain, "😀")
+	if !hasWorkingIcon {
+		t.Error("Working state should show happy face icon")
 	}
 	if !strings.Contains(plain, "┌") || !strings.Contains(plain, "└") {
 		t.Error("Should have box borders")
+	}
+}
+
+func TestRenderCubicleCompact_LateBubble(t *testing.T) {
+	// Use BecomeFrustrated to get the Late bubble
+	anim := NewDeveloperAnimation("dev-1", 0).BecomeFrustrated()
+
+	cubicle := RenderCubicleCompact(anim, "Mei", 10)
+	plain := StripANSI(cubicle)
+
+	if !strings.Contains(plain, "Late!") {
+		t.Error("Compact cubicle should show Late! bubble when LateBubbleFrames > 0")
+	}
+
+	// After countdown, bubble should disappear
+	for i := 0; i < 10; i++ {
+		anim = anim.NextFrame()
+	}
+	cubicle = RenderCubicleCompact(anim, "Mei", 10)
+	plain = StripANSI(cubicle)
+
+	if strings.Contains(plain, "Late!") {
+		t.Error("Late! bubble should disappear after countdown")
 	}
 }
 
@@ -122,10 +174,10 @@ func TestRenderConferenceRoom(t *testing.T) {
 	if !strings.Contains(plain, "CONFERENCE ROOM") {
 		t.Error("Should contain title")
 	}
-	// Should show 2 icons (dev-1 and dev-2 are in conference, dev-3 is working)
-	iconCount := strings.Count(plain, "○")
+	// Should show 2 neutral faces (dev-1 and dev-2 are in conference)
+	iconCount := strings.Count(plain, "🙂")
 	if iconCount != 2 {
-		t.Errorf("Should show 2 conference icons, got %d", iconCount)
+		t.Errorf("Should show 2 conference icons (🙂), got %d", iconCount)
 	}
 }
 
@@ -193,8 +245,32 @@ func TestRenderCubicle_Frustrated(t *testing.T) {
 	if !strings.Contains(plain, "Mei") {
 		t.Error("Should contain developer name")
 	}
-	if !strings.Contains(plain, "!@#") {
-		t.Error("Frustrated state should show frustration bubble")
+	// Frustrated state shows unhappy emoji (frame 0 = 😤)
+	if !strings.Contains(plain, "😤") {
+		t.Error("Frustrated state should show frustrated emoji")
+	}
+}
+
+func TestRenderCubicle_LateBubble(t *testing.T) {
+	// Use BecomeFrustrated to get the Late bubble
+	anim := NewDeveloperAnimation("dev-1", 0).BecomeFrustrated()
+
+	cubicle := RenderCubicle(anim, "Mei", 12)
+	plain := StripANSI(cubicle)
+
+	if !strings.Contains(plain, "Late!") {
+		t.Error("Should show Late! bubble when LateBubbleFrames > 0")
+	}
+
+	// After 10 frames, bubble should disappear
+	for i := 0; i < 10; i++ {
+		anim = anim.NextFrame()
+	}
+	cubicle = RenderCubicle(anim, "Mei", 12)
+	plain = StripANSI(cubicle)
+
+	if strings.Contains(plain, "Late!") {
+		t.Error("Late! bubble should disappear after countdown")
 	}
 }
 

@@ -53,20 +53,24 @@ func StripANSI(s string) string {
 // Calculation: RenderDeveloperIcon returns the icon for a developer's current state
 // Pure function: DeveloperAnimation → string
 func RenderDeveloperIcon(anim DeveloperAnimation) string {
+	var face string
 	switch anim.State {
-	case StateWorking, StateFrustrated:
-		return WorkingFrames[anim.CurrentFrame()] // Uses offset for visual variety
+	case StateWorking:
+		face = WorkingFrames[anim.CurrentFrame()]
+	case StateFrustrated:
+		face = FrustratedFrames[anim.CurrentFrame()]
 	default:
-		return WorkingFrames[0] // ○ (idle/conference)
+		face = "🙂"
 	}
+	return face + anim.Accessory.Emoji()
 }
 
-// Calculation: RenderFrustrationBubble returns a thought bubble with frustration text
-// Pure function: int → string
-func RenderFrustrationBubble(frame int) string {
-	text := FrustrationText[frame%len(FrustrationText)]
-	return fmt.Sprintf("┌───┐\n│%s│\n└─┬─┘", text)
+// Calculation: RenderLateBubble returns a small "Late!" thought bubble
+// Pure function: () → string
+func RenderLateBubble() string {
+	return "┌──────┐\n│Late! │\n└──┬───┘"
 }
+
 
 // Calculation: RenderCubicle renders a single cubicle with developer
 // Pure function: (DeveloperAnimation, string, int) → string
@@ -78,27 +82,25 @@ func RenderCubicle(anim DeveloperAnimation, name string, width int) string {
 
 	var lines []string
 
-	// Add frustration bubble if frustrated
-	if anim.State == StateFrustrated {
-		bubble := RenderFrustrationBubble(anim.Frame)
-		// renderLine applies style to a single line.
-		renderLine := func(line string) string { return style.Render(line) }
-		bubbleLines := slice.From(strings.Split(bubble, "\n")).ToString(renderLine)
-		lines = append(lines, bubbleLines...)
+	// Show "Late!" bubble briefly when transitioning to frustrated
+	if anim.LateBubbleFrames > 0 {
+		bubble := RenderLateBubble()
+		for _, line := range strings.Split(bubble, "\n") {
+			lines = append(lines, style.Render(line))
+		}
 	}
 
 	// Cubicle box
 	topBorder := "┌" + strings.Repeat("─", width-2) + "┐"
 	bottomBorder := "└" + strings.Repeat("─", width-2) + "┘"
 
-	// Center name in cubicle
-	nameLine := fmt.Sprintf("│%s│", centerText(name, width-2))
+	// Center name in cubicle (colored)
+	nameLine := fmt.Sprintf("│%s│", centerText(style.Render(name), width-2))
 
-	// Center icon in cubicle
-	iconLine := fmt.Sprintf("│%s│", centerText(style.Render(icon), width-2))
+	// Center icon in cubicle (emoji doesn't take ANSI color)
+	iconLine := fmt.Sprintf("│%s│", centerText(icon, width-2))
 
 	lines = append(lines, topBorder, nameLine, iconLine, bottomBorder)
-
 	return strings.Join(lines, "\n")
 }
 
@@ -168,6 +170,16 @@ func RenderCubicleCompact(anim DeveloperAnimation, name string, width int) strin
 	color := DeveloperColors[anim.ColorIndex%len(DeveloperColors)]
 	style := lipgloss.NewStyle().Foreground(color)
 
+	var lines []string
+
+	// Show "Late!" bubble briefly when transitioning to frustrated
+	if anim.LateBubbleFrames > 0 {
+		bubble := RenderLateBubble()
+		for _, line := range strings.Split(bubble, "\n") {
+			lines = append(lines, style.Render(line))
+		}
+	}
+
 	// Cubicle box
 	innerWidth := width - 2
 	topBorder := "┌" + strings.Repeat("─", innerWidth) + "┐"
@@ -176,17 +188,15 @@ func RenderCubicleCompact(anim DeveloperAnimation, name string, width int) strin
 	// Center name in cubicle (always shown)
 	nameLine := "│" + centerText(style.Render(name), innerWidth) + "│"
 
-	// Icon line: show icon only if working/frustrated (in cubicle), empty if in conference
+	// Icon line: show icon unless in conference (dev is in conference room)
 	var iconContent string
-	if anim.State == StateWorking || anim.State == StateFrustrated {
-		icon := RenderDeveloperIcon(anim)
-		iconContent = style.Render(icon)
-	} else {
-		iconContent = "" // Empty when idle or in conference
+	if anim.State != StateConference {
+		iconContent = RenderDeveloperIcon(anim)
 	}
 	iconLine := "│" + centerText(iconContent, innerWidth) + "│"
 
-	return strings.Join([]string{topBorder, nameLine, iconLine, bottomBorder}, "\n")
+	lines = append(lines, topBorder, nameLine, iconLine, bottomBorder)
+	return strings.Join(lines, "\n")
 }
 
 // Calculation: RenderOffice renders the complete office view

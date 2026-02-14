@@ -137,11 +137,19 @@ var FrustratedFrames = []string{"😤", "😠", "😡", "😩", "😖"}
 // NewDeveloperAnimation creates a new developer animation in Idle state.
 // Calculation: (string, int) → DeveloperAnimation
 func NewDeveloperAnimation(devID string, colorIndex int) DeveloperAnimation {
+	var accessory Accessory
+	switch colorIndex {
+	case 1: // Amir
+		accessory = AccessoryCoffee
+	case 3: // Jay
+		accessory = AccessorySoda
+	}
 	return DeveloperAnimation{
 		DevID:       devID,
 		State:       StateIdle,
 		ColorIndex:  colorIndex,
 		FrameOffset: colorIndex % len(WorkingFrames), // Deterministic offset for visual variety
+		Accessory:   accessory,
 	}
 }
 
@@ -259,14 +267,16 @@ func (d DeveloperAnimation) AdvanceMovement(now time.Time) DeveloperAnimation {
 }
 
 // NewOfficeState creates a new OfficeState with animations for all developers.
-// Developers start in the conference room (StateConference).
+// Developers start at their cubicles (StateIdle). Use DevEnteredConference events
+// to move them to the conference room when a sprint starts.
 // Calculation: []string → OfficeState
 func NewOfficeState(devIDs []string) OfficeState {
+	cubiclePositions := CubicleLayout(len(devIDs))
 	anims := make([]DeveloperAnimation, len(devIDs))
 	for i, id := range devIDs {
 		anim := NewDeveloperAnimation(id, i)
-		anim.State = StateConference
-		anim.Position = ConferencePosition(i, len(devIDs))
+		anim.State = StateIdle
+		anim.Position = cubiclePositions[i]
 		anims[i] = anim
 	}
 	return OfficeState{Animations: anims}
@@ -289,45 +299,41 @@ func (s OfficeState) GetActiveAnimationOption(devID string) option.Basic[Develop
 // SetDeveloperState returns a new OfficeState with the developer's state changed.
 // Uses BecomeFrustrated for StateFrustrated to show "Late!" bubble.
 func (s OfficeState) SetDeveloperState(devID string, state AnimationState) OfficeState {
-	newAnims := make([]DeveloperAnimation, len(s.Animations))
-	copy(newAnims, s.Animations)
-	for i, anim := range newAnims {
-		if anim.DevID == devID {
-			if state == StateFrustrated {
-				newAnims[i] = anim.BecomeFrustrated()
-			} else {
-				newAnims[i] = anim.WithState(state)
-			}
-			break
+	// applyState applies state change to matching developer, passes others through.
+	applyState := func(anim DeveloperAnimation) DeveloperAnimation {
+		if anim.DevID != devID {
+			return anim
 		}
+		if state == StateFrustrated {
+			return anim.BecomeFrustrated()
+		}
+		return anim.WithState(state)
 	}
-	return OfficeState{Animations: newAnims}
+	return OfficeState{Animations: slice.From(s.Animations).Convert(applyState)}
 }
 
 // StartDeveloperMovingToCubicle returns a new OfficeState with the developer moving to cubicle.
 func (s OfficeState) StartDeveloperMovingToCubicle(devID string, target Position, now time.Time) OfficeState {
-	newAnims := make([]DeveloperAnimation, len(s.Animations))
-	copy(newAnims, s.Animations)
-	for i, anim := range newAnims {
-		if anim.DevID == devID {
-			newAnims[i] = anim.StartMovingToCubicle(target, now)
-			break
+	// startMoving applies movement to matching developer, passes others through.
+	startMoving := func(anim DeveloperAnimation) DeveloperAnimation {
+		if anim.DevID != devID {
+			return anim
 		}
+		return anim.StartMovingToCubicle(target, now)
 	}
-	return OfficeState{Animations: newAnims}
+	return OfficeState{Animations: slice.From(s.Animations).Convert(startMoving)}
 }
 
 // StartDeveloperMovingToConference returns a new OfficeState with the developer moving to conference.
 func (s OfficeState) StartDeveloperMovingToConference(devID string, target Position, now time.Time) OfficeState {
-	newAnims := make([]DeveloperAnimation, len(s.Animations))
-	copy(newAnims, s.Animations)
-	for i, anim := range newAnims {
-		if anim.DevID == devID {
-			newAnims[i] = anim.StartMovingToConference(target, now)
-			break
+	// startMoving applies movement to matching developer, passes others through.
+	startMoving := func(anim DeveloperAnimation) DeveloperAnimation {
+		if anim.DevID != devID {
+			return anim
 		}
+		return anim.StartMovingToConference(target, now)
 	}
-	return OfficeState{Animations: newAnims}
+	return OfficeState{Animations: slice.From(s.Animations).Convert(startMoving)}
 }
 
 // AdvanceFrames advances animation frames for all working/frustrated developers
