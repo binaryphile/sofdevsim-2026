@@ -28402,3 +28402,12 @@ $(date -Iseconds) | Contract: Event-Source Office Animation
 [x] All tests pass (office: 44 tests 0.007s, TUI: pass 0.146s)
 [x] Coverage baseline updated: office 85.0% added to docs/testing-strategy.md
 [x] Benchmarks: BenchmarkTick 19008 ns/op (baseline 18776, within noise)
+2026-02-14T06:00:00Z | Contract: Phase 7 - Khorikov Test Improvements
+[ ] EmitLoadedState decomposed into 6 focused methods; existing tests pass
+[ ] ONE integration test for HandleUpdateSimulation
+[ ] ONE integration test for HandleDecompose
+2026-02-14T08:00:00Z | Completion: Phase 7 - Khorikov Test Improvements
+[x] EmitLoadedState decomposed into 6 focused methods (evidence: all 39 engine tests + TestSaveLoad_RoundTrip pass)
+[x] ONE integration test for HandleUpdateSimulation (evidence: TestAPI_UpdateSimulation + TestAPI_UpdateSimulationErrors pass)
+[x] ONE integration test for HandleDecompose (evidence: TestAPI_Decompose + TestAPI_DecomposeEdgeCases pass)
+Coverage: engine 79.2%, api 79.1% (api +4.8 from new tests)

@@ -3,6 +3,7 @@ package api_test
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -116,6 +117,58 @@ func TestAPI_AssignmentErrors(t *testing.T) {
 			}
 		})
 	}
+}
+
+// doJSON sends an HTTP request with the given method and JSON body, returns parsed HAL response.
+func doJSON(t *testing.T, method, url string, body any) halResponse {
+	t.Helper()
+	var reqBody []byte
+	if body != nil {
+		var err error
+		reqBody, err = json.Marshal(body)
+		if err != nil {
+			t.Fatalf("failed to marshal request body: %v", err)
+		}
+	}
+	req, err := http.NewRequest(method, url, bytes.NewReader(reqBody))
+	if err != nil {
+		t.Fatalf("NewRequest failed: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("%s %s failed: %v", method, url, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		t.Fatalf("%s %s returned status %d", method, url, resp.StatusCode)
+	}
+	var result halResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	return result
+}
+
+// doJSONExpectError sends an HTTP request and returns status code and error message.
+func doJSONExpectError(t *testing.T, method, url string, body any) (int, string) {
+	t.Helper()
+	reqBody, _ := json.Marshal(body)
+	req, err := http.NewRequest(method, url, bytes.NewReader(reqBody))
+	if err != nil {
+		t.Fatalf("NewRequest failed: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("%s %s failed: %v", method, url, err)
+	}
+	defer resp.Body.Close()
+	var errResp struct {
+		Error string `json:"error"`
+	}
+	json.NewDecoder(resp.Body).Decode(&errResp)
+	return resp.StatusCode, errResp.Error
 }
 
 // postJSONExpectOK sends a POST and expects success (for setup steps).
@@ -528,4 +581,184 @@ func TestAPI_ListSimulations(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestAPI_UpdateSimulation tests the PATCH /simulations/{id} happy path.
+// Per Khorikov: ONE integration test per controller workflow.
+func TestAPI_UpdateSimulation(t *testing.T) {
+	registry := api.NewSimRegistry()
+	srv := httptest.NewServer(api.NewRouter(registry))
+	defer srv.Close()
+
+	// Create simulation with default policy (none)
+	postJSON(t, srv.URL+"/simulations", map[string]any{"seed": 42})
+
+	// PATCH to tameflow-cognitive
+	result := doJSON(t, "PATCH", srv.URL+"/simulations/sim-42", map[string]any{"policy": "tameflow-cognitive"})
+
+	var sim struct {
+		SizingPolicy string `json:"sizingPolicy"`
+	}
+	if err := json.Unmarshal(result.Simulation, &sim); err != nil {
+		t.Fatalf("failed to decode simulation: %v", err)
+	}
+	if sim.SizingPolicy != "TameFlow-Cognitive" {
+		t.Errorf("sizingPolicy = %q, want %q", sim.SizingPolicy, "TameFlow-Cognitive")
+	}
+}
+
+// TestAPI_UpdateSimulationErrors tests PATCH error cases.
+// Per Khorikov: edge cases tested separately from happy path.
+func TestAPI_UpdateSimulationErrors(t *testing.T) {
+	tests := []struct {
+		name       string
+		simID      string
+		setup      bool // whether to create the simulation first
+		policy     string
+		wantStatus int
+		wantError  string
+	}{
+		{
+			name:       "invalid policy",
+			simID:      "sim-42",
+			setup:      true,
+			policy:     "bogus",
+			wantStatus: http.StatusBadRequest,
+			wantError:  "invalid policy",
+		},
+		{
+			name:       "simulation not found",
+			simID:      "nonexistent",
+			setup:      false,
+			policy:     "tameflow-cognitive",
+			wantStatus: http.StatusNotFound,
+			wantError:  "simulation not found",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			registry := api.NewSimRegistry()
+			srv := httptest.NewServer(api.NewRouter(registry))
+			defer srv.Close()
+
+			if tt.setup {
+				postJSON(t, srv.URL+"/simulations", map[string]any{"seed": 42})
+			}
+
+			status, errMsg := doJSONExpectError(t, "PATCH", srv.URL+"/simulations/"+tt.simID, map[string]any{"policy": tt.policy})
+
+			if status != tt.wantStatus {
+				t.Errorf("status = %d, want %d", status, tt.wantStatus)
+			}
+			if errMsg != tt.wantError {
+				t.Errorf("error = %q, want %q", errMsg, tt.wantError)
+			}
+		})
+	}
+}
+
+// TestAPI_Decompose tests the POST /simulations/{id}/decompose happy path.
+// Per Khorikov: ONE integration test per controller workflow.
+func TestAPI_Decompose(t *testing.T) {
+	registry := api.NewSimRegistry()
+	srv := httptest.NewServer(api.NewRouter(registry))
+	defer srv.Close()
+
+	// Create simulation with DORA-Strict (decomposes tickets >5 days)
+	result := postJSON(t, srv.URL+"/simulations", map[string]any{"seed": 42, "policy": "dora-strict"})
+
+	// Find a ticket >5 days in the backlog (DORA threshold)
+	var sim struct {
+		Backlog []struct {
+			ID            string  `json:"id"`
+			EstimatedDays float64 `json:"estimatedDays"`
+		} `json:"backlog"`
+	}
+	json.Unmarshal(result.Simulation, &sim)
+
+	var largeTicketID string
+	for _, t := range sim.Backlog {
+		if t.EstimatedDays > 5 {
+			largeTicketID = t.ID
+			break
+		}
+	}
+	if largeTicketID == "" {
+		t.Skip("no ticket >5 days in backlog with seed 42")
+	}
+
+	// Decompose the large ticket
+	resp, err := http.Post(
+		srv.URL+"/simulations/sim-42/decompose",
+		"application/json",
+		bytes.NewReader([]byte(fmt.Sprintf(`{"ticketId": %q}`, largeTicketID))),
+	)
+	if err != nil {
+		t.Fatalf("POST decompose failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	var decompResult api.DecomposeResponse
+	if err := json.NewDecoder(resp.Body).Decode(&decompResult); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	if !decompResult.Decomposed {
+		t.Errorf("expected decomposed=true for ticket %s (%.1f days) with DORA-Strict",
+			largeTicketID, 0.0)
+	}
+	if len(decompResult.Children) < 2 {
+		t.Errorf("expected 2+ children, got %d", len(decompResult.Children))
+	}
+}
+
+// TestAPI_DecomposeEdgeCases tests decompose edge cases.
+func TestAPI_DecomposeEdgeCases(t *testing.T) {
+	t.Run("simulation not found", func(t *testing.T) {
+		registry := api.NewSimRegistry()
+		srv := httptest.NewServer(api.NewRouter(registry))
+		defer srv.Close()
+
+		status, errMsg := postJSONExpectError(t, srv.URL+"/simulations/nonexistent/decompose", map[string]any{"ticketId": "TKT-001"})
+		if status != http.StatusNotFound {
+			t.Errorf("status = %d, want %d", status, http.StatusNotFound)
+		}
+		if errMsg != "simulation not found" {
+			t.Errorf("error = %q, want %q", errMsg, "simulation not found")
+		}
+	})
+
+	t.Run("policy forbids decomposition", func(t *testing.T) {
+		registry := api.NewSimRegistry()
+		srv := httptest.NewServer(api.NewRouter(registry))
+		defer srv.Close()
+
+		// PolicyNone never decomposes
+		postJSON(t, srv.URL+"/simulations", map[string]any{"seed": 42, "policy": "none"})
+
+		resp, err := http.Post(
+			srv.URL+"/simulations/sim-42/decompose",
+			"application/json",
+			bytes.NewReader([]byte(`{"ticketId": "TKT-001"}`)),
+		)
+		if err != nil {
+			t.Fatalf("POST decompose failed: %v", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
+		}
+
+		var result api.DecomposeResponse
+		json.NewDecoder(resp.Body).Decode(&result)
+		if result.Decomposed {
+			t.Error("expected decomposed=false with PolicyNone")
+		}
+	})
 }

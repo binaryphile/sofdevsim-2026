@@ -457,38 +457,61 @@ func (e Engine) SetPolicy(newPolicy model.SizingPolicy) (Engine, error) {
 // Returns new Engine and error (immutable pattern).
 func (e Engine) EmitLoadedState(sim model.Simulation) (Engine, error) {
 	var err error
+	if e, err = e.emitLoadedConfig(sim); err != nil {
+		return e, err
+	}
+	if e, err = e.emitLoadedTeam(sim); err != nil {
+		return e, err
+	}
+	if e, err = e.emitLoadedBacklog(sim); err != nil {
+		return e, err
+	}
+	if e, err = e.emitLoadedActiveTickets(sim); err != nil {
+		return e, err
+	}
+	if e, err = e.emitLoadedCompletedTickets(sim); err != nil {
+		return e, err
+	}
+	return e.emitLoadedProgress(sim)
+}
 
-	// Emit SimulationCreated
-	if e, err = e.emit(events.NewSimulationCreated(
+func (e Engine) emitLoadedConfig(sim model.Simulation) (Engine, error) {
+	return e.emit(events.NewSimulationCreated(
 		sim.ID,
-		0, // Original tick 0
+		0,
 		events.SimConfig{
 			TeamSize:     len(sim.Developers),
 			SprintLength: sim.SprintLength,
 			Seed:         sim.Seed,
 			Policy:       sim.SizingPolicy,
 		},
-	)); err != nil {
-		return e, err
-	}
+	))
+}
 
-	// After SimulationCreated emit, e.state().ID is available
-	// Emit DeveloperAdded for each developer
+func (e Engine) emitLoadedTeam(sim model.Simulation) (Engine, error) {
+	var err error
 	for _, dev := range sim.Developers {
 		if e, err = e.emit(events.NewDeveloperAdded(e.state().ID, 0, dev.ID, dev.Name, dev.Velocity)); err != nil {
 			return e, err
 		}
 	}
+	return e, nil
+}
 
-	// Emit TicketCreated for backlog tickets
+func (e Engine) emitLoadedBacklog(sim model.Simulation) (Engine, error) {
+	var err error
 	for _, t := range sim.Backlog {
 		if e, err = e.emit(events.NewTicketCreated(e.state().ID, 0, t.ID, t.Title, t.EstimatedDays, t.UnderstandingLevel)); err != nil {
 			return e, err
 		}
 	}
+	return e, nil
+}
 
-	// Emit TicketCreated + TicketStateRestored for active tickets
-	// Use TicketStateRestored (not TicketAssigned) to preserve full state including Phase, RemainingEffort
+// emitLoadedActiveTickets emits TicketCreated + TicketStateRestored for active tickets.
+// Uses TicketStateRestored (not TicketAssigned) to preserve full state including Phase, RemainingEffort.
+func (e Engine) emitLoadedActiveTickets(sim model.Simulation) (Engine, error) {
+	var err error
 	for _, t := range sim.ActiveTickets {
 		if e, err = e.emit(events.NewTicketCreated(e.state().ID, 0, t.ID, t.Title, t.EstimatedDays, t.UnderstandingLevel)); err != nil {
 			return e, err
@@ -497,8 +520,11 @@ func (e Engine) EmitLoadedState(sim model.Simulation) (Engine, error) {
 			return e, err
 		}
 	}
+	return e, nil
+}
 
-	// Emit TicketCreated + TicketAssigned + TicketCompleted for completed tickets
+func (e Engine) emitLoadedCompletedTickets(sim model.Simulation) (Engine, error) {
+	var err error
 	for _, t := range sim.CompletedTickets {
 		if e, err = e.emit(events.NewTicketCreated(e.state().ID, 0, t.ID, t.Title, t.EstimatedDays, t.UnderstandingLevel)); err != nil {
 			return e, err
@@ -510,21 +536,21 @@ func (e Engine) EmitLoadedState(sim model.Simulation) (Engine, error) {
 			return e, err
 		}
 	}
+	return e, nil
+}
 
-	// Emit Ticked to set current tick
+func (e Engine) emitLoadedProgress(sim model.Simulation) (Engine, error) {
+	var err error
 	if sim.CurrentTick > 0 {
 		if e, err = e.emit(events.NewTicked(e.state().ID, sim.CurrentTick)); err != nil {
 			return e, err
 		}
 	}
-
-	// Emit SprintStarted if sprint is active
 	if sprint, ok := sim.CurrentSprintOption.Get(); ok {
 		if e, err = e.emit(events.NewSprintStarted(e.state().ID, sprint.StartDay, sprint.Number, sprint.BufferDays)); err != nil {
 			return e, err
 		}
 	}
-
 	return e, nil
 }
 

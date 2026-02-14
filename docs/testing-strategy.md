@@ -411,8 +411,8 @@ Track coverage changes, not absolute numbers. Updated 2026-02-14.
 
 | Package | Coverage | Notes |
 |---------|----------|-------|
-| engine | 80.4% | Domain + controller logic |
-| api | 74.3% | HTTP integration tests |
+| engine | 79.2% | Domain + controller logic |
+| api | 79.1% | HTTP integration tests |
 | events | 68.9% | Event store infrastructure |
 | lessons | 82.8% | Domain calculations |
 | export | 65.4% | Controller with domain helpers |
