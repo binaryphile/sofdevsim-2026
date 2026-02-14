@@ -1,7 +1,6 @@
 package office
 
 import (
-	"fmt"
 	"regexp"
 	"strings"
 
@@ -117,29 +116,27 @@ func RenderCubicle(anim DeveloperAnimation, name string, width int) string {
 	color := developerColor(anim.ColorIndex)
 	style := lipgloss.NewStyle().Foreground(color)
 
-	icon := RenderDeveloperIcon(anim)
-
-	var lines []string
-
-	// Show "Late!" bubble briefly when transitioning to frustrated
-	if anim.LateBubbleFrames > 0 {
-		bubble := RenderLateBubble()
-		for _, line := range strings.Split(bubble, "\n") {
-			lines = append(lines, style.Render(line))
-		}
-	}
+	innerWidth := width - 2
 
 	// Cubicle box
-	topBorder := "┌" + strings.Repeat("─", width-2) + "┐"
-	bottomBorder := "└" + strings.Repeat("─", width-2) + "┘"
+	topBorder := "┌" + strings.Repeat("─", innerWidth) + "┐"
+	bottomBorder := "└" + strings.Repeat("─", innerWidth) + "┘"
 
-	// Center name in cubicle (colored)
-	nameLine := fmt.Sprintf("│%s│", centerText(style.Render(name), width-2))
+	// Name line - shows bubble overlay when frustrated, otherwise truncated name
+	var nameContent string
+	if anim.LateBubbleFrames > 0 {
+		nameContent = style.Render(RenderLateBubbleInline())
+	} else {
+		displayName := truncateText(name, innerWidth-2)
+		nameContent = style.Render(displayName)
+	}
+	nameLine := "│" + centerText(nameContent, innerWidth) + "│"
 
-	// Center icon in cubicle (emoji doesn't take ANSI color)
-	iconLine := fmt.Sprintf("│%s│", centerText(icon, width-2))
+	// Center icon in cubicle
+	icon := RenderDeveloperIcon(anim)
+	iconLine := "│" + centerText(icon, innerWidth) + "│"
 
-	lines = append(lines, topBorder, nameLine, iconLine, bottomBorder)
+	lines := []string{topBorder, nameLine, iconLine, bottomBorder}
 	return strings.Join(lines, "\n")
 }
 

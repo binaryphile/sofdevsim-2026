@@ -524,3 +524,51 @@ func TestEmojiWidths(t *testing.T) {
 		})
 	}
 }
+
+func TestTruncateText(t *testing.T) {
+	tests := []struct {
+		name     string
+		text     string
+		maxWidth int
+		want     string
+	}{
+		{"short text", "Mei", 10, "Mei"},
+		{"exact width", "Hello", 5, "Hello"},
+		{"needs truncation", "Bartholomew", 8, "Barthol…"},
+		{"unicode", "田中太郎", 6, "田中…"},
+		{"very narrow", "Hello", 2, "H…"},
+		{"width 1", "Hello", 1, "…"},
+		{"empty", "", 5, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := truncateText(tt.text, tt.maxWidth)
+			if got != tt.want {
+				t.Errorf("truncateText(%q, %d) = %q, want %q", tt.text, tt.maxWidth, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestDeveloperColor(t *testing.T) {
+	tests := []struct {
+		name       string
+		colorIndex int
+		wantIdx    int // expected index into DeveloperColors
+	}{
+		{"zero", 0, 0},
+		{"positive", 2, 2},
+		{"wraps at 6", 6, 0},
+		{"negative one", -1, 5},
+		{"very negative", -100, 2}, // -100 % 6 = -4, (-4 + 6) % 6 = 2
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := developerColor(tt.colorIndex)
+			want := DeveloperColors[tt.wantIdx]
+			if got != want {
+				t.Errorf("developerColor(%d) = %v, want %v (index %d)", tt.colorIndex, got, want, tt.wantIdx)
+			}
+		})
+	}
+}
