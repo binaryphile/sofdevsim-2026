@@ -366,3 +366,15 @@ func TestAdvanceFrames_LateBubbleDecrementsForAll(t *testing.T) {
 		t.Errorf("dev-1 LateBubbleFrames = %d, want 9 (should decrement even though face didn't advance)", anim1.LateBubbleFrames)
 	}
 }
+
+func TestClearBubbles(t *testing.T) {
+	anim := NewDeveloperAnimation("dev-1", 0).BecomeFrustrated()
+	if anim.LateBubbleFrames != 10 {
+		t.Fatalf("precondition: expected 10, got %d", anim.LateBubbleFrames)
+	}
+	state := OfficeState{Animations: []DeveloperAnimation{anim}}
+	state = state.ClearBubbles()
+	if state.Animations[0].LateBubbleFrames != 0 {
+		t.Errorf("expected 0 after ClearBubbles, got %d", state.Animations[0].LateBubbleFrames)
+	}
+}

@@ -405,6 +405,16 @@ func (s OfficeState) AdvanceFrames(now time.Time, devIdxToAdvance int) OfficeSta
 	return OfficeState{Animations: anims}
 }
 
+// ClearBubbles returns a new OfficeState with all LateBubbleFrames zeroed.
+func (s OfficeState) ClearBubbles() OfficeState {
+	anims := make([]DeveloperAnimation, len(s.Animations))
+	for i, anim := range s.Animations {
+		anim.LateBubbleFrames = 0
+		anims[i] = anim
+	}
+	return OfficeState{Animations: anims}
+}
+
 // startDevSip returns a new OfficeState with the developer's sip animation started.
 func (s OfficeState) startDevSip(devID string, now time.Time) OfficeState {
 	// apply starts sip for matching developer, passes others through.

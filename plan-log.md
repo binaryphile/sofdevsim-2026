@@ -28421,3 +28421,13 @@ Coverage: engine 79.2%, api 79.1% (api +4.8 from new tests)
 [x] All 3 renderers display updated bubble (evidence: tests pass)
 [x] Tests pass (evidence: go test ./internal/office/...)
 [x] Visual REST API check (evidence: curl output shows ╭ above face emoji)
+2026-02-14T06:00:00Z | Contract: Phase 2 - Fix bubble persistence in REST API
+[ ] BubblesExpired event + ClearBubbles state method
+[ ] Event handler in applyOfficeEvent
+[ ] Record at start of deriveOfficeEvents
+[ ] Test: bubble clears after one tick
+2026-02-14T06:15:00Z | Completion: Phase 2
+[x] BubblesExpired event + ClearBubbles method (evidence: events.go, state.go)
+[x] Event handler in applyOfficeEvent (evidence: projection.go)
+[x] Record at start of deriveOfficeEvents (evidence: handlers.go)
+[x] Test: bubble clears after one tick (evidence: TestClearBubbles passes)

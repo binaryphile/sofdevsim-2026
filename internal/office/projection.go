@@ -160,6 +160,8 @@ func applyOfficeEvent(state OfficeState, evt OfficeEvent, now time.Time) OfficeS
 		return state.AdvanceFrames(now, e.DevIdxToAdvance)
 	case DevStartedSip:
 		return state.startDevSip(e.DevID, now)
+	case BubblesExpired:
+		return state.ClearBubbles()
 	default:
 		return state
 	}

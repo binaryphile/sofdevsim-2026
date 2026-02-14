@@ -683,6 +683,9 @@ func deriveOfficeEvents(proj office.OfficeProjection, oldSim, newSim model.Simul
 	tick := newSim.CurrentTick
 	now := time.Now()
 
+	// Clear previous tick's bubbles before checking for new frustration
+	proj = proj.Record(office.BubblesExpired{}, tick, now)
+
 	// Check for sprint end - all developers return to conference
 	oldSprintActive := oldSim.CurrentSprintOption.IsOk()
 	newSprintActive := newSim.CurrentSprintOption.IsOk()

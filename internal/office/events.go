@@ -61,3 +61,10 @@ type DevStartedSip struct {
 }
 
 func (DevStartedSip) officeEvent() {}
+
+// BubblesExpired: clears all Late! bubble countdowns.
+// Fired at the start of each simulation tick in the REST API path,
+// so bubbles persist for exactly one tick.
+type BubblesExpired struct{}
+
+func (BubblesExpired) officeEvent() {}
