@@ -2140,7 +2140,7 @@ type DeveloperAnimation struct {
     LateBubbleFrames int            // Countdown for "Late!" bubble (0 = hidden)
     Accessory        Accessory      // Coffee, soda, or none
     SipPhase         SipPhase       // Current drink sip animation phase
-    SipCountdown     int            // Frames until next sip phase change
+    SipStartTime     time.Time      // When current sip phase started (time-based)
 }
 
 // Value receiver methods for state transitions (return new value)
@@ -2148,7 +2148,8 @@ func (d DeveloperAnimation) WithState(s AnimationState) DeveloperAnimation
 func (d DeveloperAnimation) WithPosition(p Position) DeveloperAnimation
 func (d DeveloperAnimation) NextFrame() DeveloperAnimation
 func (d DeveloperAnimation) BecomeFrustrated() DeveloperAnimation  // Sets LateBubbleFrames
-func (d DeveloperAnimation) AdvanceSip() DeveloperAnimation        // Cycles sip animation
+func (d DeveloperAnimation) AdvanceSip(now time.Time) DeveloperAnimation // Cycles sip animation
+func (d DeveloperAnimation) StartSip(now time.Time) DeveloperAnimation   // Initiates sip if has accessory
 ```
 
 ### Dual Timer Architecture
