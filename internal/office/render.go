@@ -42,6 +42,13 @@ var DefaultDeveloperNames = []string{
 // MutedStyle for error/fallback messages
 var MutedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#666666"))
 
+// developerColor returns the color for a developer, handling negative indices safely.
+func developerColor(colorIndex int) lipgloss.Color {
+	n := len(DeveloperColors)
+	idx := ((colorIndex % n) + n) % n // safe modulo for negative values
+	return DeveloperColors[idx]
+}
+
 // ansiRegex matches ANSI escape sequences
 var ansiRegex = regexp.MustCompile(`\x1b\[[0-9;]*m`)
 
@@ -107,7 +114,7 @@ func RenderLateBubbleInline() string {
 // Calculation: RenderCubicle renders a single cubicle with developer
 // Pure function: (DeveloperAnimation, string, int) → string
 func RenderCubicle(anim DeveloperAnimation, name string, width int) string {
-	color := DeveloperColors[anim.ColorIndex%len(DeveloperColors)]
+	color := developerColor(anim.ColorIndex)
 	style := lipgloss.NewStyle().Foreground(color)
 
 	icon := RenderDeveloperIcon(anim)
@@ -141,7 +148,7 @@ func RenderCubicle(anim DeveloperAnimation, name string, width int) string {
 func RenderConferenceRoom(anims []DeveloperAnimation, names []string, width int) string {
 	// renderWithColor renders a developer icon styled with their assigned color.
 	renderWithColor := func(a DeveloperAnimation) string {
-		color := DeveloperColors[a.ColorIndex%len(DeveloperColors)]
+		color := developerColor(a.ColorIndex)
 		return lipgloss.NewStyle().Foreground(color).Render(RenderDeveloperIcon(a))
 	}
 	icons := slice.From(anims).
@@ -199,7 +206,7 @@ func RenderCubicleGrid(state OfficeState, names []string, width int) string {
 // Shows name always, icon only when developer is working (not in conference)
 // Pure function: (DeveloperAnimation, string, int) → string
 func RenderCubicleCompact(anim DeveloperAnimation, name string, width int) string {
-	color := DeveloperColors[anim.ColorIndex%len(DeveloperColors)]
+	color := developerColor(anim.ColorIndex)
 	style := lipgloss.NewStyle().Foreground(color)
 
 	var lines []string
@@ -307,7 +314,7 @@ func renderConferenceRoomDetailed(anims []DeveloperAnimation, width int) string 
 			return "🪑" // empty chair
 		}
 		a := conferenceDevs[idx]
-		color := DeveloperColors[a.ColorIndex%len(DeveloperColors)]
+		color := developerColor(a.ColorIndex)
 		return lipgloss.NewStyle().Foreground(color).Render(RenderDeveloperIcon(a))
 	}
 
@@ -414,7 +421,7 @@ func padRight(text string, width int) string {
 // doorOnTop: true for row 1 (door faces hallway above), false for row 0 (door faces hallway below).
 // Calculation: (DeveloperAnimation, string, int, bool) → string
 func renderCubicleDetailed(anim DeveloperAnimation, name string, width int, doorOnTop bool) string {
-	color := DeveloperColors[anim.ColorIndex%len(DeveloperColors)]
+	color := developerColor(anim.ColorIndex)
 	style := lipgloss.NewStyle().Foreground(color)
 
 	innerWidth := width - 2
