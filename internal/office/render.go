@@ -411,6 +411,16 @@ func renderCubicleDetailed(anim DeveloperAnimation, name string, width int, door
 	color := DeveloperColors[anim.ColorIndex%len(DeveloperColors)]
 	style := lipgloss.NewStyle().Foreground(color)
 
+	var lines []string
+
+	// Show "Late!" bubble briefly when transitioning to frustrated
+	if anim.LateBubbleFrames > 0 {
+		bubble := RenderLateBubble()
+		for _, line := range strings.Split(bubble, "\n") {
+			lines = append(lines, style.Render(line))
+		}
+	}
+
 	innerWidth := width - 2
 	topBorder := "┌" + strings.Repeat("─", innerWidth) + "┐"
 	bottomBorder := "└" + strings.Repeat("─", innerWidth) + "┘"
@@ -420,10 +430,13 @@ func renderCubicleDetailed(anim DeveloperAnimation, name string, width int, door
 	// Name line
 	nameLine := "│" + centerText(style.Render(name), innerWidth) + "│"
 
-	// Face + trash line (face only if not in conference)
-	// In cubicle: show face WITHOUT accessory (accessory is on desk)
+	// Face + trash line (face only if dev is in cubicle)
+	// Away states: conference, moving to conference, moving to cubicle
 	var faceContent string
-	if anim.State != StateConference {
+	isAway := anim.State == StateConference ||
+		anim.State == StateMovingToConference ||
+		anim.State == StateMovingToCubicle
+	if !isAway {
 		face := renderFaceOnly(anim)
 		faceContent = face + " 🗑️"
 	} else {
@@ -440,13 +453,12 @@ func renderCubicleDetailed(anim DeveloperAnimation, name string, width int, door
 	}
 	deskLine := "│" + centerText(deskContent, innerWidth) + "│"
 
-	var lines []string
 	if doorOnTop {
 		// Row 1: door on top (facing hallway above)
-		lines = []string{doorBorderTop, nameLine, faceLine, deskLine, bottomBorder}
+		lines = append(lines, doorBorderTop, nameLine, faceLine, deskLine, bottomBorder)
 	} else {
 		// Row 0: door on bottom (facing hallway below)
-		lines = []string{topBorder, nameLine, faceLine, deskLine, doorBorder}
+		lines = append(lines, topBorder, nameLine, faceLine, deskLine, doorBorder)
 	}
 
 	return strings.Join(lines, "\n")
