@@ -132,8 +132,11 @@ func RenderCubicle(anim DeveloperAnimation, name string, width int) string {
 	}
 	nameLine := "│" + centerText(nameContent, innerWidth) + "│"
 
-	// Center icon in cubicle
-	icon := RenderDeveloperIcon(anim)
+	// Center icon in cubicle (empty when dev is away)
+	var icon string
+	if !anim.IsAway() {
+		icon = RenderDeveloperIcon(anim)
+	}
 	iconLine := "│" + centerText(icon, innerWidth) + "│"
 
 	lines := []string{topBorder, nameLine, iconLine, bottomBorder}
@@ -221,9 +224,9 @@ func RenderCubicleCompact(anim DeveloperAnimation, name string, width int) strin
 	}
 	nameLine := "│" + centerText(nameContent, innerWidth) + "│"
 
-	// Icon line: show icon unless in conference (dev is in conference room)
+	// Icon line: show icon unless away (in conference or moving)
 	var iconContent string
-	if anim.State != StateConference {
+	if !anim.IsAway() {
 		iconContent = RenderDeveloperIcon(anim)
 	}
 	iconLine := "│" + centerText(iconContent, innerWidth) + "│"
@@ -436,12 +439,8 @@ func renderCubicleDetailed(anim DeveloperAnimation, name string, width int, door
 	nameLine := "│" + centerText(nameContent, innerWidth) + "│"
 
 	// Face + trash line (face only if dev is in cubicle)
-	// Away states: conference, moving to conference, moving to cubicle
 	var faceContent string
-	isAway := anim.State == StateConference ||
-		anim.State == StateMovingToConference ||
-		anim.State == StateMovingToCubicle
-	if !isAway {
+	if !anim.IsAway() {
 		face := renderFaceOnly(anim)
 		faceContent = face + " 🗑️"
 	} else {
@@ -449,9 +448,9 @@ func renderCubicleDetailed(anim DeveloperAnimation, name string, width int, door
 	}
 	faceLine := "│" + centerText(faceContent, innerWidth) + "│"
 
-	// Desk line (accessory on desk when dev has one)
+	// Desk line (accessory on desk only when dev is in cubicle)
 	var deskContent string
-	if anim.Accessory != AccessoryNone {
+	if !anim.IsAway() && anim.Accessory != AccessoryNone {
 		deskContent = "🖥️ " + anim.Accessory.Emoji()
 	} else {
 		deskContent = "🖥️"

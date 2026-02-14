@@ -84,6 +84,31 @@ func TestIsActive(t *testing.T) {
 	}
 }
 
+func TestIsAway(t *testing.T) {
+	tests := []struct {
+		name  string
+		state AnimationState
+		want  bool
+	}{
+		{"conference", StateConference, true},
+		{"movingToConference", StateMovingToConference, true},
+		{"movingToCubicle", StateMovingToCubicle, true},
+		{"working", StateWorking, false},
+		{"frustrated", StateFrustrated, false},
+		{"idle", StateIdle, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			anim := DeveloperAnimation{State: tt.state}
+			got := anim.IsAway()
+			if got != tt.want {
+				t.Errorf("IsAway() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestAccessory_Emoji(t *testing.T) {
 	tests := []struct {
 		a    Accessory

@@ -281,6 +281,14 @@ func (d DeveloperAnimation) IsInConference() bool {
 	return d.State == StateConference
 }
 
+// IsAway returns true if developer is not physically in their cubicle.
+// This includes being in conference or moving between locations.
+func (d DeveloperAnimation) IsAway() bool {
+	return d.State == StateConference ||
+		d.State == StateMovingToConference ||
+		d.State == StateMovingToCubicle
+}
+
 // AdvanceMovement interpolates position toward target using time-based animation.
 // Movement completes after MovementDuration (500ms).
 func (d DeveloperAnimation) AdvanceMovement(now time.Time) DeveloperAnimation {

@@ -7,6 +7,22 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+// containsFaceEmoji returns true if the string contains any developer face emoji.
+func containsFaceEmoji(s string) bool {
+	for _, face := range WorkingFrames {
+		if strings.Contains(s, face) {
+			return true
+		}
+	}
+	for _, face := range FrustratedFrames {
+		if strings.Contains(s, face) {
+			return true
+		}
+	}
+	// Default neutral face (used for idle/conference)
+	return strings.Contains(s, "🙂")
+}
+
 func TestStripANSI(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -106,46 +122,6 @@ func TestRenderDeveloperIcon_SipPhases(t *testing.T) {
 	}
 }
 
-func TestRenderCubicleCompact_IdleState(t *testing.T) {
-	anim := NewDeveloperAnimation("dev-1", 0) // Starts idle
-
-	cubicle := RenderCubicleCompact(anim, "Mei", 10)
-	plain := StripANSI(cubicle)
-
-	if !strings.Contains(plain, "Mei") {
-		t.Error("Should contain developer name")
-	}
-	// Idle state shows neutral face
-	if !strings.Contains(plain, "🙂") {
-		t.Errorf("Idle state should show neutral face 🙂, got:\n%s", plain)
-	}
-}
-
-func TestRenderCubicleCompact_WorkingState(t *testing.T) {
-	anim := DeveloperAnimation{
-		DevID:      "dev-1",
-		State:      StateWorking,
-		ColorIndex: 0,
-		Frame:      0,
-	}
-
-	cubicle := RenderCubicleCompact(anim, "Mei", 10)
-	plain := StripANSI(cubicle)
-
-	if !strings.Contains(plain, "Mei") {
-		t.Error("Should contain developer name")
-	}
-	// Working state cycles through happy faces (😊😄😁🙂😀)
-	hasWorkingIcon := strings.Contains(plain, "😊") || strings.Contains(plain, "😄") ||
-		strings.Contains(plain, "😁") || strings.Contains(plain, "🙂") || strings.Contains(plain, "😀")
-	if !hasWorkingIcon {
-		t.Error("Working state should show happy face icon")
-	}
-	if !strings.Contains(plain, "┌") || !strings.Contains(plain, "└") {
-		t.Error("Should have box borders")
-	}
-}
-
 func TestRenderCubicleCompact_LateBubble(t *testing.T) {
 	// Use BecomeFrustrated to get the Late bubble
 	anim := NewDeveloperAnimation("dev-1", 0).BecomeFrustrated()
@@ -166,28 +142,6 @@ func TestRenderCubicleCompact_LateBubble(t *testing.T) {
 
 	if strings.Contains(plain, "Late!") {
 		t.Error("Late! bubble should disappear after countdown")
-	}
-}
-
-func TestRenderCubicleCompact_ConferenceState(t *testing.T) {
-	anim := DeveloperAnimation{
-		DevID:      "dev-1",
-		State:      StateConference,
-		ColorIndex: 0,
-	}
-
-	cubicle := RenderCubicleCompact(anim, "Mei", 10)
-	plain := StripANSI(cubicle)
-
-	if !strings.Contains(plain, "Mei") {
-		t.Error("Should contain developer name even in conference")
-	}
-	// Icon line should be empty (just spaces) when in conference
-	lines := strings.Split(plain, "\n")
-	iconLine := lines[2] // third line is icon line
-	iconContent := strings.Trim(iconLine, "│ ")
-	if iconContent != "" {
-		t.Errorf("Conference state should have empty icon line, got %q", iconContent)
 	}
 }
 
@@ -262,23 +216,48 @@ func TestCenterText(t *testing.T) {
 	}
 }
 
-func TestRenderCubicle_Frustrated(t *testing.T) {
-	anim := DeveloperAnimation{
-		DevID:      "dev-1",
-		State:      StateFrustrated,
-		ColorIndex: 0,
-		Frame:      0,
+// TestCubicleFaceVisibility verifies the invariant: face visible iff !IsAway()
+// across all three cubicle renderers and all animation states.
+func TestCubicleFaceVisibility(t *testing.T) {
+	allStates := []struct {
+		state AnimationState
+		name  string
+	}{
+		{StateIdle, "idle"},
+		{StateWorking, "working"},
+		{StateFrustrated, "frustrated"},
+		{StateConference, "conference"},
+		{StateMovingToConference, "movingToConference"},
+		{StateMovingToCubicle, "movingToCubicle"},
 	}
 
-	cubicle := RenderCubicle(anim, "Mei", 12)
-	plain := StripANSI(cubicle)
-
-	if !strings.Contains(plain, "Mei") {
-		t.Error("Should contain developer name")
+	renderers := []struct {
+		name   string
+		render func(DeveloperAnimation) string
+	}{
+		{"RenderCubicle", func(a DeveloperAnimation) string {
+			return StripANSI(RenderCubicle(a, "Mei", 12))
+		}},
+		{"RenderCubicleCompact", func(a DeveloperAnimation) string {
+			return StripANSI(RenderCubicleCompact(a, "Mei", 10))
+		}},
+		{"renderCubicleDetailed", func(a DeveloperAnimation) string {
+			return StripANSI(renderCubicleDetailed(a, "Mei", 9, false))
+		}},
 	}
-	// Frustrated state shows unhappy emoji (frame 0 = 😤)
-	if !strings.Contains(plain, "😤") {
-		t.Error("Frustrated state should show frustrated emoji")
+
+	for _, r := range renderers {
+		for _, s := range allStates {
+			t.Run(r.name+"/"+s.name, func(t *testing.T) {
+				anim := DeveloperAnimation{State: s.state, ColorIndex: 0}
+				result := r.render(anim)
+				hasFace := containsFaceEmoji(result)
+				wantFace := !anim.IsAway()
+				if hasFace != wantFace {
+					t.Errorf("face visible = %v, want %v\n%s", hasFace, wantFace, result)
+				}
+			})
+		}
 	}
 }
 
@@ -367,10 +346,10 @@ func TestRenderCubicleDetailed(t *testing.T) {
 	}
 }
 
-// Cycle 5: Moving developer appears in hallway area
+// Cycle 5: Enhanced layout with moving developer
 func TestRenderMovingDeveloper(t *testing.T) {
 	state := NewOfficeState([]string{"d0", "d1"})
-	// d0 is moving to cubicle (should appear in hallway)
+	// d0 is moving to cubicle (cubicle should be empty)
 	state = state.StartDeveloperMovingToCubicle("d0", Position{X: 50, Y: 6}, testTime)
 	state.Animations[0].Progress = 0.5 // halfway
 	// d1 is in conference
@@ -380,11 +359,14 @@ func TestRenderMovingDeveloper(t *testing.T) {
 	result := renderOfficeEnhanced(state, names, 80, 12)
 	plain := StripANSI(result)
 
-	// Moving dev should NOT be in conference room (they left)
-	// The hallway area should show the dev icon
-	// This is a visual check - the dev should appear somewhere in the output
+	// d1 should be visible in conference room
 	if !strings.Contains(plain, "🙂") {
-		t.Errorf("Moving dev should still be visible somewhere\ngot:\n%s", plain)
+		t.Errorf("Conference dev should be visible\ngot:\n%s", plain)
+	}
+
+	// d0's cubicle should show name but no face (away)
+	if !strings.Contains(plain, "Mei") {
+		t.Errorf("Moving dev's cubicle should still show name\ngot:\n%s", plain)
 	}
 
 	// Should have outer frame (rounded corners from lipgloss.RoundedBorder)
@@ -460,41 +442,38 @@ func TestRenderConferenceRoomDetailed(t *testing.T) {
 	}
 }
 
-// Cycle 2: Accessory positioning - on desk (cubicle) vs beside face (conference)
-func TestAccessoryPosition(t *testing.T) {
-	// In cubicle: accessory on desk line (beside 🖥️), NOT beside face
-	t.Run("in cubicle, accessory on desk", func(t *testing.T) {
-		anim := DeveloperAnimation{
-			State:      StateWorking,
-			ColorIndex: 1,
-			Accessory:  AccessoryCoffee,
-		}
-		result := renderCubicleDetailed(anim, "Amir", 11, false)
-		lines := strings.Split(result, "\n")
+// TestCubicleAccessoryOnDesk verifies: accessory on desk iff !IsAway() && has accessory.
+// Only applies to renderCubicleDetailed (the only renderer with a desk line).
+func TestCubicleAccessoryOnDesk(t *testing.T) {
+	allStates := []struct {
+		state AnimationState
+		name  string
+	}{
+		{StateIdle, "idle"},
+		{StateWorking, "working"},
+		{StateFrustrated, "frustrated"},
+		{StateConference, "conference"},
+		{StateMovingToConference, "movingToConference"},
+		{StateMovingToCubicle, "movingToCubicle"},
+	}
 
-		// Desk line (line 3, 0-indexed) should have coffee
-		deskLine := StripANSI(lines[3])
-		if !strings.Contains(deskLine, "☕") {
-			t.Errorf("Desk line should contain coffee, got: %q", deskLine)
-		}
-
-		// Face line (line 2) should NOT have coffee (RenderDeveloperIcon adds it, but we want it on desk)
-		// Actually RenderDeveloperIcon still adds accessory beside face - we need to handle this differently
-		// For now, verify desk has it
-	})
-
-	// In conference: accessory beside face (handled by RenderDeveloperIcon)
-	t.Run("in conference, accessory beside face", func(t *testing.T) {
-		anim := DeveloperAnimation{
-			State:      StateConference,
-			ColorIndex: 1,
-			Accessory:  AccessoryCoffee,
-		}
-		icon := RenderDeveloperIcon(anim)
-		if !strings.Contains(icon, "☕") {
-			t.Errorf("Conference icon should have coffee beside face, got: %q", icon)
-		}
-	})
+	for _, s := range allStates {
+		t.Run(s.name, func(t *testing.T) {
+			anim := DeveloperAnimation{
+				State:      s.state,
+				ColorIndex: 1,
+				Accessory:  AccessoryCoffee,
+			}
+			result := renderCubicleDetailed(anim, "Amir", 11, false)
+			lines := strings.Split(result, "\n")
+			deskLine := StripANSI(lines[3]) // desk is line 3
+			hasAccessory := strings.Contains(deskLine, "☕")
+			wantAccessory := !anim.IsAway()
+			if hasAccessory != wantAccessory {
+				t.Errorf("accessory on desk = %v, want %v\ndesk line: %q", hasAccessory, wantAccessory, deskLine)
+			}
+		})
+	}
 }
 
 // Cycle 0: Validate emoji widths for enhanced layout
