@@ -28411,3 +28411,13 @@ $(date -Iseconds) | Contract: Event-Source Office Animation
 [x] ONE integration test for HandleUpdateSimulation (evidence: TestAPI_UpdateSimulation + TestAPI_UpdateSimulationErrors pass)
 [x] ONE integration test for HandleDecompose (evidence: TestAPI_Decompose + TestAPI_DecomposeEdgeCases pass)
 Coverage: engine 79.2%, api 79.1% (api +4.8 from new tests)
+2026-02-14T05:00:00Z | Contract: Phase 1 - Fix inline bubble characters
+[ ] RenderLateBubbleInline uses containing characters
+[ ] All 3 renderers display updated bubble
+[ ] Tests pass
+[ ] Visual REST API check
+2026-02-14T05:15:00Z | Completion: Phase 1
+[x] RenderLateBubbleInline uses ╭Late! (evidence: render.go change)
+[x] All 3 renderers display updated bubble (evidence: tests pass)
+[x] Tests pass (evidence: go test ./internal/office/...)
+[x] Visual REST API check (evidence: curl output shows ╭ above face emoji)

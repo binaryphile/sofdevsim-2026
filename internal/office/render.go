@@ -103,10 +103,10 @@ func RenderLateBubble() string {
 	return "┌──────┐\n│Late! │\n└──┬───┘"
 }
 
-// RenderLateBubbleInline returns a compact inline bubble for overlay rendering.
-// Uses distinct characters (rounded corners) to stand out from cubicle walls.
+// RenderLateBubbleInline returns a compact inline speech indicator.
+// Text stands alone with a single arch connector pointing down to the speaker.
 func RenderLateBubbleInline() string {
-	return "╭Late!╮"
+	return "╭Late!"
 }
 
 
