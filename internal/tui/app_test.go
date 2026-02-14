@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"encoding/json"
+	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
@@ -1012,5 +1014,151 @@ func TestTUI_SyncsOfficeOnSprintEnd(t *testing.T) {
 
 	if !hasConferenceTransition {
 		t.Error("Expected DevEnteredConference transition when sprint ends")
+	}
+}
+
+func TestTUI_WindowResizeSyncsOfficeSize(t *testing.T) {
+	reg := registry.NewSimRegistry()
+	app := NewAppWithRegistry(42, reg)
+	app.currentView = ViewExecution
+
+	app.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+
+	w, h := reg.OfficeSize()
+	if w != 120 {
+		t.Errorf("OfficeSize width = %d, want 120", w)
+	}
+	if h != 40 {
+		t.Errorf("OfficeSize height = %d, want 40", h)
+	}
+}
+
+func TestTUI_TabSyncsOfficeSizeForNewView(t *testing.T) {
+	reg := registry.NewSimRegistry()
+	app := NewAppWithRegistry(42, reg)
+	app.width = 200
+	app.height = 50
+	app.currentView = ViewPlanning
+
+	// Tab → Execution (full width)
+	app.Update(tea.KeyMsg{Type: tea.KeyTab})
+
+	w, _ := reg.OfficeSize()
+	if w != 200 {
+		t.Errorf("After Tab to execution: OfficeSize width = %d, want 200", w)
+	}
+}
+
+func TestTUI_HTTPOfficeUsesRegistryDimensions(t *testing.T) {
+	reg := api.NewSimRegistry()
+	_ = NewAppWithRegistry(42, reg.SimRegistry)
+
+	reg.UpdateOfficeSize(60, 30)
+
+	srv := httptest.NewServer(api.NewRouter(reg))
+	defer srv.Close()
+
+	resp, err := http.Get(srv.URL + "/simulations/sim-42/office")
+	if err != nil {
+		t.Fatalf("GET /office failed: %v", err)
+	}
+	defer resp.Body.Close()
+	var result struct {
+		Width  int `json:"width"`
+		Height int `json:"height"`
+	}
+	json.NewDecoder(resp.Body).Decode(&result)
+	if result.Width != 60 || result.Height != 30 {
+		t.Errorf("Office dimensions = (%d, %d), want (60, 30)", result.Width, result.Height)
+	}
+}
+
+func TestTUI_OfficeSizeSyncLifecycle(t *testing.T) {
+	reg := api.NewSimRegistry()
+	app := NewAppWithRegistry(42, reg.SimRegistry)
+
+	// 1. Before WindowSizeMsg: registry should have defaults (80×24)
+	w, h := reg.OfficeSize()
+	if w != 80 || h != 24 {
+		t.Errorf("Before resize: OfficeSize = (%d, %d), want (80, 24)", w, h)
+	}
+
+	// 2. WindowSizeMsg arrives (Bubble Tea sends this on startup)
+	// NewAppWithRegistry does NOT call syncOfficeToRegistry, so defaults until here.
+	app.Update(tea.WindowSizeMsg{Width: 160, Height: 45})
+	w, _ = reg.OfficeSize()
+	// Planning view (default): 160 * 40/100 = 64
+	if w != 64 {
+		t.Errorf("After resize in planning: width = %d, want 64", w)
+	}
+
+	// 3. Tab to Execution — full width
+	app.Update(tea.KeyMsg{Type: tea.KeyTab})
+	w, _ = reg.OfficeSize()
+	if w != 160 {
+		t.Errorf("After tab to execution: width = %d, want 160", w)
+	}
+
+	// 4. Terminal resize while in Execution
+	app.Update(tea.WindowSizeMsg{Width: 60, Height: 30})
+	w, h = reg.OfficeSize()
+	if w != 60 || h != 30 {
+		t.Errorf("After resize in execution: = (%d, %d), want (60, 30)", w, h)
+	}
+
+	// 5. Tab to Metrics — pass-through width
+	app.Update(tea.KeyMsg{Type: tea.KeyTab})
+	w, _ = reg.OfficeSize()
+	if w != 60 {
+		t.Errorf("After tab to metrics: width = %d, want 60", w)
+	}
+
+	// 6. Tab to Comparison, then back to Planning
+	app.Update(tea.KeyMsg{Type: tea.KeyTab}) // → Comparison
+	app.Update(tea.KeyMsg{Type: tea.KeyTab}) // → Planning
+	w, _ = reg.OfficeSize()
+	// Planning: 60 * 40/100 = 24, clamped to 40
+	if w != 40 {
+		t.Errorf("After tab to planning (narrow): width = %d, want 40", w)
+	}
+
+	// 7. API sees the same dimensions
+	srv := httptest.NewServer(api.NewRouter(reg))
+	defer srv.Close()
+	resp, err := http.Get(srv.URL + "/simulations/sim-42/office")
+	if err != nil {
+		t.Fatalf("GET /office failed: %v", err)
+	}
+	defer resp.Body.Close()
+	var result struct{ Width int `json:"width"` }
+	json.NewDecoder(resp.Body).Decode(&result)
+	if result.Width != 40 {
+		t.Errorf("API width = %d, want 40", result.Width)
+	}
+}
+
+func TestComputeOfficeWidth(t *testing.T) {
+	tests := []struct {
+		name          string
+		view          View
+		terminalWidth int
+		want          int
+	}{
+		{"planning 200px", ViewPlanning, 200, 80},
+		{"planning 80px", ViewPlanning, 80, 40},
+		{"planning 50px", ViewPlanning, 50, 40},
+		{"execution full", ViewExecution, 200, 200},
+		{"execution narrow", ViewExecution, 60, 60},
+		{"metrics passthrough", ViewMetrics, 120, 120},
+		{"comparison passthrough", ViewComparison, 120, 120},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := computeOfficeWidth(tt.view, tt.terminalWidth)
+			if got != tt.want {
+				t.Errorf("computeOfficeWidth(%v, %d) = %d, want %d",
+					tt.view, tt.terminalWidth, got, tt.want)
+			}
+		})
 	}
 }

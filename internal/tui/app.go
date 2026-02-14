@@ -295,6 +295,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		a.width = msg.Width
 		a.height = msg.Height
+		a.syncOfficeToRegistry()
 		return a, nil
 
 	case httpResultMsg:
@@ -421,6 +422,7 @@ func (a *App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "tab":
 		nextView := (a.currentView + 1) % 4
 		a.currentView = nextView
+		a.syncOfficeToRegistry()
 		a.recordInputEvent(ViewSwitched{To: nextView})
 		return a, nil
 
@@ -1199,6 +1201,19 @@ func (a *App) updateDeveloperAnimationStates(sim model.Simulation) {
 	a.syncOfficeToRegistry()
 }
 
+// computeOfficeWidth returns the office panel width for a given view and terminal width.
+// Pure function (Q1 domain): planning=40% (min 40), execution/metrics/comparison=full width.
+func computeOfficeWidth(view View, terminalWidth int) int {
+	if view == ViewPlanning {
+		w := terminalWidth * 40 / 100
+		if w < 40 {
+			return 40
+		}
+		return w
+	}
+	return terminalWidth
+}
+
 // syncOfficeToRegistry updates the registry's SimInstance.Office with current projection.
 // Called after state-changing office events (not AnimationFrameAdvanced).
 func (a *App) syncOfficeToRegistry() {
@@ -1206,6 +1221,7 @@ func (a *App) syncOfficeToRegistry() {
 	if !isEngine || eng.Registry == nil {
 		return // Client mode or no registry
 	}
+	eng.Registry.UpdateOfficeSize(computeOfficeWidth(a.currentView, a.width), a.height)
 	simID := fmt.Sprintf("sim-%d", eng.Engine.Sim().Seed)
 	eng.Registry.UpdateOffice(simID, a.officeProjection)
 }

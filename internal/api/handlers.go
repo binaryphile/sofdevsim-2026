@@ -766,9 +766,8 @@ func (r SimRegistry) HandleGetOffice(w http.ResponseWriter, req *http.Request) {
 	sim := inst.Engine.Sim()
 	state := inst.Office.State()
 
-	// Default dimensions (standard terminal size)
-	width := 80
-	height := 24
+	// Use TUI-synced dimensions (defaults to 80×24 when no TUI connected)
+	width, height := r.OfficeSize()
 
 	// Get developer names
 	names := slice.From(sim.Developers).ToString(model.Developer.GetName)

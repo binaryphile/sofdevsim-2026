@@ -14,10 +14,7 @@ func (a *App) planningView() string {
 	// Office visualization on right (~40% width)
 	// Shows both conference room and cubicle grid
 	names := a.getDeveloperNames()
-	officeWidth := a.width * 40 / 100
-	if officeWidth < 40 {
-		officeWidth = 40
-	}
+	officeWidth := computeOfficeWidth(ViewPlanning, a.width)
 	office := RenderOffice(a.officeProjection.State(), names, officeWidth, a.height)
 
 	// Combine: ticket list left, office right
