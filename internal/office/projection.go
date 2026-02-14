@@ -158,6 +158,8 @@ func applyOfficeEvent(state OfficeState, evt OfficeEvent, now time.Time) OfficeS
 		return state.SetDeveloperState(e.DevID, StateConference)
 	case AnimationFrameAdvanced:
 		return state.AdvanceFrames(now)
+	case DevStartedSip:
+		return state.startDevSip(e.DevID, now)
 	default:
 		return state
 	}

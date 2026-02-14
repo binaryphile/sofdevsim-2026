@@ -221,6 +221,40 @@ func (d DeveloperAnimation) CurrentFrame() int {
 	return (d.Frame + d.FrameOffset) % len(WorkingFrames)
 }
 
+// StartSip initiates sip animation if developer has an accessory.
+// No-op if AccessoryNone.
+func (d DeveloperAnimation) StartSip(now time.Time) DeveloperAnimation {
+	if d.Accessory == AccessoryNone {
+		return d
+	}
+	d.SipPhase = SipPreparing
+	d.SipStartTime = now
+	return d
+}
+
+// AdvanceSip cycles sip animation based on elapsed time.
+// Transitions: Preparing → Drinking → Refreshed → None.
+// No-op if SipPhase is SipNone or insufficient time has elapsed.
+func (d DeveloperAnimation) AdvanceSip(now time.Time) DeveloperAnimation {
+	if d.SipPhase == SipNone {
+		return d
+	}
+	elapsed := now.Sub(d.SipStartTime)
+	if elapsed < SipPhaseDuration {
+		return d
+	}
+	d.SipStartTime = now
+	switch d.SipPhase {
+	case SipPreparing:
+		d.SipPhase = SipDrinking
+	case SipDrinking:
+		d.SipPhase = SipRefreshed
+	case SipRefreshed:
+		d.SipPhase = SipNone
+	}
+	return d
+}
+
 // ShouldBecomeFrustrated returns true if developer should transition to frustrated.
 // Predicate: avoids duplicate DevBecameFrustrated events.
 func (d DeveloperAnimation) ShouldBecomeFrustrated(actualDays, estimatedDays float64) bool {
@@ -351,4 +385,16 @@ func (s OfficeState) AdvanceFrames(now time.Time) OfficeState {
 		}
 	}
 	return OfficeState{Animations: slice.From(s.Animations).Convert(advanceFrame)}
+}
+
+// startDevSip returns a new OfficeState with the developer's sip animation started.
+func (s OfficeState) startDevSip(devID string, now time.Time) OfficeState {
+	// apply starts sip for matching developer, passes others through.
+	apply := func(anim DeveloperAnimation) DeveloperAnimation {
+		if anim.DevID != devID {
+			return anim
+		}
+		return anim.StartSip(now)
+	}
+	return OfficeState{Animations: slice.From(s.Animations).Convert(apply)}
 }

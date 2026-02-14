@@ -53,6 +53,19 @@ func StripANSI(s string) string {
 // Calculation: RenderDeveloperIcon returns the icon for a developer's current state
 // Pure function: DeveloperAnimation → string
 func RenderDeveloperIcon(anim DeveloperAnimation) string {
+	// Handle sip animation (overrides normal face)
+	if anim.SipPhase != SipNone && anim.Accessory != AccessoryNone {
+		switch anim.SipPhase {
+		case SipPreparing:
+			return "😙" + anim.Accessory.Emoji()
+		case SipDrinking:
+			return anim.Accessory.Emoji()
+		case SipRefreshed:
+			return "😌" + anim.Accessory.Emoji()
+		}
+	}
+
+	// Normal rendering
 	var face string
 	switch anim.State {
 	case StateWorking:

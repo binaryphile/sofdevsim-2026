@@ -1803,27 +1803,114 @@ internal/
 
 ## TUI Office Animation
 
-Animated visualization showing developers as colored circles in ASCII cubicles with movement animations, working indicators, and overrun frustration bubbles.
+Animated visualization showing developers as emoji faces in ASCII cubicles with movement animations, working indicators, accessories, and frustration bubbles.
 
 ### Visual Layout
 
+Office floor plan with conference room, hallway, and cubicles. Supports developer movement animations between locations.
+
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│  ┌───────────────────────┐                                      │
-│  │    CONFERENCE ROOM    │    ┌─────┐ ┌─────┐ ┌─────┐          │
-│  │                       │    │ Mei │ │ Amir│ │ Suki│          │
-│  │   ●  ●  ●  ●  ●  ●   │    │  ◑  │ │  ●  │ │  ○  │          │
-│  │                       │    └─────┘ └─────┘ └─────┘          │
-│  └───────────────────────┘    ┌─────┐ ┌─────┐ ┌─────┐          │
-│                               │ Jay │ │Priya│ │ Kofi│          │
-│                               │  ◕  │ │ !@# │ │  ○  │          │
-│                               └─────┘ └─────┘ └─────┘          │
-└─────────────────────────────────────────────────────────────────┘
+Initial state (developers in cubicles, conference empty):
+
+┌───────────────────────────────────────────────────────────────────────────────────┐
+│  ┌─────────────────────┐        ┌───────┐  ┌───────┐  ┌───────┐                   │
+│  │     📊 📈 📉        │        │ Mei   │  │ Amir  │  │ Suki  │                   │
+│  │                     │        │ 🙂 🗑️│  │ 🙂 🗑️│  │ 🙂 🗑️│                   │
+│  │  🪑  🪑  🪑         │        │  🖥️  │  │🖥️ ☕│  │  🖥️  │                   │
+│  │    ╔══════╗         │        └───🚪──┘  └───🚪──┘  └───🚪──┘                   │
+│  │  🪑 ╚══════╝ 🪑     🚪                    HALLWAY                              │
+│  │                     │        ┌───🚪──┐  ┌───🚪──┐  ┌───🚪──┐                   │
+│  └─────────────────────┘        │ Jay   │  │ Priya │  │ Kofi  │                   │
+│                                 │ 🙂 🗑️│  │ 🙂 🗑️│  │ 🙂 🗑️│                   │
+│                                 │🖥️ 🥤│  │  🖥️  │  │  🖥️  │                   │
+│                                 └───────┘  └───────┘  └───────┘                   │
+└───────────────────────────────────────────────────────────────────────────────────┘
+
+During planning (developers gathered in conference room, 3x2 layout):
+
+┌───────────────────────────────────────────────────────────────────────────────────┐
+│  ┌─────────────────────┐        ┌───────┐  ┌───────┐  ┌───────┐                   │
+│  │     📊 📈 📉        │        │ Mei   │  │ Amir  │  │ Suki  │                   │
+│  │                     │        │    🗑️│  │    🗑️│  │    🗑️│                   │
+│  │  🙂  🙂☕ 🙂         │        │  🖥️  │  │  🖥️  │  │  🖥️  │                   │
+│  │    ╔══════╗         │        └───🚪──┘  └───🚪──┘  └───🚪──┘                   │
+│  │ 🙂🥤╚══════╝ 🙂  🙂  🚪                    HALLWAY                              │
+│  │                     │        ┌───🚪──┐  ┌───🚪──┐  ┌───🚪──┐                   │
+│  └─────────────────────┘        │ Jay   │  │ Priya │  │ Kofi  │                   │
+│                                 │    🗑️│  │    🗑️│  │    🗑️│                   │
+│                                 │  🖥️  │  │  🖥️  │  │  🖥️  │                   │
+│                                 └───────┘  └───────┘  └───────┘                   │
+└───────────────────────────────────────────────────────────────────────────────────┘
+
+During work (developers in cubicles, some frustrated):
+
+┌───────────────────────────────────────────────────────────────────────────────────┐
+│  ┌─────────────────────┐        ┌───────┐  ┌───────┐  ┌───────┐                   │
+│  │     📊 📈 📉        │        │ Mei   │  │ Amir  │  │ Suki  │                   │
+│  │                     │        │ 😊 🗑️│  │ 😄 🗑️│  │ 😁 🗑️│                   │
+│  │  🪑  🪑  🪑         │        │  🖥️  │  │🖥️ ☕│  │  🖥️  │                   │
+│  │    ╔══════╗         │        └───🚪──┘  └───🚪──┘  └───🚪──┘                   │
+│  │  🪑 ╚══════╝ 🪑     🚪        ┌──────┐    HALLWAY                              │
+│  │                     │        │Late! │                                          │
+│  └─────────────────────┘        └──┬───┘                                          │
+│                                 ┌───🚪──┐  ┌───🚪──┐  ┌───🚪──┐                   │
+│                                 │ Jay   │  │ Priya │  │ Kofi  │                   │
+│                                 │ 😤 🗑️│  │ 😄 🗑️│  │ 🙂 🗑️│                   │
+│                                 │🖥️ 🥤│  │  🖥️  │  │  🖥️  │                   │
+│                                 └───────┘  └───────┘  └───────┘                   │
+└───────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-**Dynamic layout:** Cubicles arranged in 2 rows × 3 columns (for 6 developers). Fewer developers use subset of positions. Conference room size adjusts to team size.
+**Layout elements:**
+- **Conference room**: 📊📈📉 charts, ╔══╗ table, 🪑 chairs (3×2 seating), 🚪 door
+- **Cubicles**: 🖥️ desk, 🗑️ trash can, 🚪 door - arranged in 2 rows × 3 columns
+- **Hallway**: Central open space between cubicle rows, connecting to conference room
+- **Doors**: 🚪 emoji for all doorways
+- **Room sizes are constant**: Conference room and cubicles never resize during simulation
+- **Accessories**: ☕ and 🥤 sit on desk when in cubicle, carried beside developer when walking/in conference
+- **Speech bubbles**: ASCII art (┌──┐│ │└┬─┘) for "Late!" and other callouts
 
-**Minimum terminal width:** 70 characters (warn if narrower).
+**Fixed layout:** Room sizes are constant throughout simulation. Conference room always has 3×2 seating positions. Fewer developers use subset of positions (empty seats shown as 🪑).
+
+**Minimum terminal width:** 80 characters (warn if narrower).
+
+### Developer Accessories
+
+Two developers carry beverages that persist throughout the simulation:
+
+| Developer Index | Accessory | Emoji | Notes |
+|-----------------|-----------|-------|-------|
+| 1 (Amir) | Coffee | ☕ | Displayed next to face |
+| 3 (Jay) | Soda | 🥤 | Displayed next to face |
+
+Accessories render adjacent to the developer's face icon in their cubicle.
+
+**Sip coordination:** Each developer with an accessory has an independent sip timer. If both want to sip simultaneously, both animate - this is acceptable since sip animations are brief and infrequent.
+
+### Drink Sip Animation
+
+While in the conference room waiting for ticket assignments, developers with beverages occasionally take sips:
+
+```
+Normal:     🙂☕     (neutral face with drink beside)
+Preparing:  😙☕     (kissy/puckered lips - about to sip)
+Sipping:     ☕      (drink emoji only - face hidden by drink)
+Refreshed:  😌☕     (relieved "ahh" face - brief)
+Normal:     🙂☕     (returns to neutral)
+```
+
+**Animation timing:**
+- Normal → Preparing: random interval (3-8 seconds between sips)
+- Preparing → Sipping: 200ms
+- Sipping → Refreshed: 300ms
+- Refreshed → Normal: 400ms
+
+**When sipping occurs:**
+- In conference room: frequently while waiting for assignments
+- In cubicle: occasionally during work (less frequent, ~30 second intervals)
+- While walking: never (hands busy moving)
+
+**Event sourcing scope:** Sip *triggering* is event-sourced (`DevStartedSip`) for debuggability. Phase transitions (Preparing→Drinking→Refreshed→None) remain timer-driven ephemeral state. The `SipPhase` and `SipStartTime` fields live in `DeveloperAnimation`.
 
 ### Coordinate System
 
@@ -1841,10 +1928,29 @@ func CubicleLayout(n int) []Position {
     // Row 2: positions 3, 4, 5
 }
 
-// Calculation: ConferencePosition returns center position in conference room
+// Calculation: ConferencePosition returns position in conference room
 // Pure function: (int, int) → Position
 func ConferencePosition(devIndex, total int) Position {
     // Evenly spaced along horizontal center of conference room
+}
+
+// Calculation: HallwayWaypoints returns path from cubicle to conference room
+// Pure function: (Position, Position) → []Position
+func HallwayWaypoints(cubicle, conference Position) []Position {
+    // Returns intermediate positions for smooth path:
+    // 1. Exit cubicle (move to hallway Y-level)
+    // 2. Walk along hallway (horizontal movement)
+    // 3. Enter conference room door
+    // Movement interpolates between waypoints
+}
+
+// Calculation: Lerp interpolates between positions
+// Pure function: (Position, Position, float64) → Position
+func Lerp(from, to Position, t float64) Position {
+    return Position{
+        X: from.X + int(float64(to.X-from.X)*t),
+        Y: from.Y + int(float64(to.Y-from.Y)*t),
+    }
 }
 ```
 
@@ -1883,38 +1989,111 @@ var DefaultDeveloperNames = []string{
 **Working animation** (cycles every 200ms):
 
 ```go
-var WorkingFrames = []string{"○", "◔", "◑", "◕", "●"}
-// ASCII fallback: {"O", "o", ".", "o", "O"}
+var WorkingFrames = []string{"😊", "😄", "😁", "🙂", "😀"}
+// Happy/silly faces for on-schedule work
 ```
 
-**Idle state:** `○` (empty circle)
+**Idle state:** `🙂` (neutral face)
 
-**Frustration bubble** (when ActualDays > EstimatedDays):
+**Frustrated animation** (when ActualDays > EstimatedDays):
 
-```
-┌───┐
-│!@#│  ← cycles through: !@#, $%^, &*!, #$%
-└─┬─┘
-  ●    ← developer icon in developer's color
+```go
+var FrustratedFrames = []string{"😤", "😠", "😡", "😩", "😖"}
+// Steam, angry, weary for over-estimate work
 ```
 
-Bubble appears above developer, text in developer's color.
+**"Late!" transition bubble**: When transitioning to frustrated state, a "Late!" thought bubble appears above the developer for ~1 second (10 animation frames), then disappears. This draws attention to the transition without permanent clutter.
+
+```
+┌──────┐
+│Late! │
+└──┬───┘
+   😤
+```
+
+**Ticket completion:** `😎` (shades) - shown momentarily when developer completes a ticket (future implementation).
+
+### Staggered Face Animation
+
+To avoid a visually overwhelming "synchronized swimming" effect:
+
+**Rule:** Only ONE developer's face changes per animation tick. Other developers hold their current frame.
+
+```go
+// Data: StaggeredAnimator tracks which developer animates next (value type)
+type StaggeredAnimator struct {
+    LastChangedIndex int  // Which developer changed last tick
+    TicksSinceChange int  // Counter for occasional pauses
+}
+
+// Calculation: NextToAnimate returns new state and which dev to animate
+// Pure function: (StaggeredAnimator, int, bool) → (StaggeredAnimator, int, bool)
+func (s StaggeredAnimator) NextToAnimate(devCount int, shouldPause bool) (StaggeredAnimator, int, bool) {
+    // Occasional pause: ~20% of ticks skip all face changes
+    // shouldPause is passed in from caller (rand.Float64() < 0.2) for testability
+    if shouldPause {
+        return StaggeredAnimator{
+            LastChangedIndex: s.LastChangedIndex,
+            TicksSinceChange: s.TicksSinceChange + 1,
+        }, -1, false
+    }
+
+    // Round-robin through developers
+    nextIndex := (s.LastChangedIndex + 1) % devCount
+    return StaggeredAnimator{
+        LastChangedIndex: nextIndex,
+        TicksSinceChange: 0,
+    }, nextIndex, true
+}
+```
+
+**Visual effect:**
+- Faces change in sequence, not simultaneously
+- Work continues visually without manic energy
+- Occasional pauses (~20% of ticks) feel natural
+- Movement animations (walking) are not staggered - all moving devs interpolate together
+
+**Randomness injection:** The `shouldPause` parameter is passed in by the caller (TUI layer), keeping the calculation pure and testable. The TUI calls `rand.Float64() < 0.2` and passes the result.
 
 ### State Machine
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Idle: App start
-    Idle --> Conference: Planning view entered
-    Conference --> Moving: Ticket assigned
-    Moving --> Working: Arrived at cubicle
-    Working --> Working: Tick (still working)
-    Working --> Frustrated: ActualDays > EstimatedDays
+    [*] --> Idle: App start (in cubicle)
+    Idle --> MovingToConference: Sprint planning begins
+    MovingToConference --> Conference: Arrived at conference room
+    Conference --> Conference: Waiting for assignment (sip animation)
+    Conference --> MovingToCubicle: Ticket assigned
+    MovingToCubicle --> Working: Arrived at cubicle
+    Working --> Working: Tick (still working, staggered face change)
+    Working --> Frustrated: ActualDays > EstimatedDays (shows "Late!" bubble)
     Frustrated --> Frustrated: Tick (still overrun)
     Working --> Idle: Ticket completed
     Frustrated --> Idle: Ticket completed
-    Idle --> Conference: Sprint ends
+    Idle --> MovingToConference: Next sprint begins
 ```
+
+**Movement states:** Separate states for walking to conference vs. walking to cubicle, enabling different animation behaviors (e.g., sip animation only happens in Conference state, not while walking).
+
+**Migration note:** Existing `StateMoving` will be replaced with `StateMovingToConference` and `StateMovingToCubicle`. During implementation, update all `StateMoving` references and add direction-aware target handling.
+
+**New events for directional movement:**
+
+```go
+// DevStartedMovingToConference records when a dev begins walking to conference
+type DevStartedMovingToConference struct {
+    DevID string
+}
+
+// DevStartedMovingToCubicle records when a dev begins walking to cubicle (after assignment)
+type DevStartedMovingToCubicle struct {
+    DevID    string
+    TicketID string
+    Target   Position
+}
+```
+
+These replace the existing `DevAssignedToTicket` movement trigger, providing explicit direction.
 
 ```go
 // Data: AnimationState enum
@@ -1923,25 +2102,53 @@ type AnimationState int
 const (
     StateIdle AnimationState = iota
     StateConference
-    StateMoving
+    StateMovingToConference  // Walking from cubicle to conference room
+    StateMovingToCubicle     // Walking from conference to cubicle (after assignment)
     StateWorking
     StateFrustrated
 )
 
+// Data: Accessory represents a developer's carried item
+type Accessory int
+
+const (
+    AccessoryNone Accessory = iota
+    AccessoryCoffee  // ☕
+    AccessorySoda    // 🥤
+)
+
+// Data: SipPhase tracks drink animation state
+type SipPhase int
+
+const (
+    SipNone SipPhase = iota
+    SipPreparing   // 😙 kissy lips
+    SipDrinking    // drink emoji only
+    SipRefreshed   // 😌 relieved face
+)
+
 // Data: DeveloperAnimation is a value type (use value receivers)
 type DeveloperAnimation struct {
-    DevID       string
-    State       AnimationState
-    Position    Position       // Current screen position
-    Target      Position       // Destination (for Moving state)
-    Frame       int            // Current animation frame
-    ColorIndex  int            // 0-5 for palette lookup
+    DevID            string
+    State            AnimationState
+    Position         Position       // Current screen position
+    Target           Position       // Destination (for Moving states)
+    Frame            int            // Current animation frame
+    ColorIndex       int            // 0-5 for palette lookup
+    Progress         float64        // 0.0-1.0 for movement interpolation
+    FrameOffset      int            // Offset for visual variety
+    LateBubbleFrames int            // Countdown for "Late!" bubble (0 = hidden)
+    Accessory        Accessory      // Coffee, soda, or none
+    SipPhase         SipPhase       // Current drink sip animation phase
+    SipCountdown     int            // Frames until next sip phase change
 }
 
 // Value receiver methods for state transitions (return new value)
 func (d DeveloperAnimation) WithState(s AnimationState) DeveloperAnimation
 func (d DeveloperAnimation) WithPosition(p Position) DeveloperAnimation
 func (d DeveloperAnimation) NextFrame() DeveloperAnimation
+func (d DeveloperAnimation) BecomeFrustrated() DeveloperAnimation  // Sets LateBubbleFrames
+func (d DeveloperAnimation) AdvanceSip() DeveloperAnimation        // Cycles sip animation
 ```
 
 ### Dual Timer Architecture

@@ -75,6 +75,35 @@ func TestRenderDeveloperIcon_WithAccessory(t *testing.T) {
 	}
 }
 
+func TestRenderDeveloperIcon_SipPhases(t *testing.T) {
+	tests := []struct {
+		name      string
+		sipPhase  SipPhase
+		accessory Accessory
+		want      string
+	}{
+		{"preparing coffee", SipPreparing, AccessoryCoffee, "😙☕"},
+		{"drinking coffee", SipDrinking, AccessoryCoffee, "☕"},
+		{"refreshed coffee", SipRefreshed, AccessoryCoffee, "😌☕"},
+		{"preparing soda", SipPreparing, AccessorySoda, "😙🥤"},
+		{"drinking soda", SipDrinking, AccessorySoda, "🥤"},
+		{"refreshed soda", SipRefreshed, AccessorySoda, "😌🥤"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			anim := DeveloperAnimation{
+				State:     StateConference,
+				Accessory: tt.accessory,
+				SipPhase:  tt.sipPhase,
+			}
+			got := RenderDeveloperIcon(anim)
+			if got != tt.want {
+				t.Errorf("RenderDeveloperIcon() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestRenderCubicleCompact_IdleState(t *testing.T) {
 	anim := NewDeveloperAnimation("dev-1", 0) // Starts idle
 

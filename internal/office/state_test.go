@@ -212,3 +212,64 @@ func TestStartMovingToConference(t *testing.T) {
 		t.Errorf("MovementStart = %v, want %v", d.MovementStart, start)
 	}
 }
+
+func TestStartSip(t *testing.T) {
+	now := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	anim := DeveloperAnimation{Accessory: AccessoryCoffee}
+	anim = anim.StartSip(now)
+
+	if anim.SipPhase != SipPreparing {
+		t.Errorf("SipPhase = %v, want SipPreparing", anim.SipPhase)
+	}
+	if anim.SipStartTime != now {
+		t.Errorf("SipStartTime = %v, want %v", anim.SipStartTime, now)
+	}
+}
+
+func TestStartSip_NoAccessory(t *testing.T) {
+	now := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	anim := DeveloperAnimation{Accessory: AccessoryNone}
+	anim = anim.StartSip(now)
+	if anim.SipPhase != SipNone {
+		t.Errorf("SipPhase = %v, want SipNone (no accessory)", anim.SipPhase)
+	}
+}
+
+func TestAdvanceSip_FullCycle(t *testing.T) {
+	start := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	anim := DeveloperAnimation{
+		Accessory:    AccessoryCoffee,
+		SipPhase:     SipPreparing,
+		SipStartTime: start,
+	}
+
+	// Preparing → Drinking
+	now := start.Add(SipPhaseDuration + time.Millisecond)
+	anim = anim.AdvanceSip(now)
+	if anim.SipPhase != SipDrinking {
+		t.Errorf("after 1st advance: SipPhase = %v, want SipDrinking", anim.SipPhase)
+	}
+
+	// Drinking → Refreshed
+	now = now.Add(SipPhaseDuration + time.Millisecond)
+	anim = anim.AdvanceSip(now)
+	if anim.SipPhase != SipRefreshed {
+		t.Errorf("after 2nd advance: SipPhase = %v, want SipRefreshed", anim.SipPhase)
+	}
+
+	// Refreshed → None
+	now = now.Add(SipPhaseDuration + time.Millisecond)
+	anim = anim.AdvanceSip(now)
+	if anim.SipPhase != SipNone {
+		t.Errorf("after 3rd advance: SipPhase = %v, want SipNone", anim.SipPhase)
+	}
+}
+
+func TestAdvanceSip_NoOpWhenNone(t *testing.T) {
+	now := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	anim := DeveloperAnimation{SipPhase: SipNone}
+	anim = anim.AdvanceSip(now)
+	if anim.SipPhase != SipNone {
+		t.Errorf("SipPhase = %v, want SipNone (no-op)", anim.SipPhase)
+	}
+}

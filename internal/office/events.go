@@ -50,3 +50,10 @@ func (DevEnteredConference) officeEvent() {}
 type AnimationFrameAdvanced struct{}
 
 func (AnimationFrameAdvanced) officeEvent() {}
+
+// DevStartedSip: developer began sip animation (has accessory, in valid state).
+type DevStartedSip struct {
+	DevID string
+}
+
+func (DevStartedSip) officeEvent() {}
