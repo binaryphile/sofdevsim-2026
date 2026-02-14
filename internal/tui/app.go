@@ -99,8 +99,14 @@ type App struct {
 	// Office visualization state (event-sourced projection)
 	officeProjection OfficeProjection
 
+	// Staggered animation state (TUI-local, not projection state)
+	staggeredAnimator StaggeredAnimator
+
 	// Clock for time injection (defaults to time.Now, injectable for tests)
 	clock func() time.Time
+
+	// Randomness injection (defaults to rand.Float64, injectable for tests)
+	randFloat func() float64
 }
 
 // tickMsg is sent on each simulation tick (legacy engine mode)
@@ -209,15 +215,17 @@ func NewAppWithRegistry(seed int64, reg *registry.SimRegistry) *App {
 	}
 
 	return &App{
-		mode:             either.Left[EngineMode, ClientMode](engineMode),
-		currentView:      ViewPlanning,
-		paused:           true,
-		speed:            1,
-		modelEvents:      make([]model.Event, 0),
-		tickInterval:     500 * time.Millisecond,
-		uiProjection:     NewUIProjection(),
-		officeProjection: officeProjection,
-		clock:            time.Now,
+		mode:              either.Left[EngineMode, ClientMode](engineMode),
+		currentView:       ViewPlanning,
+		paused:            true,
+		speed:             1,
+		modelEvents:       make([]model.Event, 0),
+		tickInterval:      500 * time.Millisecond,
+		uiProjection:      NewUIProjection(),
+		officeProjection:  officeProjection,
+		staggeredAnimator: StaggeredAnimator{LastChangedIndex: -1},
+		clock:             time.Now,
+		randFloat:         rand.Float64,
 	}
 }
 
@@ -237,16 +245,18 @@ func NewAppWithClient(client Client, initialState SimulationState) *App {
 	officeProjection := NewOfficeProjection(devIDs)
 
 	return &App{
-		mode:             either.Right[EngineMode](clientMode),
-		state:            initialState,
-		currentView:      ViewPlanning,
-		paused:           true,
-		speed:            1,
-		modelEvents:      make([]model.Event, 0),
-		tickInterval:     500 * time.Millisecond,
-		uiProjection:     NewUIProjection(),
-		officeProjection: officeProjection,
-		clock:            time.Now,
+		mode:              either.Right[EngineMode](clientMode),
+		state:             initialState,
+		currentView:       ViewPlanning,
+		paused:            true,
+		speed:             1,
+		modelEvents:       make([]model.Event, 0),
+		tickInterval:      500 * time.Millisecond,
+		uiProjection:      NewUIProjection(),
+		officeProjection:  officeProjection,
+		staggeredAnimator: StaggeredAnimator{LastChangedIndex: -1},
+		clock:             time.Now,
+		randFloat:         rand.Float64,
 	}
 }
 
@@ -356,7 +366,14 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case animationTickMsg:
 		// Animation frame update for office visualization
-		a.officeProjection = a.officeProjection.Record(AnimationFrameAdvanced{}, a.state.CurrentTick, a.clock())
+		// Use staggered animator to pick which dev's face advances
+		devCount := len(a.officeProjection.State().Animations)
+		shouldPause := a.randFloat() < 0.2
+		var devIdx int
+		a.staggeredAnimator, devIdx, _ = a.staggeredAnimator.NextToAnimate(devCount, shouldPause)
+		a.officeProjection = a.officeProjection.Record(
+			AnimationFrameAdvanced{DevIdxToAdvance: devIdx},
+			a.state.CurrentTick, a.clock())
 		return a, a.animationTickCmd()
 
 	case tickMsg:

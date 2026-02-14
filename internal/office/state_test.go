@@ -5,6 +5,9 @@ import (
 	"time"
 )
 
+// testTime is a fixed time for deterministic tests.
+var testTime = time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+
 func TestShouldBecomeFrustrated(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -271,5 +274,70 @@ func TestAdvanceSip_NoOpWhenNone(t *testing.T) {
 	anim = anim.AdvanceSip(now)
 	if anim.SipPhase != SipNone {
 		t.Errorf("SipPhase = %v, want SipNone (no-op)", anim.SipPhase)
+	}
+}
+
+// Cycle 1: AdvanceFrames with devIdxToAdvance parameter
+func TestAdvanceFrames_StaggeredSingleDev(t *testing.T) {
+	state := NewOfficeState([]string{"dev-0", "dev-1", "dev-2"})
+	state = state.SetDeveloperState("dev-0", StateWorking)
+	state = state.SetDeveloperState("dev-1", StateWorking)
+	state = state.SetDeveloperState("dev-2", StateWorking)
+
+	state = state.AdvanceFrames(testTime, 1)
+
+	if state.Animations[0].Frame != 0 {
+		t.Error("dev-0 should not advance")
+	}
+	if state.Animations[1].Frame != 1 {
+		t.Error("dev-1 should advance")
+	}
+	if state.Animations[2].Frame != 0 {
+		t.Error("dev-2 should not advance")
+	}
+}
+
+// Cycle 2: Pause (devIdx=-1) means no faces advance
+func TestAdvanceFrames_PauseNoFaces(t *testing.T) {
+	state := NewOfficeState([]string{"dev-0", "dev-1"})
+	state = state.SetDeveloperState("dev-0", StateWorking)
+	state = state.SetDeveloperState("dev-1", StateWorking)
+
+	state = state.AdvanceFrames(testTime, -1)
+
+	if state.Animations[0].Frame != 0 {
+		t.Error("dev-0 should not advance during pause")
+	}
+	if state.Animations[1].Frame != 0 {
+		t.Error("dev-1 should not advance during pause")
+	}
+}
+
+// Cycle 3: Movement still advances even during pause
+func TestAdvanceFrames_MovementStillAdvances(t *testing.T) {
+	state := NewOfficeState([]string{"dev-0"})
+	state = state.StartDeveloperMovingToCubicle("dev-0", Position{50, 2}, testTime)
+
+	// Advance past MovementDuration with pause (-1)
+	state = state.AdvanceFrames(testTime.Add(600*time.Millisecond), -1)
+
+	if state.Animations[0].State != StateWorking {
+		t.Errorf("State = %v, want StateWorking (should arrive even during pause)", state.Animations[0].State)
+	}
+}
+
+// Cycle 4: LateBubbleFrames decrements for ALL devs, not just staggered one
+func TestAdvanceFrames_LateBubbleDecrementsForAll(t *testing.T) {
+	state := NewOfficeState([]string{"dev-0", "dev-1"})
+	// SetDeveloperState calls BecomeFrustrated for StateFrustrated, setting LateBubbleFrames=10
+	state = state.SetDeveloperState("dev-0", StateFrustrated)
+	state = state.SetDeveloperState("dev-1", StateFrustrated)
+
+	// Only dev-0 face advances, but both should decrement LateBubbleFrames
+	state = state.AdvanceFrames(testTime, 0)
+
+	anim1 := state.GetAnimationOption("dev-1").OrZero()
+	if anim1.LateBubbleFrames != 9 {
+		t.Errorf("dev-1 LateBubbleFrames = %d, want 9 (should decrement even though face didn't advance)", anim1.LateBubbleFrames)
 	}
 }

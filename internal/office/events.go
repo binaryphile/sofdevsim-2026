@@ -47,7 +47,11 @@ type DevEnteredConference struct {
 func (DevEnteredConference) officeEvent() {}
 
 // AnimationFrameAdvanced: 100ms tick for animation frame updates.
-type AnimationFrameAdvanced struct{}
+// DevIdxToAdvance specifies which developer's face advances this tick.
+// -1 = pause (no faces advance), >=0 = that developer index only.
+type AnimationFrameAdvanced struct {
+	DevIdxToAdvance int
+}
 
 func (AnimationFrameAdvanced) officeEvent() {}
 

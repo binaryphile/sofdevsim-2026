@@ -438,10 +438,10 @@ func TestOfficeState_AdvanceFrames(t *testing.T) {
 	// Set one dev to Working
 	state = state.SetDeveloperState("dev-1", StateWorking)
 
-	// Advance frames
-	state = state.AdvanceFrames(testTime)
+	// Advance frames (devIdx 0 = dev-1 since it's the only working dev we care about)
+	state = state.AdvanceFrames(testTime, 0)
 
-	// Working dev should advance
+	// Working dev should advance (dev-1 is at index 0)
 	anim1 := state.GetAnimationOption("dev-1").OrZero()
 	if anim1.Frame != 1 {
 		t.Errorf("Working dev frame = %d, want 1", anim1.Frame)
@@ -467,6 +467,48 @@ func TestRenderOffice_MinWidth(t *testing.T) {
 	// Should indicate terminal is too narrow
 	if !containsSubstring(output, "narrow") {
 		t.Errorf("RenderOffice with narrow width should mention 'narrow', got: %q", output)
+	}
+}
+
+// Cycle 5: randFloat injection in TUI
+func TestAnimationTick_UsesInjectedRandFloat(t *testing.T) {
+	// Test 1: randFloat returns 0.0 (< 0.2) → shouldPause=true → devIdx=-1
+	app := &App{
+		officeProjection:  NewOfficeProjection([]string{"dev-0", "dev-1"}),
+		staggeredAnimator: StaggeredAnimator{LastChangedIndex: -1},
+		randFloat:         func() float64 { return 0.0 }, // < 0.2 = pause
+		clock:             func() time.Time { return testTime },
+		state:             SimulationState{CurrentTick: 1},
+	}
+
+	msg := animationTickMsg{}
+	newModel, _ := app.Update(msg)
+	newApp := newModel.(*App)
+
+	events := newApp.officeProjection.Events()
+	lastEvent := events[len(events)-1].(AnimationFrameAdvanced)
+
+	if lastEvent.DevIdxToAdvance != -1 {
+		t.Errorf("DevIdxToAdvance = %d, want -1 (pause when randFloat < 0.2)", lastEvent.DevIdxToAdvance)
+	}
+
+	// Test 2: randFloat returns 0.5 (>= 0.2) → shouldPause=false → devIdx=0 (round robin from -1)
+	app2 := &App{
+		officeProjection:  NewOfficeProjection([]string{"dev-0", "dev-1"}),
+		staggeredAnimator: StaggeredAnimator{LastChangedIndex: -1},
+		randFloat:         func() float64 { return 0.5 }, // >= 0.2 = no pause
+		clock:             func() time.Time { return testTime },
+		state:             SimulationState{CurrentTick: 1},
+	}
+
+	newModel2, _ := app2.Update(msg)
+	newApp2 := newModel2.(*App)
+
+	events2 := newApp2.officeProjection.Events()
+	lastEvent2 := events2[len(events2)-1].(AnimationFrameAdvanced)
+
+	if lastEvent2.DevIdxToAdvance != 0 {
+		t.Errorf("DevIdxToAdvance = %d, want 0 (no pause, round robin from -1)", lastEvent2.DevIdxToAdvance)
 	}
 }
 

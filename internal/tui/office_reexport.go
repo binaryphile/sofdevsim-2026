@@ -11,6 +11,7 @@ type Position = office.Position
 type AnimationState = office.AnimationState
 type DeveloperAnimation = office.DeveloperAnimation
 type OfficeState = office.OfficeState
+type StaggeredAnimator = office.StaggeredAnimator
 
 // Type aliases for events
 type OfficeEvent = office.OfficeEvent

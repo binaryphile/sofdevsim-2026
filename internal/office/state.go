@@ -370,21 +370,31 @@ func (s OfficeState) StartDeveloperMovingToConference(devID string, target Posit
 	return OfficeState{Animations: slice.From(s.Animations).Convert(startMoving)}
 }
 
-// AdvanceFrames advances animation frames for all working/frustrated developers
-// and interpolates movement for moving developers.
-func (s OfficeState) AdvanceFrames(now time.Time) OfficeState {
-	// advanceFrame advances animation based on current state.
-	advanceFrame := func(anim DeveloperAnimation) DeveloperAnimation {
+// AdvanceFrames advances animation for developers.
+// devIdxToAdvance: -1 = pause (no faces advance), >=0 = only that dev's face advances.
+// Movement interpolation always advances for all moving devs regardless of devIdxToAdvance.
+// LateBubbleFrames decrements for ALL working/frustrated devs (not just staggered one).
+func (s OfficeState) AdvanceFrames(now time.Time, devIdxToAdvance int) OfficeState {
+	anims := make([]DeveloperAnimation, len(s.Animations))
+	for i, anim := range s.Animations {
 		switch anim.State {
 		case StateWorking, StateFrustrated:
-			return anim.NextFrame()
+			if i == devIdxToAdvance {
+				anims[i] = anim.NextFrame()
+			} else {
+				// Still decrement LateBubbleFrames for non-staggered devs
+				if anim.LateBubbleFrames > 0 {
+					anim.LateBubbleFrames--
+				}
+				anims[i] = anim
+			}
 		case StateMovingToConference, StateMovingToCubicle:
-			return anim.AdvanceMovement(now)
+			anims[i] = anim.AdvanceMovement(now)
 		default:
-			return anim
+			anims[i] = anim
 		}
 	}
-	return OfficeState{Animations: slice.From(s.Animations).Convert(advanceFrame)}
+	return OfficeState{Animations: anims}
 }
 
 // startDevSip returns a new OfficeState with the developer's sip animation started.

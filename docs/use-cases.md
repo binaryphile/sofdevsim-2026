@@ -1119,7 +1119,7 @@ This use case requires event sourcing architecture:
 
 **Primary Actor:** Simulation Operator
 
-**Goal in Context:** See developers gathered in conference room during planning phase, providing visual confirmation of simulation state.
+**Goal in Context:** See developers walk from cubicles to conference room for planning, then wait with idle animations while assignments are made.
 
 **Scope:** Software Development Simulation
 
@@ -1128,24 +1128,27 @@ This use case requires event sourcing architecture:
 **Preconditions:**
 
 - TUI is running
-- No sprint is active
+- Sprint planning begins (or simulation starts)
 
 **Postconditions (Guarantees):**
 
-- *Success:* All developers displayed in conference room with unique colors
+- *Success:* All developers displayed in conference room with neutral faces, accessories visible
 
-**Trigger:** Observer views any screen while no sprint is active
+**Trigger:** Sprint planning phase begins
 
 **Main Success Scenario:**
 
-1. Operator views TUI while no sprint is active
-2. System renders ASCII office layout with cubicles and conference room
-3. System positions all developer icons inside conference room
-4. System displays each developer with assigned color and name label
+1. Sprint planning begins
+2. Developers walk from cubicles to conference room
+3. Developers gather around table with neutral expressions
+4. Developers with drinks occasionally take sips while waiting
+5. Each developer displays with unique color and name
 
 **Extensions:**
 
-- 2a. *Sprint becomes active:* System transitions developers to movement state (UC28)
+- 2a. *Some developers already in conference:* Only remaining developers walk
+- 4a. *Sip animation:* Developer briefly drinks, then returns to neutral expression
+- 5a. *Ticket assigned:* Developer leaves for cubicle (UC28)
 
 ---
 
@@ -1153,7 +1156,7 @@ This use case requires event sourcing architecture:
 
 **Primary Actor:** Simulation Operator
 
-**Goal in Context:** See developer animate from conference room to their cubicle when assigned a ticket.
+**Goal in Context:** See developer animate from conference room back to their cubicle when assigned a ticket.
 
 **Scope:** Software Development Simulation
 
@@ -1162,25 +1165,25 @@ This use case requires event sourcing architecture:
 **Preconditions:**
 
 - TUI is running in engine mode
-- Developer was in conference room
+- Developer is in conference room
 
 **Postconditions (Guarantees):**
 
-- *Success:* Developer icon smoothly moves to cubicle, working animation begins
+- *Success:* Developer icon smoothly moves through hallway to cubicle, working animation begins
 
 **Trigger:** Operator assigns ticket to developer
 
 **Main Success Scenario:**
 
 1. Operator assigns ticket to developer
-2. System sets developer's target position to their cubicle
-3. System animates developer icon moving from conference room to cubicle
-4. Developer arrives at cubicle
-5. System transitions to working animation (UC29)
+2. Developer leaves conference room
+3. Developer walks through hallway to their cubicle
+4. Developer arrives at cubicle and begins working (UC29)
 
 **Extensions:**
 
-- 1a. *HTTP client mode:* System shows developer in cubicle immediately (no movement animation)
+- 1a. *HTTP client mode:* Developer appears in cubicle immediately
+- 2a. *Developer was drinking:* Developer finishes sip before leaving
 
 ---
 
@@ -1188,7 +1191,7 @@ This use case requires event sourcing architecture:
 
 **Primary Actor:** Simulation Operator
 
-**Goal in Context:** See visual indication that developer is actively working via pulsing icon animation.
+**Goal in Context:** See visual indication that developer is actively working via animated expressions.
 
 **Scope:** Software Development Simulation
 
@@ -1202,21 +1205,20 @@ This use case requires event sourcing architecture:
 
 **Postconditions (Guarantees):**
 
-- *Success:* Developer icon cycles through animation frames continuously
+- *Success:* Developer face cycles through happy emoji frames in staggered fashion
 
 **Trigger:** Developer is in cubicle with assigned ticket
 
 **Main Success Scenario:**
 
-1. System detects developer is working
-2. System starts animation timer (100ms per frame)
-3. System cycles developer icon through frames: ○ → ◔ → ◑ → ◕ → ● → ◕ → ◑ → ◔
-4. Animation continues until work state changes
+1. Developer is at cubicle with assigned ticket
+2. Developer's face animates through happy expressions
+3. Animation continues until work state changes
 
 **Extensions:**
 
-- 3a. *ASCII-only terminal:* System uses fallback frames: O → o → . → o → O
-- 4a. *Ticket overruns estimate:* System triggers UC30 alongside working animation
+- 2a. *Ticket overruns estimate:* Developer becomes frustrated (UC30)
+- 2b. *Developer has drink:* Occasionally takes a sip
 
 ---
 
@@ -1224,7 +1226,7 @@ This use case requires event sourcing architecture:
 
 **Primary Actor:** Simulation Operator
 
-**Goal in Context:** See humorous visual indicator when developer has been working longer than estimated.
+**Goal in Context:** See visual indicator when developer has been working longer than estimated, including a brief "Late!" bubble at transition.
 
 **Scope:** Software Development Simulation
 
@@ -1237,21 +1239,20 @@ This use case requires event sourcing architecture:
 
 **Postconditions (Guarantees):**
 
-- *Success:* Thought bubble with expletive symbols appears next to developer in their color
+- *Success:* Developer's face changes to frustrated emoji animation; "Late!" bubble appears briefly
 
 **Trigger:** Simulation tick causes ActualDays to exceed EstimatedDays
 
 **Main Success Scenario:**
 
-1. System detects ActualDays > EstimatedDays
-2. System enables frustration indicator for developer
-3. System renders thought bubble adjacent to developer icon
-4. System cycles thought bubble content: "!" → "@#" → "!@#$" → "@#" → "!"
-5. Thought bubble uses developer's assigned color
+1. Developer exceeds ticket estimate
+2. "Late!" speech bubble appears briefly above developer
+3. Developer's expression changes to frustrated
+4. Frustrated animation continues until ticket completes
 
 **Extensions:**
 
-- 4a. *Ticket completes:* System clears frustration indicator (UC31)
+- 4a. *Ticket completes:* Developer returns to idle state (UC31)
 
 ---
 

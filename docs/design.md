@@ -2053,7 +2053,9 @@ func (s StaggeredAnimator) NextToAnimate(devCount int, shouldPause bool) (Stagge
 - Occasional pauses (~20% of ticks) feel natural
 - Movement animations (walking) are not staggered - all moving devs interpolate together
 
-**Randomness injection:** The `shouldPause` parameter is passed in by the caller (TUI layer), keeping the calculation pure and testable. The TUI calls `rand.Float64() < 0.2` and passes the result.
+**Randomness injection:** The `shouldPause` parameter is passed in by the caller (TUI layer), keeping the calculation pure and testable. The TUI injects `randFloat func() float64` and calls `a.randFloat() < 0.2` to determine pauses.
+
+**TUI-local state:** `StaggeredAnimator` is ephemeral TUI state (in `App` struct), not projection state. This is intentional: the animator tracks which dev animates next, but this choice is local to the TUI session. If projections replayed events, each would make the same stagger decisions (since `DevIdxToAdvance` is recorded in events), but the animator itself doesn't need to persist.
 
 ### State Machine
 
@@ -2343,8 +2345,12 @@ type DevEnteredConference struct {
     DevID string
 }
 
-// AnimationFrameAdvanced: 100ms tick for working animation
-type AnimationFrameAdvanced struct{}
+// AnimationFrameAdvanced: 100ms tick for working animation.
+// DevIdxToAdvance specifies which developer's face advances this tick.
+// -1 = pause (no faces advance), >=0 = that developer index only.
+type AnimationFrameAdvanced struct {
+    DevIdxToAdvance int
+}
 ```
 
 #### Office Projection
@@ -2403,7 +2409,7 @@ func applyOfficeEvent(state OfficeState, evt OfficeEvent) OfficeState {
     case DevEnteredConference:
         return state.SetDeveloperState(e.DevID, StateConference)
     case AnimationFrameAdvanced:
-        return state.AdvanceFrames()
+        return state.AdvanceFrames(now, e.DevIdxToAdvance)
     default:
         return state
     }
@@ -2481,10 +2487,10 @@ Event log accessible via debug key (e.g., `ctrl+d`):
 ```
 Office Animation Events (last 20):
   [0] DevAssignedToTicket{DevID:"dev-1", TicketID:"TKT-42", Target:{50,2}}
-  [1] AnimationFrameAdvanced{}
-  [2] AnimationFrameAdvanced{}
-  [3] AnimationFrameAdvanced{}
-  [4] AnimationFrameAdvanced{}
+  [1] AnimationFrameAdvanced{DevIdxToAdvance: 0}
+  [2] AnimationFrameAdvanced{DevIdxToAdvance: 1}
+  [3] AnimationFrameAdvanced{DevIdxToAdvance: -1}  // pause
+  [4] AnimationFrameAdvanced{DevIdxToAdvance: 2}
   [5] DevArrivedAtCubicle{DevID:"dev-1"}
   [6] AnimationFrameAdvanced{}
   [7] DevBecameFrustrated{DevID:"dev-1", TicketID:"TKT-42"}

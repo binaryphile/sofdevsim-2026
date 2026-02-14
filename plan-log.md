@@ -28332,3 +28332,44 @@ $(date -Iseconds) | Contract: Event-Source Office Animation
 [x] app.go initialization: DevEnteredConference events for planning state
 [x] Build succeeds
 [x] Tests pass
+2026-02-13T19:00:00-06:00 | Contract: Phase 2 - Developer Accessories
+[ ] Accessory assignment in NewDeveloperAnimation (index 1→Coffee, 3→Soda)
+[ ] RenderDeveloperIcon includes accessory
+[ ] Unit tests for accessory logic
+[ ] go build ./... succeeds
+[ ] go test ./internal/office/... passes
+2026-02-13T19:00:00-06:00 | Contract: Phase 2 - Developer Accessories
+[ ] Accessory assignment in NewDeveloperAnimation (index 1→Coffee, 3→Soda)
+[ ] RenderDeveloperIcon includes accessory
+[ ] Unit tests for accessory logic
+[ ] go build ./... succeeds
+[ ] go test ./internal/office/... passes
+2026-02-13T19:30:00-06:00 | Completion: Phase 2 - Developer Accessories
+[x] Accessory assignment (evidence: NewDeveloperAnimation assigns by index)
+[x] RenderDeveloperIcon includes accessory (evidence: render shows ☕/🥤)
+[x] Tests pass (evidence: go test ./internal/office/...)
+2026-02-13T20:30:00-06:00 | Completion: Phase 3 - Drink Sip Animation
+[x] DevStartedSip event (evidence: events.go with officeEvent() marker)
+[x] applyOfficeEvent (evidence: dispatches to startDevSip)
+[x] StartSip() (evidence: sets SipPhase=SipPreparing)
+[x] AdvanceSip() (evidence: cycles Preparing→Drinking→Refreshed→None)
+[x] RenderDeveloperIcon (evidence: 😙/☕/😌 per phase)
+[x] Tests pass (evidence: go test ./internal/office/...)
+2026-02-14T01:00:00Z | Contract: Phase 4 - Staggered Face Animation
+[ ] AdvanceFrames(now, devIdx) advances only one dev's face
+[ ] Movement still advances for all moving devs
+[ ] LateBubbleFrames decrements for all devs
+[ ] StaggeredAnimator in App struct
+[ ] randFloat injected (no direct rand calls)
+[ ] AnimationFrameAdvanced carries DevIdxToAdvance
+[ ] Tests verify single-dev behavior + randFloat injection
+2026-02-13T08:30:00Z | Completion: Phase 4 - Staggered Face Animation
+[x] AdvanceFrames(now, devIdx) advances only one dev's face
+[x] Movement still advances for all moving devs
+[x] LateBubbleFrames decrements for all devs
+[x] StaggeredAnimator in App struct
+[x] randFloat injected (no direct rand calls)
+[x] AnimationFrameAdvanced carries DevIdxToAdvance
+[x] Tests verify single-dev behavior + randFloat injection
+[x] Design docs updated (4 locations)
+[x] Golden file updated for accessories
