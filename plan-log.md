@@ -28442,3 +28442,29 @@ Coverage: engine 79.2%, api 79.1% (api +4.8 from new tests)
 2026-02-14T13:25:00Z | Interaction: improve -> rewriting UC37 steps for intent-not-mechanism, adding Minimal Guarantee, Technology Variations, fixing precondition/postcondition wording
 2026-02-14T13:35:00Z | Interaction: improve -> fix precondition "registry" leak, restructure step 1 from state assertion to actor action
 2026-02-14T13:40:00Z | Interaction: improve -> fresh-eyes review, checking for gaps vs sibling UCs and Cockburn template
+2026-02-14T13:20:00Z | Contract: Phase 2 - Design doc
+[ ] Design section added to docs/design.md
+[ ] Covers data flow, registry storage, thread safety, tick rates, fallback
+2026-02-14T13:30:00Z | Completion: Phase 2 - Design doc
+[x] Design section added (evidence: docs/design.md "Terminal Dimension Sync" section)
+[x] Covers data flow, storage, thread safety, tick rates, fallback (evidence: section content)
+2026-02-14T14:00:00Z | Contract: Phase 3 - TDD implementation
+[ ] Registry: UpdateOfficeSize/OfficeSize with locking and 80×24 default
+[ ] TUI: sync dimensions in syncOfficeToRegistry, WindowSizeMsg, Tab
+[ ] API: HandleGetOffice uses OfficeSize() instead of hardcoded 80×24
+[ ] All existing tests pass + new tests for each behavior
+[ ] Integration lifecycle test covers initialization through view cycling
+2026-02-14T15:30:00Z | Interaction: improve -> fix named returns on OfficeSize, refactor planning.go to use computeOfficeWidth
+2026-02-14T15:00:00Z | Completion: Phase 3 - TDD implementation
+[x] Registry methods (evidence: registry_test.go passes)
+[x] TUI sync (evidence: app_test.go new tests pass)
+[x] API uses registry dimensions (evidence: integration test passes)
+[x] All existing tests pass (evidence: go test ./...)
+2026-02-14T12:00:00Z | Contract: Phase 1 - Design doc updates for sprint walkthrough test
+[ ] Endpoints table includes /office and /health endpoints
+[ ] Test strategy covers milestone walkthrough (Controller quadrant)
+[ ] Test strategy addresses live-mode testing
+2026-02-14T12:15:00Z | Completion: Phase 1 - Design doc updates
+[x] Endpoints table includes /office and /health (evidence: rows added at lines 854-855)
+[x] Test strategy covers milestone walkthrough (evidence: table + justification at lines 1113-1125)
+[x] Test strategy addresses live-mode testing (evidence: live mode paragraph at line 1125)
