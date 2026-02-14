@@ -78,6 +78,19 @@ func RenderDeveloperIcon(anim DeveloperAnimation) string {
 	return face + anim.Accessory.Emoji()
 }
 
+// renderFaceOnly returns just the face emoji without accessory.
+// Used in cubicle view where accessory is shown on desk instead.
+func renderFaceOnly(anim DeveloperAnimation) string {
+	switch anim.State {
+	case StateWorking:
+		return WorkingFrames[anim.CurrentFrame()]
+	case StateFrustrated:
+		return FrustratedFrames[anim.CurrentFrame()]
+	default:
+		return "🙂"
+	}
+}
+
 // Calculation: RenderLateBubble returns a small "Late!" thought bubble
 // Pure function: () → string
 func RenderLateBubble() string {
@@ -408,20 +421,19 @@ func renderCubicleDetailed(anim DeveloperAnimation, name string, width int, door
 	nameLine := "│" + centerText(style.Render(name), innerWidth) + "│"
 
 	// Face + trash line (face only if not in conference)
+	// In cubicle: show face WITHOUT accessory (accessory is on desk)
 	var faceContent string
 	if anim.State != StateConference {
-		faceContent = RenderDeveloperIcon(anim) + " 🗑️"
+		face := renderFaceOnly(anim)
+		faceContent = face + " 🗑️"
 	} else {
-		faceContent = "   🗑️" // empty space where face would be
+		faceContent = "🗑️" // just trash when dev is away
 	}
 	faceLine := "│" + centerText(faceContent, innerWidth) + "│"
 
-	// Desk line (with accessory if in cubicle)
+	// Desk line (accessory on desk when dev has one)
 	var deskContent string
-	if anim.State != StateConference && anim.Accessory != AccessoryNone {
-		deskContent = "🖥️ " + anim.Accessory.Emoji()
-	} else if anim.State == StateConference && anim.Accessory != AccessoryNone {
-		// Accessory stays on desk when dev is in conference
+	if anim.Accessory != AccessoryNone {
 		deskContent = "🖥️ " + anim.Accessory.Emoji()
 	} else {
 		deskContent = "🖥️"
