@@ -28468,3 +28468,11 @@ Coverage: engine 79.2%, api 79.1% (api +4.8 from new tests)
 [x] Endpoints table includes /office and /health (evidence: rows added at lines 854-855)
 [x] Test strategy covers milestone walkthrough (evidence: table + justification at lines 1113-1125)
 [x] Test strategy addresses live-mode testing (evidence: live mode paragraph at line 1125)
+2026-02-14T18:00:00Z | Contract: Phase 2 - Sprint walkthrough integration test
+[ ] 7-milestone test with office animation assertions
+[ ] Live mode support via SOFDEVSIM_URL
+[ ] Test passes in httptest mode
+2026-02-14T19:00:00Z | Completion: Phase 2
+[x] 7-milestone test (evidence: go test -v -run TestSprintWalkthrough passes, all 7 milestones PASS)
+[x] Live mode support (evidence: SOFDEVSIM_URL env var check in setupServer, maybeDelay at each milestone)
+[x] Test passes (evidence: go test ./internal/api/... passes, coverage 86.2%)

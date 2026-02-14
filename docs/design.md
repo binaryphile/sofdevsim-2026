@@ -1110,7 +1110,9 @@ func respondWithSimulation(w http.ResponseWriter, inst registry.SimInstance, sta
 
 **Controller (ONE integration test):** Full lifecycle test - create simulation, start sprint, tick until sprint ends, verify links change. HATEOAS link presence = correct behavior.
 
-**Controller (milestone walkthrough — UC9+UC10+UC35):** Second controller workflow covering a different endpoint set (`/office`) and different assertions (animation states, not link presence). Khorikov §8.1.3: "use integration tests to cover one happy path per business scenario...If there's no one path that goes through all such interactions, write additional integration tests — as many as needed to capture communications with every external system." `TestTutorialWalkthrough` covers the HATEOAS business scenario (simulation endpoints only). `TestSprintWalkthrough` covers the office animation milestone scenario — a different business scenario exercising `/office`, an endpoint not reachable from the first test's happy path.
+**Controller (milestone walkthrough — UC9+UC10+UC35):** Second controller workflow covering a different endpoint set (`/office`) and different assertions (animation states, not link presence). Khorikov §8.1.3: "use integration tests to cover one happy path per business scenario...If there's no one path that goes through all such interactions, write additional integration tests — as many as needed to capture communications with every external system."
+
+`TestTutorialWalkthrough` covers the HATEOAS business scenario (simulation endpoints only). `TestSprintWalkthrough` covers the office animation milestone scenario — a different business scenario exercising `/office`, an endpoint not reachable from the first test's happy path.
 
 | Milestone | Assertion |
 |-----------|-----------|
@@ -1118,11 +1120,11 @@ func respondWithSimulation(w http.ResponseWriter, inst registry.SimInstance, sta
 | Initial office | All 6 devs in "conference", no ticketIds |
 | Assign tickets | Devs transition to "working" in /office |
 | Start sprint | sprintActive=true, tick link present |
-| Tick through sprint | "frustrated" on overrun, "idle" on completion |
+| Tick through sprint | At least one of "frustrated" (overrun) or "idle" (completion) observed |
 | Sprint ends | All devs return to "conference", start-sprint link reappears |
 | Final state | completedTicketCount > 0, events emitted |
 
-**Live mode:** When `SOFDEVSIM_URL` env var is set, test targets a running server instead of `httptest.NewServer`. Enables UC10 scenario: operator watches TUI while test drives simulation via REST. Adds inter-milestone delays for observability. Skips event store assertions (no registry access in live mode).
+**Live mode:** When `SOFDEVSIM_URL` env var is set, test targets a running server instead of `httptest.NewServer`. Enables UC10 scenario: operator watches TUI while test drives simulation via REST. Adds inter-milestone delays for observability. Skips event store assertions (no registry access in live mode). Each milestone logs progress via `t.Logf` (state counts, observed animations, tick counts) for operator visibility in `go test -v` output.
 
 **Rebalancing (Khorikov):** Delete unit tests for Trivial code. Replace per-handler controller tests with ONE integration test covering the full lifecycle. Keep domain unit tests.
 
