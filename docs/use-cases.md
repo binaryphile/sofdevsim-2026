@@ -167,6 +167,7 @@ None (self-contained simulation, no external services)
 | 15 | Access shared simulation (TUI + API) | Blue | Yes - see same state from both | Developer - debug via API while TUI runs |
 | 16 | Plan sprint via API | Blue | Yes - sprint is ready to begin | Scrum Master - proper planning workflow |
 | 17 | Compare policies via API | Blue | Yes - know which policy wins | Developer - automated A/B testing |
+| 37 | See same office rendering as TUI user | Blue | Yes - can debug what operator sees | Developer - collaborative debugging |
 
 **Primary Actor:** Learner (new user)
 
@@ -194,7 +195,7 @@ None (self-contained simulation, no external services)
 | 25 | Verify UI displays correct state without terminal | Blue | Yes - test passes | Developer - catch display bugs in CI |
 | 26 | Verify input produces correct state change | Blue | Yes - interaction verified | Developer - catch handler bugs in CI |
 
-**Use Cases Written:** Goals 1-12, 14-34 (Blue level)
+**Use Cases Written:** Goals 1-12, 14-37 (Blue level)
 
 ---
 
@@ -1442,6 +1443,7 @@ This use case requires event sourcing architecture:
 **Extensions:**
 
 - 2a. *No office events recorded:* System returns initial state (empty developers, no transitions)
+- 3a. *TUI connected to same registry:* System uses TUI terminal dimensions instead of defaults (UC37)
 - 6a. *State mismatch detected:* Agent reports bug with specific discrepancy
 
 ---
@@ -1484,6 +1486,51 @@ This use case requires event sourcing architecture:
 
 - 4a. *Transition missing reason:* Agent notes which event types lack reasons
 - 6a. *Timing bug found:* Agent reports: "Developer dev-1 became frustrated at tick 5 but estimate wasn't exceeded until tick 7"
+
+---
+
+### UC37: See Same Office Rendering as TUI User
+
+**Primary Actor:** Automated Test Agent (Claude or script)
+
+**Goal in Context:** Retrieve office visualization rendered at the TUI user's actual terminal dimensions, so agent sees exactly what the operator sees.
+
+**Scope:** Software Development Simulation
+
+**Level:** User Goal (Blue)
+
+**Stakeholders and Interests:**
+
+- *Automated Agent:* Wants to discuss what the operator sees, not a different rendering
+- *Operator:* Wants Claude to debug what's actually on their screen
+
+**Preconditions:**
+
+- Simulation exists in registry
+- TUI is running and connected to the same registry
+- TUI has received at least one WindowSizeMsg
+
+**Postconditions (Guarantees):**
+
+- *Success:* renderedOutput and renderedPlain use TUI terminal dimensions; layout matches what operator sees
+- *Failure (no TUI):* Falls back to default 80×24; response indicates dimensions are defaults
+
+**Trigger:** Agent sends GET request to /simulations/{id}/office
+
+**Main Success Scenario:**
+
+1. TUI receives terminal dimensions via WindowSizeMsg
+2. TUI stores dimensions in shared registry
+3. Agent sends GET to /simulations/{id}/office
+4. System retrieves stored terminal dimensions from registry
+5. System calls RenderOffice() with TUI dimensions
+6. Agent receives rendering that matches TUI layout
+
+**Extensions:**
+
+- 1a. *No TUI running (standalone server):* System uses default 80×24
+- 1b. *TUI resized:* Next GET reflects new dimensions
+- 4a. *Dimensions not set:* System uses default 80×24
 
 ---
 

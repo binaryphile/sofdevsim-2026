@@ -28431,3 +28431,11 @@ Coverage: engine 79.2%, api 79.1% (api +4.8 from new tests)
 [x] Event handler in applyOfficeEvent (evidence: projection.go)
 [x] Record at start of deriveOfficeEvents (evidence: handlers.go)
 [x] Test: bubble clears after one tick (evidence: TestClearBubbles passes)
+2026-02-14T13:00:00Z | Contract: Phase 1 - UC37 use case
+[ ] UC37 written in Cockburn format
+[ ] Actor-Goal List updated
+[ ] UC37 cross-referenced from UC35
+2026-02-14T13:10:00Z | Completion: Phase 1 - UC37 use case
+[x] UC37 written in Cockburn format (evidence: docs/use-cases.md line 1492)
+[x] Actor-Goal List updated (evidence: goal #37 added at line 170)
+[x] UC37 cross-referenced from UC35 (evidence: extension 3a added at line 1446)
