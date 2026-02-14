@@ -28476,3 +28476,13 @@ Coverage: engine 79.2%, api 79.1% (api +4.8 from new tests)
 [x] 7-milestone test (evidence: go test -v -run TestSprintWalkthrough passes, all 7 milestones PASS)
 [x] Live mode support (evidence: SOFDEVSIM_URL env var check in setupServer, maybeDelay at each milestone)
 [x] Test passes (evidence: go test ./internal/api/... passes, coverage 86.2%)
+2026-02-14T16:00:00Z | Contract: Phase 3 - Design doc alignment (ES event-stream sync)
+[ ] TUI/API Shared Access rewritten for event-stream sync (design.md:1026-1039)
+[ ] Projection idempotency documented (design.md after Projection section)
+[ ] eventMsg handler pseudo-code updated (design.md:1606-1608)
+[ ] No contradictions between shared access and ES architecture sections
+2026-02-14T16:30:00Z | Completion: Phase 3
+[x] §TUI/API Shared Access rewritten for event-stream sync (evidence: lines 1026-1066)
+[x] Projection idempotency documented (evidence: line 1476 after §Projection)
+[x] eventMsg handler pseudo-code updated (evidence: lines 1635-1646 show ApplyEvent)
+[x] No contradictions (evidence: grep SetInstance shows 1 hit in §Registry role only)

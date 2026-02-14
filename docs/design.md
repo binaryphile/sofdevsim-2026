@@ -1025,18 +1025,47 @@ type SimInstance struct {
 
 ### TUI/API Shared Access
 
-TUI and API share simulation state through the registry. This enables API clients to query and control the running TUI simulation.
+TUI and API share simulation state through the event stream. Each consumer maintains its own projection — the Engine's `Projection.Apply()` rebuilds state from events. This enables API clients to drive the simulation while TUI reflects changes in real-time (UC10).
 
 **Startup:**
 1. Create SimRegistry with shared event store
 2. Start HTTP server in goroutine
-3. TUI initializes App, which populates simulation and calls `SetInstance`
+3. TUI initializes App, subscribes to simulation events via `Engine.EventSub`
 4. Run TUI on main goroutine (Bubbletea requirement)
 
-**Runtime updates:**
-After any state-mutating operation (tick, assign, decompose), the owner must call `SetInstance` to publish the new engine state.
+> **Note:** Step 3 describes the target design. Current implementation creates the simulation and registers it via `SetInstance` at startup; event subscription for external changes is added in Phase 4.
 
-**Invariant:** Registry always holds the fully-populated engine. Never store empty state.
+**Runtime sync (event-driven):**
+Both TUI and API write events to the shared store via Engine operations. Each consumer applies events to its local projection:
+
+- **API handlers**: Call Engine operations (e.g., `eng.Tick()`), which emit events to the store. The handler updates the registry's `SimInstance` for subsequent API lookups.
+- **TUI key handlers**: Same — call Engine operations locally, events emitted to store.
+- **TUI eventMsg handler**: Receives events from subscription, applies them to local Engine projection via `ApplyEvent`. Projection idempotency ensures self-events are no-ops.
+
+**Projection idempotency:**
+`Projection.Apply()` tracks processed event IDs. When a consumer receives an event it already applied locally (a "self-event"), Apply returns the unchanged projection. This eliminates the need for ownership coordination — any consumer can safely apply any event without double-counting.
+
+```
+      TUI presses 's'           API POST /sprints
+           │                          │
+           ▼                          ▼
+    eng.StartSprint()          eng.StartSprint()
+           │                          │
+           ├── projection updated     ├── projection updated
+           └── event → store ─────────└── event → store
+                    │                          │
+                    ▼                          ▼
+              subscription                subscription
+                    │                          │
+                    ▼                          ▼
+           TUI receives event         API receives event
+           Apply → idempotent         Apply → idempotent
+           (self-event, no-op)        (self-event, no-op)
+```
+
+**Invariant:** Event store is the source of truth. Projections are derived views, always reconstructable from event replay.
+
+**Registry role:** The registry holds `SimInstance` for API handler access (lookup by sim ID, office projection for `/office` endpoint). API handlers call `SetInstance` to update the registry copy after mutations — this serves API-to-API request continuity, not TUI/API synchronization. The event stream is the synchronization mechanism.
 
 ### Hypermedia Logic (Pure, Unit Testable)
 
@@ -1412,39 +1441,43 @@ type TraceContext struct {
 The projection rebuilds simulation state from events:
 
 ```go
-// Projection applies events to build current state
+// Projection applies events to build current state (value type, immutable)
 type Projection struct {
-    sim     *model.Simulation
-    tracker *metrics.Tracker
+    sim          model.Simulation
+    processedIDs []string // sorted, for idempotent Apply
 }
 
-// Apply processes a single event, updating internal state
-func (p *Projection) Apply(event Event) {
+// Apply processes a single event, returning new Projection.
+// Idempotent: already-processed events (by event ID) return unchanged.
+func (p Projection) Apply(event Event) Projection {
+    if p.hasProcessed(event.EventID()) {
+        return p // Self-event from local operation, no-op
+    }
+    sim := p.sim
     switch e := event.(type) {
-    case *SimulationCreated:
-        p.sim = model.NewSimulation(e.Seed, e.Policy)
-    case *SprintStarted:
-        p.sim.CurrentSprint = &model.Sprint{
-            Number:       e.SprintNumber,
-            StartDay:     e.StartDay,
-            DurationDays: e.DurationDays,
-            BufferDays:   e.BufferDays,
+    case SprintStarted:
+        sim.CurrentSprint = model.Sprint{
+            Number: e.SprintNumber, StartDay: e.StartDay,
+            DurationDays: e.DurationDays, BufferDays: e.BufferDays,
         }
-    case *Ticked:
-        p.sim.CurrentTick = e.Day
-    case *TicketAssigned:
+    case Ticked:
+        sim.CurrentTick = e.Day
+    case TicketAssigned:
         // Update ticket and developer state
-    case *TicketCompleted:
+    case TicketCompleted:
         // Move ticket, update metrics
     // ... other event types
     }
+    return Projection{sim: sim, processedIDs: insertSorted(p.processedIDs, event.EventID())}
 }
 
-// State returns the current projected state
-func (p *Projection) State() *model.Simulation {
+// State returns the current projected state (value copy)
+func (p Projection) State() model.Simulation {
     return p.sim
 }
 ```
+
+**Idempotency:** The implementation of `Projection.Apply()` tracks processed event IDs via sorted slice with binary search (`projection.go:28-33`). Events already applied return the unchanged projection. This enables safe multi-consumer event processing — see §TUI/API Shared Access for how self-events are handled.
 
 ### UI Projection
 
@@ -1605,8 +1638,20 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
         return a.handleKeyPress(m)
     case eventMsg:
         // Domain events from Engine subscription
-        a.simProjection.Apply(m.event)
-        return a, nil
+        // Apply to local projection (idempotent: self-events are no-ops)
+        oldSim := a.engine.Sim()
+        oldVersion := a.engine.ProjectionVersion()
+        a.engine = a.engine.ApplyEvent(m.event)
+        if a.engine.ProjectionVersion() == oldVersion {
+            return a, a.listenForEvents() // Self-event, already applied
+        }
+        // External event — derive office animations from state diff
+        newSim := a.engine.Sim()
+        a.updateDeveloperAnimationStates(newSim)
+        if oldSim.SprintActive() && !newSim.SprintActive() {
+            a.moveAllDevsToConference(newSim) // Sprint ended
+        }
+        return a, a.listenForEvents()
     }
     return a, nil
 }
@@ -1614,13 +1659,14 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (a *App) handleKeyPress(key tea.KeyMsg) (tea.Model, tea.Cmd) {
     switch key.String() {
     case "s":
-        // Domain action: route to Engine, record with outcome
-        err := a.engine.StartSprint()
+        // Domain action: route to Engine (immutable — returns new Engine)
+        newEngine, err := a.engine.StartSprint()
         if err != nil {
             a.recordInputEvent(SprintStartAttempted{
                 Outcome: Failed{Reason: err.Error()},
             })
         } else {
+            a.engine = newEngine
             a.recordInputEvent(SprintStartAttempted{
                 Outcome: Succeeded{},
             })
