@@ -529,6 +529,62 @@ func TestTruncateText(t *testing.T) {
 	}
 }
 
+// Cycle 6: Full enhanced composition + width dispatch
+func TestRenderOfficeEnhanced(t *testing.T) {
+	devIDs := []string{"dev-1", "dev-2", "dev-3", "dev-4", "dev-5", "dev-6"}
+	state := NewOfficeState(devIDs)
+	state.Animations[0].State = StateConference
+	state.Animations[1].State = StateWorking
+	names := DefaultDeveloperNames
+
+	result := renderOfficeEnhanced(state, names, 100, 12)
+	plain := StripANSI(result)
+
+	// Outer frame (lipgloss rounded border)
+	lines := strings.Split(plain, "\n")
+	if len(lines) == 0 {
+		t.Fatal("Expected non-empty output")
+	}
+	if !strings.Contains(lines[0], "╭") {
+		t.Errorf("First line should contain rounded border top-left (╭), got: %q", lines[0])
+	}
+	if !strings.Contains(lines[len(lines)-1], "╰") {
+		t.Errorf("Last line should contain rounded border bottom-left (╰), got: %q", lines[len(lines)-1])
+	}
+
+	// Conference elements
+	for _, want := range []string{"📊", "🪑", "╔", "🚪"} {
+		if !strings.Contains(plain, want) {
+			t.Errorf("Enhanced layout should contain %s", want)
+		}
+	}
+
+	// Cubicle elements
+	for _, want := range []string{"🖥️", "🗑️", "HALLWAY"} {
+		if !strings.Contains(plain, want) {
+			t.Errorf("Enhanced layout should contain %s", want)
+		}
+	}
+}
+
+func TestRenderOffice_WidthDispatch(t *testing.T) {
+	devIDs := []string{"dev-1", "dev-2", "dev-3"}
+	state := NewOfficeState(devIDs)
+	names := DefaultDeveloperNames[:3]
+
+	// Narrow: simple layout (no conference details)
+	narrow := StripANSI(RenderOffice(state, names, 60, 12))
+	if strings.Contains(narrow, "📊") {
+		t.Error("Simple layout (width=60) should not contain chart emoji")
+	}
+
+	// Wide: enhanced layout
+	wide := StripANSI(RenderOffice(state, names, 100, 12))
+	if !strings.Contains(wide, "📊") {
+		t.Error("Enhanced layout (width=100) should contain chart emoji")
+	}
+}
+
 func TestDeveloperColor(t *testing.T) {
 	tests := []struct {
 		name       string

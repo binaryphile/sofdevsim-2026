@@ -407,7 +407,7 @@ type HTMLRenderer struct{}       // Export
 
 ## Coverage Baseline (Single Source of Truth)
 
-Track coverage changes, not absolute numbers. Updated 2026-01-26.
+Track coverage changes, not absolute numbers. Updated 2026-02-14.
 
 | Package | Coverage | Notes |
 |---------|----------|-------|
@@ -419,6 +419,7 @@ Track coverage changes, not absolute numbers. Updated 2026-01-26.
 | persistence | 65.5% | State save/load |
 | metrics | 59.1% | Domain calculations |
 | model | 30.3% | Mostly data structures (trivial) |
+| office | 85.0% | Domain rendering (Q1), property tests |
 
 **Note:** TUI coverage increased from 0% to 52% via workflow integration tests (Phase 7). Per Khorikov, this is appropriate for a controller - we test complete workflows, not individual methods.
 

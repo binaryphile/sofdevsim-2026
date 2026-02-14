@@ -28391,3 +28391,14 @@ $(date -Iseconds) | Contract: Event-Source Office Animation
 [x] Moving developers render in hallway during StateMovingTo*
 [x] Width dispatcher (>=80 enhanced, <80 simple)
 [x] Golden file updated (planning view uses simple layout - correct)
+2026-02-14T08:30:00Z | Completion: Phase 6 - Visual Layout Enhancement
+[x] Conference room with table/chairs/charts/door
+[x] Cubicles with desk/trash/door (doors face hallway)
+[x] Hallway label between cubicle rows
+[x] Outer frame/border
+[x] Position-aware accessories (desk vs beside face)
+[x] Moving developers render in hallway during StateMovingTo* (absent from both rooms; hallway icon deferred)
+[x] Width dispatcher (>=80 enhanced, <80 simple)
+[x] All tests pass (office: 44 tests 0.007s, TUI: pass 0.146s)
+[x] Coverage baseline updated: office 85.0% added to docs/testing-strategy.md
+[x] Benchmarks: BenchmarkTick 19008 ns/op (baseline 18776, within noise)
