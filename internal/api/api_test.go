@@ -78,16 +78,14 @@ func TestAPI_AssignmentErrors(t *testing.T) {
 			setup: func(t *testing.T, srv *httptest.Server) string {
 				resp := postJSON(t, srv.URL+"/simulations", map[string]any{"seed": 42})
 				postJSON(t, srv.URL+resp.Links["start-sprint"], nil)
-				// Assign tickets to all 3 developers
-				postJSONExpectOK(t, srv.URL+"/simulations/sim-42/assignments",
-					map[string]any{"ticketId": "TKT-001", "developerId": "dev-1"})
-				postJSONExpectOK(t, srv.URL+"/simulations/sim-42/assignments",
-					map[string]any{"ticketId": "TKT-002", "developerId": "dev-2"})
-				postJSONExpectOK(t, srv.URL+"/simulations/sim-42/assignments",
-					map[string]any{"ticketId": "TKT-003", "developerId": "dev-3"})
+				// Assign tickets to all 6 developers
+				for i := 1; i <= 6; i++ {
+					postJSONExpectOK(t, srv.URL+"/simulations/sim-42/assignments",
+						map[string]any{"ticketId": fmt.Sprintf("TKT-%03d", i), "developerId": fmt.Sprintf("dev-%d", i)})
+				}
 				return "sim-42"
 			},
-			ticketID:   "TKT-004",
+			ticketID:   "TKT-007",
 			devID:      "", // auto-assign
 			wantStatus: http.StatusBadRequest,
 			wantError:  "no idle developers",

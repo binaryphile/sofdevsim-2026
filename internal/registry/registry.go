@@ -88,14 +88,15 @@ func (r *SimRegistry) CreateSimulation(seed int64, policy model.SizingPolicy) (s
 	}
 
 	// Add default team via engine (emits DeveloperAdded events)
-	if eng, err = eng.AddDeveloper("dev-1", "Alice", 1.0); err != nil {
-		return "", fmt.Errorf("add developer: %w", err)
+	// Matches TUI team: 6 developers for 2×3 cubicle layout
+	team := []struct{ id, name string; velocity float64 }{
+		{"dev-1", "Mei", 1.0}, {"dev-2", "Amir", 0.8}, {"dev-3", "Suki", 1.2},
+		{"dev-4", "Jay", 1.0}, {"dev-5", "Priya", 0.9}, {"dev-6", "Kofi", 1.1},
 	}
-	if eng, err = eng.AddDeveloper("dev-2", "Bob", 0.8); err != nil {
-		return "", fmt.Errorf("add developer: %w", err)
-	}
-	if eng, err = eng.AddDeveloper("dev-3", "Carol", 1.2); err != nil {
-		return "", fmt.Errorf("add developer: %w", err)
+	for _, d := range team {
+		if eng, err = eng.AddDeveloper(d.id, d.name, d.velocity); err != nil {
+			return "", fmt.Errorf("add developer: %w", err)
+		}
 	}
 
 	// Generate backlog via engine (emits TicketCreated events)
