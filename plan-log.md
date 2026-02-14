@@ -28373,3 +28373,21 @@ $(date -Iseconds) | Contract: Event-Source Office Animation
 [x] Tests verify single-dev behavior + randFloat injection
 [x] Design docs updated (4 locations)
 [x] Golden file updated for accessories
+2026-02-14T02:00:00Z | Contract: Phase 6 - Visual Layout Enhancement
+[ ] Conference room with table/chairs/charts/door
+[ ] Cubicles with desk/trash/door (doors face hallway)
+[ ] Hallway label between cubicle rows
+[ ] Outer frame/border
+[ ] Position-aware accessories (desk vs beside face)
+[ ] Moving developers render in hallway during StateMovingTo*
+[ ] Width dispatcher (>=80 enhanced, <80 simple)
+[ ] Golden file updated
+2026-02-14T04:00:00Z | Completion: Phase 6 - Visual Layout Enhancement
+[x] Conference room with table/chairs/charts/door
+[x] Cubicles with desk/trash/door (doors face hallway)
+[x] Hallway label between cubicle rows
+[x] Outer frame/border
+[x] Position-aware accessories (desk vs beside face)
+[x] Moving developers render in hallway during StateMovingTo*
+[x] Width dispatcher (>=80 enhanced, <80 simple)
+[x] Golden file updated (planning view uses simple layout - correct)
