@@ -28439,3 +28439,6 @@ Coverage: engine 79.2%, api 79.1% (api +4.8 from new tests)
 [x] UC37 written in Cockburn format (evidence: docs/use-cases.md line 1492)
 [x] Actor-Goal List updated (evidence: goal #37 added at line 170)
 [x] UC37 cross-referenced from UC35 (evidence: extension 3a added at line 1446)
+2026-02-14T13:25:00Z | Interaction: improve -> rewriting UC37 steps for intent-not-mechanism, adding Minimal Guarantee, Technology Variations, fixing precondition/postcondition wording
+2026-02-14T13:35:00Z | Interaction: improve -> fix precondition "registry" leak, restructure step 1 from state assertion to actor action
+2026-02-14T13:40:00Z | Interaction: improve -> fresh-eyes review, checking for gaps vs sibling UCs and Cockburn template

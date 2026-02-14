@@ -1416,35 +1416,29 @@ This use case requires event sourcing architecture:
 
 **Preconditions:**
 
-- Simulation exists in registry
+- Simulation is active
 - Agent has simulation ID
 
 **Postconditions (Guarantees):**
 
-- *Success:* Agent receives office state including rendered ASCII art and structured animation data
-- *Failure:* 404 if simulation not found
+- *Success:* Agent receives office state including rendered visualization and structured animation data
+- *Failure:* Simulation not found
 
-**Trigger:** Agent sends GET request to /simulations/{id}/office
+**Trigger:** Agent requests office animation state
 
 **Main Success Scenario:**
 
-1. Agent sends GET to /simulations/{id}/office
-2. System retrieves OfficeProjection from SimInstance
-3. System calls RenderOffice() to generate ASCII visualization
-4. System builds response with:
-   - renderedOutput: ANSI-styled ASCII art
-   - renderedPlain: Plain text (ANSI stripped via StripANSI)
-   - developers[]: Animation state per developer (devId, devName, state, colorName, ticketId)
-   - transitions[]: Recent state changes (last 10) with tick, timestamp, reason
-   - currentTick: Simulation tick when state was captured
-5. System returns HAL+JSON response with _links
-6. Agent inspects developer states (Idle, Working, Frustrated, Conference)
+1. Agent requests office visualization for a simulation
+2. System renders office and collects animation state
+3. System returns rendered output, developer states, and recent transitions
+4. Agent inspects developer states and animation data
 
 **Extensions:**
 
-- 2a. *No office events recorded:* System returns initial state (empty developers, no transitions)
-- 3a. *TUI connected to same registry:* System uses TUI terminal dimensions instead of defaults (UC37)
-- 6a. *State mismatch detected:* Agent reports bug with specific discrepancy
+- 1a. *Simulation not found:* System reports not found
+- 2a. *No office events recorded:* System returns initial state (all developers idle, no transitions)
+- 2b. *TUI connected:* System renders at operator's terminal dimensions (UC37)
+- 4a. *State mismatch detected:* Agent reports bug with specific discrepancy
 
 ---
 
@@ -1460,7 +1454,7 @@ This use case requires event sourcing architecture:
 
 **Preconditions:**
 
-- Simulation exists with recorded office events
+- Simulation is active with recorded animation history
 - Agent suspects timing issue in animation state
 
 **Postconditions (Guarantees):**
@@ -1472,20 +1466,16 @@ This use case requires event sourcing architecture:
 
 **Main Success Scenario:**
 
-1. Agent performs simulation operations (assign ticket, tick, etc.)
-2. Agent queries GET /simulations/{id}/office
-3. Agent inspects transitions[] array
-4. For each transition, agent examines:
-   - tick: Simulation tick when state changed
-   - timestamp: Wall-clock time of change
-   - reason: Why change occurred (e.g., "assigned to TKT-001", "ticket TKT-001 exceeded estimate")
-5. Agent correlates transition ticks with simulation events
-6. Agent identifies if state changed at wrong tick
+1. Agent advances simulation through operations (assign ticket, tick, etc.)
+2. Agent requests office animation state (UC35)
+3. Agent examines transition history for each state change
+4. Agent correlates transition timing with simulation events
+5. Agent identifies whether state changed at the correct tick
 
 **Extensions:**
 
-- 4a. *Transition missing reason:* Agent notes which event types lack reasons
-- 6a. *Timing bug found:* Agent reports: "Developer dev-1 became frustrated at tick 5 but estimate wasn't exceeded until tick 7"
+- 3a. *Transition lacks explanation:* Agent notes which transitions are unexplained
+- 5a. *Timing bug found:* Agent reports discrepancy with tick evidence
 
 ---
 
@@ -1493,7 +1483,7 @@ This use case requires event sourcing architecture:
 
 **Primary Actor:** Automated Test Agent (Claude or script)
 
-**Goal in Context:** Retrieve office visualization rendered at the TUI user's actual terminal dimensions, so agent sees exactly what the operator sees.
+**Goal in Context:** Retrieve office visualization rendered at the TUI user's actual terminal dimensions, so agent sees exactly what the operator sees. (See Story 7: The Collaborative Session)
 
 **Scope:** Software Development Simulation
 
@@ -1506,31 +1496,36 @@ This use case requires event sourcing architecture:
 
 **Preconditions:**
 
-- Simulation exists in registry
-- TUI is running and connected to the same registry
-- TUI has received at least one WindowSizeMsg
+- Simulation is active
+- TUI is displaying the simulation
 
 **Postconditions (Guarantees):**
 
-- *Success:* renderedOutput and renderedPlain use TUI terminal dimensions; layout matches what operator sees
-- *Failure (no TUI):* Falls back to default 80×24; response indicates dimensions are defaults
+- *Success:* Agent receives office rendering at operator's terminal dimensions; layout matches what operator sees
+- *Failure (no TUI):* Agent receives office rendering at reasonable default dimensions
 
-**Trigger:** Agent sends GET request to /simulations/{id}/office
+**Minimal Guarantee:**
+
+- Office animation state is never corrupted by dimension retrieval
+- Agent always receives a valid rendering regardless of TUI availability
+
+**Trigger:** Agent requests office visualization
 
 **Main Success Scenario:**
 
-1. TUI receives terminal dimensions via WindowSizeMsg
-2. TUI stores dimensions in shared registry
-3. Agent sends GET to /simulations/{id}/office
-4. System retrieves stored terminal dimensions from registry
-5. System calls RenderOffice() with TUI dimensions
-6. Agent receives rendering that matches TUI layout
+1. Agent requests office visualization
+2. System renders office at operator's terminal dimensions
+3. Agent receives rendering that matches operator's layout
 
 **Extensions:**
 
-- 1a. *No TUI running (standalone server):* System uses default 80×24
-- 1b. *TUI resized:* Next GET reflects new dimensions
-- 4a. *Dimensions not set:* System uses default 80×24
+- 1a. *No TUI connected:* System uses default dimensions; rendering reflects standard layout
+- 1b. *Operator resizes terminal:* Next request reflects new dimensions
+- 1c. *Operator's terminal is narrow (<80):* System renders simple layout, matching what operator sees
+
+**Technology & Data Variations:**
+
+- API: GET /simulations/{id}/office — rendering dimensions sourced from connected TUI when available
 
 ---
 
