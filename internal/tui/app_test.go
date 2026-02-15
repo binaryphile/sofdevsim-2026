@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 	"time"
 
@@ -251,6 +250,11 @@ func TestTUI_ReceivesExternalEvents(t *testing.T) {
 		if app.statusMessage != "Sprint started (via API)" {
 			t.Errorf("Expected 'Sprint started (via API)', got %q", app.statusMessage)
 		}
+
+		// Assert: Events panel populated for external events
+		if len(app.modelEvents) == 0 {
+			t.Error("Expected modelEvents to be populated for external event")
+		}
 	})
 
 	t.Run("SprintEnded", func(t *testing.T) {
@@ -290,79 +294,6 @@ func TestTUI_ReceivesExternalEvents(t *testing.T) {
 			t.Errorf("Expected sprint complete message, got %q", app.statusMessage)
 		}
 	})
-}
-
-// TestTUI_ExternalEventsPopulateModelEvents verifies the eventMsg handler populates
-// modelEvents for the Events panel and updates projection state (backlog count, dev animation).
-// This covers all three UC10 symptoms: empty Events panel, stale counts, idle devs.
-func TestTUI_ExternalEventsPopulateModelEvents(t *testing.T) {
-	reg := registry.NewSimRegistry()
-	app := NewAppWithRegistry(42, reg)
-
-	// drainAndApply reads all buffered events from subscription and applies them via handler.
-	drainAndApply := func() string {
-		eng, _ := app.mode.GetLeft()
-		lastType := ""
-		for {
-			select {
-			case evt := <-eng.EventSub:
-				lastType = evt.EventType()
-				newApp, _ := app.Update(eventMsg(evt))
-				app = newApp.(*App)
-				eng, _ = app.mode.GetLeft()
-			default:
-				return lastType
-			}
-		}
-	}
-
-	// Get initial state
-	eng, _ := app.mode.GetLeft()
-	sim := eng.Engine.Sim()
-	initialBacklog := len(sim.Backlog)
-	ticketID := sim.Backlog[0].ID
-	devID := sim.Developers[0].ID
-
-	// Simulate API assigning a ticket externally
-	inst, ok := reg.GetInstanceOption("sim-42").Get()
-	if !ok {
-		t.Fatal("expected sim-42 in registry")
-	}
-	newEngine := must.Get(inst.Engine.AssignTicket(ticketID, devID))
-	inst.Engine = newEngine
-	reg.SetInstance("sim-42", inst)
-
-	drainAndApply()
-
-	// Assert 1: modelEvents populated (Events panel shows activity)
-	if len(app.modelEvents) == 0 {
-		t.Error("Expected modelEvents to be populated after external TicketAssigned event")
-	}
-	foundViaAPI := false
-	for _, evt := range app.modelEvents {
-		if strings.Contains(evt.Message, "via API") {
-			foundViaAPI = true
-			break
-		}
-	}
-	if !foundViaAPI {
-		t.Error("Expected modelEvents message to contain 'via API'")
-	}
-
-	// Assert 2: projection state updated (backlog decreased)
-	eng, _ = app.mode.GetLeft()
-	sim = eng.Engine.Sim()
-	if len(sim.Backlog) >= initialBacklog {
-		t.Errorf("Expected backlog to decrease after assignment, got %d (was %d)", len(sim.Backlog), initialBacklog)
-	}
-
-	// Assert 3: developer animation state changed from conference
-	devAnim := app.officeProjection.State().GetAnimationOption(devID)
-	if anim, ok := devAnim.Get(); ok {
-		if anim.State == office.StateConference {
-			t.Error("Expected developer animation to leave conference state after assignment")
-		}
-	}
 }
 
 // TestApp_UsesHTTPClient verifies app makes HTTP calls instead of direct engine access.

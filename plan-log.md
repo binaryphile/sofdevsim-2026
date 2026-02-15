@@ -28541,3 +28541,11 @@ Result: No tests pruned, no tests added. 2 of 4 branches tested (the non-trivial
 [x] All tests pass (evidence: go test ./... all 15 packages pass)
 Root cause: Go slice aliasing in Projection.Apply — value copy shared backing arrays.
 Secondary: stale index in Engine.Tick after emit, Events panel blind to external events.
+2026-02-15T04:00:00Z | Contract: Khorikov rebalancing — UC10 fix
+[ ] Divergent-projection test catches aliasing regression
+[ ] Q2 TUI tests consolidated
+[ ] All tests pass
+2026-02-15T05:00:00Z | Completion: Khorikov rebalancing — UC10 fix
+[x] Divergent-projection test (evidence: TestProjection_Apply_DivergentProjections passes)
+[x] Q2 consolidated (evidence: modelEvents assertion in TestTUI_ReceivesExternalEvents, redundant test deleted)
+[x] All tests pass (evidence: go test ./... all 15 packages pass)

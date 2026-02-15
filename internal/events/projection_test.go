@@ -677,6 +677,59 @@ func TestProjection_Apply_ValueSemantics(t *testing.T) {
 	}
 }
 
+func TestProjection_Apply_DivergentProjections(t *testing.T) {
+	// Verify two projections diverged from the same base have independent slice backing arrays.
+	// This guards against the slice aliasing bug fixed by Simulation.Clone():
+	// value-copying a struct shares slice headers, so append(slice[:i], slice[i+1:]...)
+	// in one projection corrupts the other's view.
+
+	// Build base: 2 tickets assigned to 1 dev
+	base := events.NewProjection()
+	base = base.Apply(events.NewSimulationCreated("sim-1", 0, events.SimConfig{Seed: 42}))
+	base = base.Apply(events.NewDeveloperAdded("sim-1", 0, "dev-1", "Alice", 1.0))
+	base = base.Apply(events.NewTicketCreated("sim-1", 0, "T-1", "Ticket 1", 5.0, model.HighUnderstanding))
+	base = base.Apply(events.NewTicketCreated("sim-1", 0, "T-2", "Ticket 2", 5.0, model.HighUnderstanding))
+	base = base.Apply(events.NewTicketAssigned("sim-1", 1, "T-1", "dev-1", time.Time{}))
+	base = base.Apply(events.NewTicketAssigned("sim-1", 1, "T-2", "dev-1", time.Time{}))
+
+	// Sanity: base has 2 active tickets
+	if len(base.State().ActiveTickets) != 2 {
+		t.Fatalf("base ActiveTickets = %d, want 2", len(base.State().ActiveTickets))
+	}
+
+	// Diverge: proj1 completes T-1 (removes from ActiveTickets via slice delete)
+	proj1 := base.Apply(events.NewTicketCompleted("sim-1", 5, "T-1", "dev-1", 5.0))
+
+	// Diverge: proj2 progresses T-2 (mutates RemainingEffort)
+	proj2 := base.Apply(events.NewWorkProgressed("sim-1", 5, "T-2", model.PhaseResearch, 1.0))
+
+	// proj1: T-1 completed, T-2 still active
+	state1 := proj1.State()
+	if len(state1.ActiveTickets) != 1 {
+		t.Errorf("proj1 ActiveTickets = %d, want 1", len(state1.ActiveTickets))
+	} else if state1.ActiveTickets[0].ID != "T-2" {
+		t.Errorf("proj1 ActiveTickets[0].ID = %q, want T-2", state1.ActiveTickets[0].ID)
+	}
+	if len(state1.CompletedTickets) != 1 || state1.CompletedTickets[0].ID != "T-1" {
+		t.Errorf("proj1 CompletedTickets = %v, want [T-1]", state1.CompletedTickets)
+	}
+
+	// proj2: both tickets still active (base unaffected by proj1's deletion)
+	state2 := proj2.State()
+	if len(state2.ActiveTickets) != 2 {
+		t.Errorf("proj2 ActiveTickets = %d, want 2 (should be independent of proj1)", len(state2.ActiveTickets))
+	}
+	if len(state2.CompletedTickets) != 0 {
+		t.Errorf("proj2 CompletedTickets = %d, want 0", len(state2.CompletedTickets))
+	}
+
+	// base: still has 2 active tickets (original untouched)
+	baseState := base.State()
+	if len(baseState.ActiveTickets) != 2 {
+		t.Errorf("base ActiveTickets = %d, want 2 (original should be untouched)", len(baseState.ActiveTickets))
+	}
+}
+
 func TestProjection_Apply_EmptyEventID(t *testing.T) {
 	// Empty EventID should bypass idempotency check (defensive - allows processing).
 	// This handles edge cases where events might not have IDs assigned.
