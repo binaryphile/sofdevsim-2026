@@ -28624,3 +28624,14 @@ Secondary: stale index in Engine.Tick after emit, Events panel blind to external
 [x] N=5 for files/session (25/condition), N=3 baseline (validation) (evidence: N_BASELINE=3 line 14, N_MAIN=5 line 15)
 [x] Fisher's exact test p-value in discrimination check (evidence: lines 288-313, pure Python math.comb, verdicts at p<0.05/0.20)
 [x] Pre-run scorer validation passes on existing raw outputs (evidence: 5 test cases + 3 edge cases all correct — WRONG_IMPORT, COMPLIANT, EMPTY, NO_IMPORT, MIXED, COMPLIANT with justified)
+2026-02-15T17:00:00Z | Contract: Run behavioral compliance test
+[ ] Test completes without errors (130 trials)
+[ ] Results interpreted with failure mode analysis
+[ ] Spot-check validates scorer accuracy on 3-5 raw outputs
+[ ] Phase 3 decision documented with evidence
+2026-02-15T16:30:00Z | Completion: Run behavioral compliance test
+[x] Test completes (evidence: 130 trials, 5 EMPTY/OTHER from tool-use escapes at session depth P1)
+[x] Results interpreted (evidence: OLD baseline=100% files=60% session=56%; NEW baseline=0% files=100% session=84%)
+[x] Spot-check validates scorer (evidence: COMPLIANT=real binaryphile import+API, MIXED=real loops, OTHER="Error: max turns", WRONG_IMPORT=hallucinated imports)
+[x] Phase 3 decision: restore github.com/binaryphile/fluentfp import path to CLAUDE.md (fixes 0% baseline), keep mandatory framing (drives 84% session vs 56% OLD)
+[x] Root cause: NEW CLAUDE.md rewrite dropped explicit import path, replacing with project name "FluentFP" that model can't resolve to Go module

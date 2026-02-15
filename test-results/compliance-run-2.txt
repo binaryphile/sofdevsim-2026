@@ -1,0 +1,180 @@
+CLAUDE.md Context-Loaded FluentFP Compliance Test - Sun Feb 15 03:20:06 PM EST 2026
+Compliance = binaryphile/fluentfp import + API usage + no unjustified loops
+Baseline N=3, Files/Session N=5
+Depths: baseline (prompt only), files (source code), session (conversation)
+
+--- DEPTH: baseline (N=3) ---
+=== OLD CLAUDE.md (baseline) ===
+  [OLD/baseline] p0 t1: COMPLIANT
+  [OLD/baseline] p0 t2: COMPLIANT
+  [OLD/baseline] p0 t3: COMPLIANT
+  [OLD/baseline] p1 t1: COMPLIANT
+  [OLD/baseline] p1 t2: COMPLIANT
+  [OLD/baseline] p1 t3: COMPLIANT
+  [OLD/baseline] p2 t1: COMPLIANT
+  [OLD/baseline] p2 t2: COMPLIANT
+  [OLD/baseline] p2 t3: COMPLIANT
+  [OLD/baseline] p3 t1: COMPLIANT
+  [OLD/baseline] p3 t2: COMPLIANT
+  [OLD/baseline] p3 t3: COMPLIANT
+  [OLD/baseline] p4 t1: COMPLIANT
+  [OLD/baseline] p4 t2: COMPLIANT
+  [OLD/baseline] p4 t3: COMPLIANT
+  OLD/baseline: 15/15 compliant (100%)
+
+=== NEW CLAUDE.md (baseline) ===
+  [NEW/baseline] p0 t1: OTHER
+  [NEW/baseline] p0 t2: NO_IMPORT
+  [NEW/baseline] p0 t3: WRONG_IMPORT
+  [NEW/baseline] p1 t1: WRONG_IMPORT
+  [NEW/baseline] p1 t2: WRONG_IMPORT
+  [NEW/baseline] p1 t3: WRONG_IMPORT
+  [NEW/baseline] p2 t1: NO_IMPORT
+  [NEW/baseline] p2 t2: WRONG_IMPORT
+  [NEW/baseline] p2 t3: WRONG_IMPORT
+  [NEW/baseline] p3 t1: WRONG_IMPORT
+  [NEW/baseline] p3 t2: NO_IMPORT
+  [NEW/baseline] p3 t3: NO_IMPORT
+  [NEW/baseline] p4 t1: WRONG_IMPORT
+  [NEW/baseline] p4 t2: WRONG_IMPORT
+  [NEW/baseline] p4 t3: WRONG_IMPORT
+  NEW/baseline: 0/15 compliant (0%)
+
+--- DEPTH: files (N=5) ---
+=== OLD CLAUDE.md (files) ===
+  [OLD/files] p0 t1: MIXED(import+1unjustified)
+  [OLD/files] p0 t2: MIXED(import+2unjustified)
+  [OLD/files] p0 t3: COMPLIANT
+  [OLD/files] p0 t4: MIXED(import+1unjustified)
+  [OLD/files] p0 t5: COMPLIANT
+  [OLD/files] p1 t1: MIXED(import+2unjustified)
+  [OLD/files] p1 t2: MIXED(import+6unjustified)
+  [OLD/files] p1 t3: MIXED(import+3unjustified)
+  [OLD/files] p1 t4: MIXED(import+3unjustified)
+  [OLD/files] p1 t5: MIXED(import+3unjustified)
+  [OLD/files] p2 t1: MIXED(import+2unjustified)
+  [OLD/files] p2 t2: COMPLIANT
+  [OLD/files] p2 t3: COMPLIANT
+  [OLD/files] p2 t4: COMPLIANT
+  [OLD/files] p2 t5: COMPLIANT
+  [OLD/files] p3 t1: COMPLIANT
+  [OLD/files] p3 t2: MIXED(import+1unjustified)
+  [OLD/files] p3 t3: COMPLIANT
+  [OLD/files] p3 t4: COMPLIANT
+  [OLD/files] p3 t5: COMPLIANT
+  [OLD/files] p4 t1: COMPLIANT
+  [OLD/files] p4 t2: COMPLIANT
+  [OLD/files] p4 t3: COMPLIANT
+  [OLD/files] p4 t4: COMPLIANT
+  [OLD/files] p4 t5: COMPLIANT
+  OLD/files: 15/25 compliant (60%)
+
+=== NEW CLAUDE.md (files) ===
+  [NEW/files] p0 t1: COMPLIANT
+  [NEW/files] p0 t2: COMPLIANT
+  [NEW/files] p0 t3: COMPLIANT
+  [NEW/files] p0 t4: COMPLIANT
+  [NEW/files] p0 t5: COMPLIANT
+  [NEW/files] p1 t1: COMPLIANT
+  [NEW/files] p1 t2: COMPLIANT
+  [NEW/files] p1 t3: COMPLIANT
+  [NEW/files] p1 t4: COMPLIANT
+  [NEW/files] p1 t5: COMPLIANT
+  [NEW/files] p2 t1: COMPLIANT
+  [NEW/files] p2 t2: COMPLIANT
+  [NEW/files] p2 t3: COMPLIANT
+  [NEW/files] p2 t4: COMPLIANT
+  [NEW/files] p2 t5: COMPLIANT
+  [NEW/files] p3 t1: COMPLIANT
+  [NEW/files] p3 t2: COMPLIANT
+  [NEW/files] p3 t3: COMPLIANT
+  [NEW/files] p3 t4: COMPLIANT
+  [NEW/files] p3 t5: COMPLIANT
+  [NEW/files] p4 t1: COMPLIANT
+  [NEW/files] p4 t2: COMPLIANT
+  [NEW/files] p4 t3: COMPLIANT
+  [NEW/files] p4 t4: COMPLIANT
+  [NEW/files] p4 t5: COMPLIANT
+  NEW/files: 25/25 compliant (100%)
+
+--- DEPTH: session (N=5) ---
+=== OLD CLAUDE.md (session) ===
+  [OLD/session] p0 t1: COMPLIANT
+  [OLD/session] p0 t2: COMPLIANT
+  [OLD/session] p0 t3: COMPLIANT
+  [OLD/session] p0 t4: COMPLIANT
+  [OLD/session] p0 t5: COMPLIANT
+  [OLD/session] p1 t1: MIXED(import+2unjustified)
+  [OLD/session] p1 t2: MIXED(import+1unjustified)
+  [OLD/session] p1 t3: OTHER
+  [OLD/session] p1 t4: OTHER
+  [OLD/session] p1 t5: MIXED(import+1unjustified)
+  [OLD/session] p2 t1: MIXED(import+2unjustified)
+  [OLD/session] p2 t2: COMPLIANT
+  [OLD/session] p2 t3: COMPLIANT
+  [OLD/session] p2 t4: MIXED(import+2unjustified)
+  [OLD/session] p2 t5: MIXED(import+2unjustified)
+  [OLD/session] p3 t1: MIXED(import+1unjustified)
+  [OLD/session] p3 t2: COMPLIANT
+  [OLD/session] p3 t3: MIXED(import+1unjustified)
+  [OLD/session] p3 t4: MIXED(import+1unjustified)
+  [OLD/session] p3 t5: COMPLIANT
+  [OLD/session] p4 t1: COMPLIANT
+  [OLD/session] p4 t2: COMPLIANT
+  [OLD/session] p4 t3: COMPLIANT
+  [OLD/session] p4 t4: COMPLIANT
+  [OLD/session] p4 t5: COMPLIANT
+  OLD/session: 14/25 compliant (56%)
+
+=== NEW CLAUDE.md (session) ===
+  [NEW/session] p0 t1: COMPLIANT
+  [NEW/session] p0 t2: COMPLIANT
+  [NEW/session] p0 t3: COMPLIANT
+  [NEW/session] p0 t4: COMPLIANT
+  [NEW/session] p0 t5: COMPLIANT
+  [NEW/session] p1 t1: COMPLIANT
+  [NEW/session] p1 t2: OTHER
+  [NEW/session] p1 t3: COMPLIANT
+  [NEW/session] p1 t4: OTHER
+  [NEW/session] p1 t5: OTHER
+  [NEW/session] p2 t1: COMPLIANT
+  [NEW/session] p2 t2: COMPLIANT
+  [NEW/session] p2 t3: COMPLIANT
+  [NEW/session] p2 t4: COMPLIANT
+  [NEW/session] p2 t5: MIXED(import+1unjustified)
+  [NEW/session] p3 t1: COMPLIANT
+  [NEW/session] p3 t2: COMPLIANT
+  [NEW/session] p3 t3: COMPLIANT
+  [NEW/session] p3 t4: COMPLIANT
+  [NEW/session] p3 t5: COMPLIANT
+  [NEW/session] p4 t1: COMPLIANT
+  [NEW/session] p4 t2: COMPLIANT
+  [NEW/session] p4 t3: COMPLIANT
+  [NEW/session] p4 t4: COMPLIANT
+  [NEW/session] p4 t5: COMPLIANT
+  NEW/session: 21/25 compliant (84%)
+
+
+=== SUMMARY ===
+Results saved to: /tmp/claude-md-context-results.txt
+Raw outputs in: /tmp/claude-md-context-outputs
+
+-- baseline --
+  COMPLIANT: 15
+  WRONG_IMPORT: 10
+  NO_IMPORT: 4
+  OTHER: 1
+-- files --
+  COMPLIANT: 40
+  MIXED: 10
+-- session --
+  COMPLIANT: 35
+  MIXED: 10
+  OTHER: 5
+
+=== DISCRIMINATION CHECK (session depth) ===
+  OLD: 14/25 compliant
+  NEW: 21/25 compliant
+  OLD rate: 56%  NEW rate: 84%  Delta: 28pp
+  Fisher's exact p-value: 0.0622
+  VERDICT: TRENDING (p=0.0622 < 0.20)
