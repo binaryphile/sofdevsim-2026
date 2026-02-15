@@ -28600,3 +28600,13 @@ Secondary: stale index in Engine.Tick after emit, Events panel blind to external
 [x] Decision gate in guide (evidence: docs/fluentfp-guide.md top section)
 [x] Behavioral test (evidence: before/after compliance rates — 36/36 both variants, test lacks discriminating power at small context)
 [x] Tests pass (evidence: go test ./... 15/15)
+2026-02-15T14:00:00Z | Contract: Context-loaded behavioral testing
+[ ] Simulated conversation puts model in implementation mode
+[ ] Multi-concern prompts where FluentFP is one of several concerns
+[ ] Raw output captured to log directory
+[ ] Results documented with explicit conclusion
+2026-02-15T13:55:00Z | Completion: Context-loaded behavioral testing
+[x] Simulated conversation puts model in implementation mode (evidence: 7-turn exchange, session depth degrades pure FP from 78% to 33-44%)
+[x] Multi-concern prompts where FluentFP is one of several concerns (evidence: 3 prompts with 4+ concerns each, baseline 7/9 not 9/9)
+[x] Raw output captured to log directory (evidence: /tmp/claude-md-context-outputs/ with 45 files)
+[x] Results documented with explicit conclusion (evidence: WEAK SIGNAL verdict, 11pp delta NEW>OLD at session depth)
