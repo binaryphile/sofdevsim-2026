@@ -22,6 +22,11 @@ Why: Concurrency safety without locks, aligns with ES/FP guides.
 model.Simulation and data types use value receivers throughout.
 Pointers only for: sync.Mutex fields, Bubble Tea requirements, profiled hot paths >10MB.
 
+**Slice aliasing trap**: Value-copying a struct copies slice headers, NOT underlying arrays.
+Two copies share the same backing array. Mutating via `append` in one corrupts the other.
+Any struct with slice fields that will be copied across goroutines/projections needs `Clone()`.
+See `model.Simulation.Clone()` and `events.Projection.Apply()` for the pattern.
+
 ## Development Environment
 
 - **Language**: Go

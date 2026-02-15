@@ -28531,3 +28531,13 @@ Branch coverage decision:
 - Ticked: NOT tested — Q2 trivial (sets one formatted status string)
 
 Result: No tests pruned, no tests added. 2 of 4 branches tested (the non-trivial ones).
+2026-02-14T23:00:00Z | Contract: Fix TUI–API event sync (UC10)
+[ ] Events panel shows external event activity
+[ ] TUI projection reflects API-driven changes
+[ ] All existing tests pass
+2026-02-15T03:00:00Z | Completion: Fix TUI–API event sync (UC10)
+[x] Events panel fix (evidence: modelEvents populated for external events in test)
+[x] TUI projection sync (evidence: Clone() fixes slice aliasing, go test all green)
+[x] All tests pass (evidence: go test ./... all 15 packages pass)
+Root cause: Go slice aliasing in Projection.Apply — value copy shared backing arrays.
+Secondary: stale index in Engine.Tick after emit, Events panel blind to external events.

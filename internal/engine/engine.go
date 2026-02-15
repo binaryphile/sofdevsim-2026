@@ -205,7 +205,11 @@ func (e Engine) Tick() (Engine, []model.Event, error) {
 			return e, nil, err
 		}
 
-		// Check phase completion from projection (now updated by WorkProgressed)
+		// Re-lookup ticket by ID after emit (index may shift if earlier tickets completed)
+		ticketIdx = e.state().FindActiveTicketIndex(ticket.ID)
+		if ticketIdx == -1 {
+			continue // ticket completed and removed during this tick
+		}
 		ticket = e.state().ActiveTickets[ticketIdx]
 		if ticket.RemainingEffort <= 0 {
 			var uiEvents []model.Event

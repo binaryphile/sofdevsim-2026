@@ -393,6 +393,12 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.statusExpiry = time.Now().Add(1 * time.Second)
 		}
 
+		// Populate Events panel for external events (self-events exited at line 354)
+		a.modelEvents = append(a.modelEvents, model.Event{
+			Day:     newSim.CurrentTick,
+			Message: fmt.Sprintf("%s (via API)", events.Event(msg).EventType()),
+		})
+
 		return a, a.listenForEvents()
 
 	case animationTickMsg:

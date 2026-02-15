@@ -56,6 +56,19 @@ func NewSimulation(id string, policy SizingPolicy, seed int64) Simulation {
 	}
 }
 
+// Clone returns a deep copy with independent slice backing arrays.
+// Required because value copies of Simulation share underlying slice arrays,
+// which causes corruption when Projection.Apply mutates slices via append.
+func (s Simulation) Clone() Simulation {
+	s.Developers = append([]Developer(nil), s.Developers...)
+	s.Backlog = append([]Ticket(nil), s.Backlog...)
+	s.ActiveTickets = append([]Ticket(nil), s.ActiveTickets...)
+	s.CompletedTickets = append([]Ticket(nil), s.CompletedTickets...)
+	s.OpenIncidents = append([]Incident(nil), s.OpenIncidents...)
+	s.ResolvedIncidents = append([]Incident(nil), s.ResolvedIncidents...)
+	return s
+}
+
 // FindActiveTicketIndex returns index of ticket in ActiveTickets, or -1 if not found
 func (s Simulation) FindActiveTicketIndex(id string) int {
 	for i := range s.ActiveTickets {

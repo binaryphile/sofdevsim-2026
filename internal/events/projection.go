@@ -33,10 +33,11 @@ func (p Projection) Apply(evt Event) Projection {
 		return p // No version bump, no state change
 	}
 
-	// Create new projection with incremented version and event ID tracked
-	// Note: p.sim is a value, so this copies the Simulation
+	// Create new projection with incremented version and event ID tracked.
+	// Clone() deep-copies slice fields to prevent aliasing when multiple
+	// projections share the same underlying arrays (e.g., TUI + API).
 	next := Projection{
-		sim:       p.sim,
+		sim:       p.sim.Clone(),
 		version:   p.version + 1,
 		processed: p.withProcessed(eventID),
 	}
