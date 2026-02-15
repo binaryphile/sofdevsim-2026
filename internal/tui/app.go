@@ -176,7 +176,7 @@ func NewAppWithRegistry(seed int64, reg *registry.SimRegistry) *App {
 	gen := engine.Scenarios["healthy"]
 	rng := rand.New(rand.NewSource(seed))
 	tickets := gen.Generate(rng, 12)
-	for _, t := range tickets {
+	for _, t := range tickets { // justified:CF
 		eng = must.Get(eng.AddTicket(t))
 	}
 
@@ -350,6 +350,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		if eng.Engine.ProjectionVersion() == oldVersion {
 			// Self-event — already applied locally, skip all updates
+			a.recordInputEvent(EventDeduplicated{EventType: events.Event(msg).EventType()})
 			a.mode = either.Left[EngineMode, ClientMode](eng)
 			return a, a.listenForEvents()
 		}
@@ -363,7 +364,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Sprint ended — all devs return to conference
 		if _, hadSprint := oldSim.CurrentSprintOption.Get(); hadSprint {
 			if _, hasSprint := newSim.CurrentSprintOption.Get(); !hasSprint {
-				for _, dev := range newSim.Developers {
+				for _, dev := range newSim.Developers { // justified:CF
 					a.officeProjection = a.officeProjection.Record(
 						DevEnteredConference{DevID: dev.ID}, newSim.CurrentTick, a.clock())
 				}
@@ -380,7 +381,8 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.statusMessage = "Sprint started (via API)"
 			a.statusExpiry = time.Now().Add(2 * time.Second)
 			a.currentView = ViewExecution
-			a.paused = false
+			// Don't unpause: API is the command handler, TUI is a read-only projection.
+			// Self-events (user presses 's') exit early at line 354.
 		case "SprintEnded":
 			a.paused = true
 			a.statusMessage = "Sprint complete (via API) — press 's' for next sprint"
@@ -421,8 +423,18 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, nil
 		}
 		if !a.paused && a.currentView == ViewExecution {
-			var tickEvents []model.Event
-			eng.Engine, tickEvents = must.Get2(eng.Engine.Tick())
+			newEng, tickEvents, err := eng.Engine.Tick()
+			if err != nil {
+				// Concurrency conflict — another writer (API) advanced the store.
+				// Keep original eng.Engine (newEng may be partially advanced).
+				// a.mode is unchanged — eng is a local copy from line 419, never written back.
+				a.recordInputEvent(TickAttempted{Outcome: Failed{
+					Category: Conflict,
+					Reason:   err.Error(),
+				}})
+				return a, a.tickCmd()
+			}
+			eng.Engine = newEng
 			a.modelEvents = append(a.modelEvents, tickEvents...)
 
 			// Get current state from projection
@@ -435,7 +447,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			// Check if sprint ended (SprintEnded event already cleared it in projection)
 			if _, sprintActive := sim.CurrentSprintOption.Get(); !sprintActive {
-				for _, dev := range sim.Developers {
+				for _, dev := range sim.Developers { // justified:CF
 					a.officeProjection = a.officeProjection.Record(DevEnteredConference{DevID: dev.ID}, sim.CurrentTick, a.clock())
 				}
 				a.syncOfficeToRegistry()
@@ -500,7 +512,7 @@ func (a *App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			// Client mode: HTTP call - cycle through policy names
 			policies := []string{"none", "dora-strict", "tameflow-cognitive"}
 			currentIdx := 0
-			for i, p := range []string{"None", "DORA-Strict", "TameFlow-Cognitive"} {
+			for i, p := range []string{"None", "DORA-Strict", "TameFlow-Cognitive"} { // justified:CF
 				if a.state.SizingPolicy == p {
 					currentIdx = i
 					break
@@ -553,7 +565,7 @@ func (a *App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				ticket := a.state.Backlog[a.selected]
 				// Find first idle developer
 				var devID string
-				for _, dev := range a.state.Developers {
+				for _, dev := range a.state.Developers { // justified:CF
 					if dev.IsIdle {
 						devID = dev.ID
 						break
@@ -578,7 +590,7 @@ func (a *App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			ticket := sim.Backlog[a.selected]
 			assigned := false
 			cubiclePositions := CubicleLayout(len(sim.Developers))
-			for devIdx, dev := range sim.Developers {
+			for devIdx, dev := range sim.Developers { // justified:CF
 				if dev.IsIdle() {
 					eng.Engine = must.Get(eng.Engine.AssignTicket(ticket.ID, dev.ID))
 					a.mode = either.Left[EngineMode, ClientMode](eng)
@@ -740,7 +752,7 @@ func (a *App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		// Find most recent save
 		latest := saves[0]
-		for _, s := range saves[1:] {
+		for _, s := range saves[1:] { // justified:CF
 			if s.Timestamp.After(latest.Timestamp) {
 				latest = s
 			}
@@ -825,7 +837,7 @@ func (a *App) runComparison() {
 	trackerB := metrics.NewTracker()
 
 	// Run 3 sprints each
-	for i := 0; i < 3; i++ {
+	for i := 0; i < 3; i++ { // justified:CF
 		engA, trackerA = a.runSprintWithAutoAssign(engA, trackerA)
 		engB, trackerB = a.runSprintWithAutoAssign(engB, trackerB)
 	}
@@ -865,7 +877,7 @@ func (a *App) createSimulationEngine(policy model.SizingPolicy, seed int64) engi
 	gen := engine.Scenarios["mixed"] // Use mixed for more interesting comparison
 	rng := rand.New(rand.NewSource(seed))
 	tickets := gen.Generate(rng, 15)
-	for _, t := range tickets {
+	for _, t := range tickets { // justified:CF
 		eng = must.Get(eng.AddTicket(t))
 	}
 
@@ -879,7 +891,7 @@ func (a *App) runSprintWithAutoAssign(eng engine.Engine, tracker metrics.Tracker
 	// Auto-assign tickets to idle developers at start
 	// Use index-based iteration so re-reads affect subsequent checks
 	state := eng.Sim()
-	for i := 0; i < len(state.Developers); i++ {
+	for i := 0; i < len(state.Developers); i++ { // justified:CF
 		dev := state.Developers[i]
 		if dev.IsIdle() && len(state.Backlog) > 0 {
 			ticket := state.Backlog[0]
@@ -901,13 +913,13 @@ func (a *App) runSprintWithAutoAssign(eng engine.Engine, tracker metrics.Tracker
 
 	// Invariant: StartSprint() guarantees CurrentSprintOption.IsOk() - safe to MustGet
 	sprint := eng.Sim().CurrentSprintOption.MustGet()
-	for eng.Sim().CurrentTick < sprint.EndDay {
+	for eng.Sim().CurrentTick < sprint.EndDay { // justified:CF
 		eng, _ = must.Get2(eng.Tick())
 		state = eng.Sim()
 		tracker = tracker.Updated(state)
 
 		// Re-assign idle developers mid-sprint
-		for i := 0; i < len(state.Developers); i++ {
+		for i := 0; i < len(state.Developers); i++ { // justified:CF
 			dev := state.Developers[i]
 			if dev.IsIdle() && len(state.Backlog) > 0 {
 				ticket := state.Backlog[0]
@@ -1083,7 +1095,7 @@ type headerState struct {
 func (a *App) headerView() string {
 	viewNames := []string{"Planning", "Execution", "Metrics", "Comparison"}
 	tabs := ""
-	for i, name := range viewNames {
+	for i, name := range viewNames { // justified:CF
 		style := MutedStyle
 		if View(i) == a.currentView {
 			style = TitleStyle
@@ -1150,7 +1162,7 @@ func (a *App) helpView() string {
 	}
 
 	help := ""
-	for _, k := range keys {
+	for _, k := range keys { // justified:CF
 		help += HelpKeyStyle.Render(k.key) + HelpDescStyle.Render(" "+k.desc+"  ")
 	}
 
@@ -1197,7 +1209,7 @@ func extractFeverHistory(history []metrics.FeverSnapshot) []float64 {
 // Records animation events based on developer/ticket status using predicates.
 // Re-reads projection state after each event to avoid stale predicates.
 func (a *App) updateDeveloperAnimationStates(sim model.Simulation) {
-	for _, dev := range sim.Developers {
+	for _, dev := range sim.Developers { // justified:CF
 		// Re-read state each iteration to see effects of prior recordings
 		state := a.officeProjection.State()
 

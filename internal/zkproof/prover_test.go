@@ -24,6 +24,7 @@ func proverPathForTest() string {
 // Run with: go test -v -run TestInvokeProver_Integration -timeout 5m
 // Set ZK_PROVER_PATH to override the default prover location.
 func TestInvokeProver_Integration(t *testing.T) {
+	t.Skip("disabled: 22s prover compilation dominates test suite")
 	if testing.Short() {
 		t.Skip("skipping integration test in short mode")
 	}

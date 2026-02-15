@@ -78,7 +78,7 @@ func TestFeverChart_HistoryValues(t *testing.T) {
 	// Simulate buffer consumption over time with increasing progress
 	consumptions := []float64{1, 2, 3, 5, 7}
 	progresses := []float64{0.1, 0.2, 0.3, 0.5, 0.7}
-	for i, consumed := range consumptions {
+	for i, consumed := range consumptions { // justified:IX
 		sprint.BufferConsumed = consumed
 		sprint = sprint.WithUpdatedFeverStatus(progresses[i])
 		fever = fever.Updated(sprint)
@@ -91,7 +91,7 @@ func TestFeverChart_HistoryValues(t *testing.T) {
 
 	// Values should match consumption percentages
 	expected := []float64{10, 20, 30, 50, 70}
-	for i, v := range values {
+	for i, v := range values { // justified:IX
 		if v != expected[i] {
 			t.Errorf("HistoryValues[%d] = %.1f, want %.1f", i, v, expected[i])
 		}

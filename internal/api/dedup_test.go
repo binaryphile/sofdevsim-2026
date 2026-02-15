@@ -99,7 +99,7 @@ func TestDedupMiddleware_NoHeader(t *testing.T) {
 	defer srv.Close()
 
 	// Two requests without X-Request-ID
-	for i := 0; i < 2; i++ {
+	for i := 0; i < 2; i++ { // justified:SM
 		req, _ := http.NewRequest("POST", srv.URL, nil)
 		http.DefaultClient.Do(req)
 	}
@@ -123,7 +123,7 @@ func TestDedupMiddleware_GETNotCached(t *testing.T) {
 	defer srv.Close()
 
 	// Two GET requests with same ID - both should execute
-	for i := 0; i < 2; i++ {
+	for i := 0; i < 2; i++ { // justified:SM
 		req, _ := http.NewRequest("GET", srv.URL, nil)
 		req.Header.Set("X-Request-ID", "same-id")
 		http.DefaultClient.Do(req)

@@ -73,7 +73,7 @@ func TestSprintWalkthrough(t *testing.T) {
 	}
 	officeResp := getOffice(t, ts, sim.ID)
 
-	for _, dev := range officeResp.Developers {
+	for _, dev := range officeResp.Developers { // justified:AS
 		if dev.State != "conference" {
 			t.Fatalf("expected dev %s in conference, got %q", dev.DevID, dev.State)
 		}
@@ -89,15 +89,17 @@ func TestSprintWalkthrough(t *testing.T) {
 
 	// ── Milestone 3: Assign tickets ──
 	t.Logf("Milestone 3: Assign tickets to all 6 developers")
-	for i := 1; i <= 6; i++ {
+	for i := 1; i <= 6; i++ { // justified:SM
 		body := fmt.Sprintf(`{"ticketId": "TKT-%03d"}`, i) // auto-assign
 		resp = post(t, ts.srv(), "/simulations/"+sim.ID+"/assignments", body)
 		unmarshalHAL(resp)
 	}
 
+	maybeDelay(ts, t, "Milestone 3: Assign tickets")
+
 	officeResp = getOffice(t, ts, sim.ID)
 	workingCount := 0
-	for _, dev := range officeResp.Developers {
+	for _, dev := range officeResp.Developers { // justified:AS
 		if dev.State == "working" {
 			workingCount++
 			if dev.TicketID == "" {
@@ -109,7 +111,6 @@ func TestSprintWalkthrough(t *testing.T) {
 		t.Fatalf("expected 6 working devs, got %d", workingCount)
 	}
 	t.Logf("  All 6 devs working with tickets assigned")
-	maybeDelay(ts, t, "Milestone 3: Assign tickets")
 
 	// ── Milestone 4: Start sprint ──
 	t.Logf("Milestone 4: Start sprint")
@@ -134,19 +135,26 @@ func TestSprintWalkthrough(t *testing.T) {
 	observedStates := map[string]bool{}
 	tickCount := 0
 
-	for {
+	for { // justified:WL
 		resp = post(t, ts.srv(), "/simulations/"+sim.ID+"/tick", "")
 		unmarshalHAL(resp)
 		sim = parseSim(t, hal.Simulation)
 		tickCount++
 
 		officeResp = getOffice(t, ts, sim.ID)
-		for _, dev := range officeResp.Developers {
+		for _, dev := range officeResp.Developers { // justified:MB
 			observedStates[dev.State] = true
 		}
 
 		if !sim.SprintActive {
 			break
+		}
+
+		// 200ms paces ticks to ~5/sec — fast enough to feel responsive,
+		// slow enough for TUI's per-event Bubble Tea render cycle to keep up.
+		// Tunable: increase if TUI still desyncs on slow terminals.
+		if ts.registry == nil {
+			time.Sleep(200 * time.Millisecond)
 		}
 
 		if tickCount > 100 {
@@ -167,9 +175,11 @@ func TestSprintWalkthrough(t *testing.T) {
 
 	// ── Milestone 6: Sprint ends ──
 	t.Logf("Milestone 6: Sprint ends — devs return to conference")
+	maybeDelay(ts, t, "Milestone 6: Sprint ends")
+
 	officeResp = getOffice(t, ts, sim.ID)
 
-	for _, dev := range officeResp.Developers {
+	for _, dev := range officeResp.Developers { // justified:AS
 		if dev.State != "conference" {
 			t.Fatalf("expected dev %s in conference after sprint, got %q", dev.DevID, dev.State)
 		}
@@ -181,7 +191,6 @@ func TestSprintWalkthrough(t *testing.T) {
 		t.Fatal("expected start-sprint link after sprint ends")
 	}
 	t.Logf("  All 6 devs in conference, start-sprint link reappeared")
-	maybeDelay(ts, t, "Milestone 6: Sprint ends")
 
 	// ── Milestone 7: Final state ──
 	t.Logf("Milestone 7: Final state")

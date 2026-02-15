@@ -176,7 +176,7 @@ func BuildComparisonSummary(opt ComparisonOption) ComparisonSummary {
 		return ComparisonSummary{}
 	}
 
-	result, _ := opt.Get()
+	result := opt.MustGet()
 
 	// Determine winner policy string
 	var winnerPolicy string

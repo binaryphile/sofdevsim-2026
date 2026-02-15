@@ -15,12 +15,12 @@ type ChildVarianceResult struct {
 func AnalyzeChildVariance(completedTickets []model.Ticket) []ChildVarianceResult {
 	// Build lookup map
 	byID := make(map[string]model.Ticket)
-	for _, t := range completedTickets {
+	for _, t := range completedTickets { // justified:MB
 		byID[t.ID] = t
 	}
 
 	var results []ChildVarianceResult
-	for _, parent := range completedTickets {
+	for _, parent := range completedTickets { // justified:CF
 		if !parent.HasChildren() {
 			continue
 		}
@@ -60,7 +60,7 @@ func AnalyzeChildVariance(completedTickets []model.Ticket) []ChildVarianceResult
 // Note: Uses raw loop instead of fluentfp for early-exit semantics (first match returns).
 // This is intentional per FP guide - fluentfp is for transformation pipelines, not early-exit searches.
 func HasHighChildVariance(completedTickets []model.Ticket) bool {
-	for _, r := range AnalyzeChildVariance(completedTickets) {
+	for _, r := range AnalyzeChildVariance(completedTickets) { // justified:CF
 		if r.HighVariance {
 			return true
 		}

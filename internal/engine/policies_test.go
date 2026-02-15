@@ -3,6 +3,7 @@ package engine_test
 import (
 	"testing"
 
+	"github.com/binaryphile/fluentfp/slice"
 	"github.com/binaryphile/sofdevsim-2026/internal/engine"
 	"github.com/binaryphile/sofdevsim-2026/internal/model"
 )
@@ -64,17 +65,14 @@ func TestPolicyEngine_Decompose(t *testing.T) {
 	}
 
 	// Children should have parent reference
-	for _, child := range children {
+	for _, child := range children { // justified:AS
 		if child.ParentID != ticket.ID {
 			t.Errorf("Child %s has ParentID %s, want %s", child.ID, child.ParentID, ticket.ID)
 		}
 	}
 
 	// Children estimates should sum to approximately parent (90-110%)
-	var totalEstimate float64
-	for _, child := range children {
-		totalEstimate += child.EstimatedDays
-	}
+	totalEstimate := slice.From(children).ToFloat64(model.Ticket.GetEstimatedDays).Sum()
 
 	ratio := totalEstimate / ticket.EstimatedDays
 	if ratio < 0.85 || ratio > 1.15 {
@@ -83,7 +81,7 @@ func TestPolicyEngine_Decompose(t *testing.T) {
 	}
 
 	// Children should be in backlog phase
-	for _, child := range children {
+	for _, child := range children { // justified:AS
 		if child.Phase != model.PhaseBacklog {
 			t.Errorf("Child %s in phase %v, want Backlog", child.ID, child.Phase)
 		}
@@ -95,16 +93,14 @@ func TestPolicyEngine_DecompositionImprovesUnderstanding(t *testing.T) {
 	const iterations = 100
 	improvedCount := 0
 
-	for seed := int64(0); seed < iterations; seed++ {
+	for seed := int64(0); seed < iterations; seed++ { // justified:SM
 		pe := engine.NewPolicyEngine(seed)
 		ticket := model.NewTicket("TKT-001", "Test", 10, model.LowUnderstanding)
 		children := pe.Decompose(ticket)
 
-		for _, child := range children {
-			if child.UnderstandingLevel > ticket.UnderstandingLevel {
-				improvedCount++
-			}
-		}
+		// improvedUnderstanding returns true if child has better understanding than parent.
+		improvedUnderstanding := func(child model.Ticket) bool { return child.UnderstandingLevel > ticket.UnderstandingLevel }
+		improvedCount += slice.From(children).KeepIf(improvedUnderstanding).Len()
 	}
 
 	// Expect ~60% of children to have improved understanding

@@ -79,6 +79,9 @@ func (t Ticket) IsChild() bool {
 	return t.ParentID != ""
 }
 
+// GetEstimatedDays returns the estimated days for FluentFP ToFloat64 operations.
+func (t Ticket) GetEstimatedDays() float64 { return t.EstimatedDays }
+
 // PhaseEffortPct defines how effort is distributed across phases (sums to 1.0)
 var PhaseEffortPct = map[WorkflowPhase]float64{
 	PhaseResearch:  0.05, // 5% - quick for understood work, longer for unknown

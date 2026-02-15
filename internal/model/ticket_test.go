@@ -69,7 +69,7 @@ func TestTicket_CalculatePhaseEffort_ReturnsCorrectDistribution(t *testing.T) {
 // Test that phase effort percentages sum to 1.0 (important invariant)
 func TestPhaseEffortPct_SumsToOne_AcrossAllPhases(t *testing.T) {
 	var total float64
-	for phase := model.PhaseResearch; phase <= model.PhaseReview; phase++ {
+	for phase := model.PhaseResearch; phase <= model.PhaseReview; phase++ { // justified:IX
 		total += model.PhaseEffortPct[phase]
 	}
 

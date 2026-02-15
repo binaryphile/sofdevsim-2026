@@ -185,7 +185,7 @@ func TestDeveloperAnimation_FrameOffset_VisualVariety(t *testing.T) {
 	// CurrentFrame should be (Frame + FrameOffset) % len(WorkingFrames)
 	expectedFrames := []int{0, 1, 2}
 	actualFrames := []int{anim0.CurrentFrame(), anim1.CurrentFrame(), anim2.CurrentFrame()}
-	for i, expected := range expectedFrames {
+	for i, expected := range expectedFrames { // justified:IX
 		if actualFrames[i] != expected {
 			t.Errorf("dev-%d CurrentFrame() = %d, want %d", i, actualFrames[i], expected)
 		}
@@ -352,7 +352,7 @@ func TestRenderDeveloperIcon(t *testing.T) {
 }
 
 func containsAny(s string, substrs []string) bool {
-	for _, sub := range substrs {
+	for _, sub := range substrs { // justified:AS
 		if len(sub) > 0 && len(s) >= len(sub) {
 			for i := 0; i <= len(s)-len(sub); i++ {
 				if s[i:i+len(sub)] == sub {
@@ -374,7 +374,7 @@ func TestNewOfficeState(t *testing.T) {
 		t.Errorf("Animations count = %d, want 3", len(state.Animations))
 	}
 
-	for i, anim := range state.Animations {
+	for i, anim := range state.Animations { // justified:IX
 		// Developers start at cubicles (Idle), move to conference via events
 		if anim.State != StateIdle {
 			t.Errorf("Animation %d: state = %v, want StateIdle", i, anim.State)
@@ -518,7 +518,7 @@ func containsSubstring(s, substr string) bool {
 }
 
 func containsSubstringHelper(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
+	for i := 0; i <= len(s)-len(substr); i++ { // justified:IX
 		if s[i:i+len(substr)] == substr {
 			return true
 		}
@@ -588,7 +588,7 @@ func TestApp_OfficeAnimation_Integration(t *testing.T) {
 	send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
 
 	// 3. Advance animation frames (movement animation completes)
-	for i := 0; i < 5; i++ {
+	for i := 0; i < 5; i++ { // justified:SM
 		send(animationTickMsg{})
 	}
 

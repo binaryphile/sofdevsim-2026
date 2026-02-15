@@ -21,7 +21,7 @@ func (f FeverSnapshot) GetPercentUsed() float64 { return f.PercentUsed }
 // generateFeverSnapshots creates test data for fever benchmarks.
 func generateFeverSnapshots(n int) []FeverSnapshot {
 	snapshots := make([]FeverSnapshot, n)
-	for i := 0; i < n; i++ {
+	for i := 0; i < n; i++ { // justified:IX
 		snapshots[i] = FeverSnapshot{
 			Day:         i,
 			PercentUsed: float64(i%100) / 100.0,
@@ -34,7 +34,7 @@ func generateFeverSnapshots(n int) []FeverSnapshot {
 // generateTickets creates test tickets for benchmarks.
 func generateTickets(n int) []model.Ticket {
 	tickets := make([]model.Ticket, n)
-	for i := 0; i < n; i++ {
+	for i := 0; i < n; i++ { // justified:IX
 		tickets[i] = model.NewTicket(
 			idFor("TKT", i),
 			"Benchmark ticket",
@@ -49,7 +49,7 @@ func generateTickets(n int) []model.Ticket {
 // generateDurations creates test durations for fold benchmarks.
 func generateDurations(n int) []time.Duration {
 	durations := make([]time.Duration, n)
-	for i := 0; i < n; i++ {
+	for i := 0; i < n; i++ { // justified:IX
 		durations[i] = time.Duration(i) * time.Hour
 	}
 	return durations
@@ -171,7 +171,7 @@ func (s DORASnapshot) GetChangeFailRate() float64  { return s.ChangeFailRate }
 // generateDORASnapshots creates test data for multi-field benchmarks.
 func generateDORASnapshots(n int) []DORASnapshot {
 	snapshots := make([]DORASnapshot, n)
-	for i := 0; i < n; i++ {
+	for i := 0; i < n; i++ { // justified:IX
 		snapshots[i] = DORASnapshot{
 			Day:             i,
 			LeadTimeAvg:     float64(i) * 0.1,

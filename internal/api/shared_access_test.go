@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/binaryphile/fluentfp/must"
+	"github.com/binaryphile/fluentfp/slice"
 	"github.com/binaryphile/sofdevsim-2026/internal/engine"
 	"github.com/binaryphile/sofdevsim-2026/internal/events"
 	"github.com/binaryphile/sofdevsim-2026/internal/metrics"
@@ -65,13 +66,9 @@ func TestSharedAccess_TUISimulationAccessibleViaAPI(t *testing.T) {
 
 	// Verify SprintStarted event in shared store
 	evts = reg.Store().Replay("sim-42")
-	found := false
-	for _, e := range evts {
-		if e.EventType() == "SprintStarted" {
-			found = true
-			break
-		}
-	}
+	// isSprintStarted returns true if event is SprintStarted.
+	isSprintStarted := func(e events.Event) bool { return e.EventType() == "SprintStarted" }
+	_, found := slice.From(evts).Find(isSprintStarted).Get()
 	if !found {
 		t.Error("SprintStarted event not found in shared store")
 	}
@@ -112,10 +109,7 @@ func TestSharedAccess_APIChangesVisibleToTUI(t *testing.T) {
 
 	// Both should see events in shared store
 	evts := reg.Store().Replay("sim-42")
-	eventTypes := make([]string, len(evts))
-	for i, e := range evts {
-		eventTypes[i] = e.EventType()
-	}
+	eventTypes := slice.From(evts).ToString(events.Event.EventType)
 
 	// Should have: SimulationCreated, DeveloperAdded, TicketCreated, SprintStarted, TicketAssigned
 	if len(evts) < 5 {

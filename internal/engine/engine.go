@@ -179,7 +179,7 @@ func (e Engine) Tick() (Engine, []model.Event, error) {
 	// 1. Developers work on assigned tickets
 	// Read from projection after Ticked emit
 	state := e.state()
-	for i := range state.Developers {
+	for i := range state.Developers { // justified:EP
 		dev := state.Developers[i]
 		if dev.IsIdle() {
 			continue
@@ -222,7 +222,7 @@ func (e Engine) Tick() (Engine, []model.Event, error) {
 
 	// 2. Generate random events (bugs, scope creep)
 	// Generators return ES events; emit them and convert to UI events
-	for _, evt := range e.evtGen.GenerateRandomEvents(e.state()) {
+	for _, evt := range e.evtGen.GenerateRandomEvents(e.state()) { // justified:EP
 		if e, err = e.emit(evt); err != nil {
 			return e, nil, err
 		}
@@ -230,7 +230,7 @@ func (e Engine) Tick() (Engine, []model.Event, error) {
 	}
 
 	// 3. Check for incidents on recently deployed tickets
-	for _, evt := range e.evtGen.CheckForIncidents(e.state()) {
+	for _, evt := range e.evtGen.CheckForIncidents(e.state()) { // justified:EP
 		if e, err = e.emit(evt); err != nil {
 			return e, nil, err
 		}
@@ -436,8 +436,8 @@ func (e Engine) TryDecompose(ticketID string) (Engine, either.Either[NotDecompos
 	// Return children from projection (now populated by handler)
 	// Find them by matching IDs from the event
 	result := make([]model.Ticket, 0, len(children))
-	for _, child := range childTickets {
-		for _, t := range e.state().Backlog {
+	for _, child := range childTickets { // justified:CF
+		for _, t := range e.state().Backlog { // justified:CF
 			if t.ID == child.ID {
 				result = append(result, t)
 				break
@@ -505,7 +505,7 @@ func (e Engine) emitLoadedConfig(sim model.Simulation) (Engine, error) {
 
 func (e Engine) emitLoadedTeam(sim model.Simulation) (Engine, error) {
 	var err error
-	for _, dev := range sim.Developers {
+	for _, dev := range sim.Developers { // justified:EP
 		if e, err = e.emit(events.NewDeveloperAdded(e.state().ID, 0, dev.ID, dev.Name, dev.Velocity)); err != nil {
 			return e, err
 		}
@@ -515,7 +515,7 @@ func (e Engine) emitLoadedTeam(sim model.Simulation) (Engine, error) {
 
 func (e Engine) emitLoadedBacklog(sim model.Simulation) (Engine, error) {
 	var err error
-	for _, t := range sim.Backlog {
+	for _, t := range sim.Backlog { // justified:EP
 		if e, err = e.emit(events.NewTicketCreated(e.state().ID, 0, t.ID, t.Title, t.EstimatedDays, t.UnderstandingLevel)); err != nil {
 			return e, err
 		}
@@ -527,7 +527,7 @@ func (e Engine) emitLoadedBacklog(sim model.Simulation) (Engine, error) {
 // Uses TicketStateRestored (not TicketAssigned) to preserve full state including Phase, RemainingEffort.
 func (e Engine) emitLoadedActiveTickets(sim model.Simulation) (Engine, error) {
 	var err error
-	for _, t := range sim.ActiveTickets {
+	for _, t := range sim.ActiveTickets { // justified:EP
 		if e, err = e.emit(events.NewTicketCreated(e.state().ID, 0, t.ID, t.Title, t.EstimatedDays, t.UnderstandingLevel)); err != nil {
 			return e, err
 		}
@@ -540,7 +540,7 @@ func (e Engine) emitLoadedActiveTickets(sim model.Simulation) (Engine, error) {
 
 func (e Engine) emitLoadedCompletedTickets(sim model.Simulation) (Engine, error) {
 	var err error
-	for _, t := range sim.CompletedTickets {
+	for _, t := range sim.CompletedTickets { // justified:EP
 		if e, err = e.emit(events.NewTicketCreated(e.state().ID, 0, t.ID, t.Title, t.EstimatedDays, t.UnderstandingLevel)); err != nil {
 			return e, err
 		}

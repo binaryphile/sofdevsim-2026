@@ -28549,3 +28549,54 @@ Secondary: stale index in Engine.Tick after emit, Events panel blind to external
 [x] Divergent-projection test (evidence: TestProjection_Apply_DivergentProjections passes)
 [x] Q2 consolidated (evidence: modelEvents assertion in TestTUI_ReceivesExternalEvents, redundant test deleted)
 [x] All tests pass (evidence: go test ./... all 15 packages pass)
+2026-02-15T04:15:00Z | Contract: Fix MCP memory tags + hash truncation
+[ ] Tags no longer displayed as individual characters in search results
+[ ] Full 64-char hash shown in all user-facing tool responses (9 sites)
+[ ] Existing memories with corrupted metadata tags still display correctly
+[ ] server_impl.py dict attribute access fixed (6 sites)
+[ ] memory.py.bak cleaned up
+2026-02-15T05:30:00Z | Completion: Fix MCP memory tags + hash truncation + dict attr access
+[x] Tags no longer displayed as individual characters in search results (verified via memory_search)
+[x] Full 64-char hash shown in all user-facing tool responses — 9 sites fixed (verified via memory_store/search/delete)
+[x] Existing memories with corrupted metadata tags still display correctly (verified with old hash 46e08af4...)
+[x] server_impl.py dict attribute access fixed — 8 sites (verified with grep)
+[x] memory.py.bak cleaned up (local site-packages)
+[x] Khorikov-appropriate tests added: 2 unit tests for domain logic (tags leak)
+[x] 3 upstream PRs submitted:
+    - PR #467: fix/tags-character-split (tags char-split + tests)
+    - PR #468: fix/hash-truncation-in-responses (9 hash truncation sites)
+    - PR #469: fix/prompt-dict-attribute-access (8 dict attr sites)
+2026-02-14T23:55:00Z | Contract: Fix maybeDelay placement in live-mode test
+[ ] Full test suite passes
+[ ] Live mode passes all 7 milestones
+2026-02-15T00:25:00Z | Interaction: previous contract (maybeDelay-only) superseded — expanded scope to include panic fix
+2026-02-15T00:30:00Z | Contract: Fix TUI–API concurrent tick panic
+[ ] Full test suite passes
+[ ] TUI does not panic on API-driven sprint
+[ ] Live mode passes all 7 milestones
+2026-02-15T02:00:00Z | Contract: FluentFP codebase grooming
+[ ] Sum() added to fluentfp, vendored
+[ ] All production violations converted (5)
+[ ] All test violations converted (10)
+[ ] GetEstimatedDays accessor added
+[ ] Justification codes in fluentfp-guide.md
+[ ] Justified loops annotated
+[ ] Full test suite passes
+[ ] Lesson stored in MCP memory
+2026-02-15T12:00:00Z | Contract: Fix FluentFP first-pass compliance
+[ ] CLAUDE.md FluentFP section rewritten (mandatory + decision gate + anti-pattern)
+[ ] Justified codes surfaced in CLAUDE.md
+[ ] Decision gate added to fluentfp-guide.md
+[ ] Tests pass
+2026-02-15T12:00:00Z | Contract: Fix FluentFP first-pass compliance
+[ ] CLAUDE.md FluentFP section rewritten (mandatory + decision gate + anti-pattern)
+[ ] Justified codes surfaced in CLAUDE.md
+[ ] Decision gate added to fluentfp-guide.md
+[ ] Behavioral test updated and run (before/after N=3)
+[ ] Tests pass
+2026-02-15T12:30:00Z | Completion: Fix FluentFP first-pass compliance
+[x] CLAUDE.md rewritten (evidence: diff shows mandatory framing, decision gate, BAD/GOOD)
+[x] Justified codes in CLAUDE.md (evidence: 8 codes inline)
+[x] Decision gate in guide (evidence: docs/fluentfp-guide.md top section)
+[x] Behavioral test (evidence: before/after compliance rates — 36/36 both variants, test lacks discriminating power at small context)
+[x] Tests pass (evidence: go test ./... 15/15)

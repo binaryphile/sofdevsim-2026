@@ -12,6 +12,7 @@
 package lessons
 
 import (
+	"github.com/binaryphile/fluentfp/slice"
 	"github.com/binaryphile/sofdevsim-2026/internal/metrics"
 	"github.com/binaryphile/sofdevsim-2026/internal/model"
 )
@@ -22,12 +23,10 @@ func HasRedBufferWithLowTicket(feverStatus model.FeverStatus, activeTickets []mo
 	if feverStatus != model.FeverRed {
 		return false
 	}
-	for _, t := range activeTickets {
-		if t.UnderstandingLevel == model.LowUnderstanding {
-			return true
-		}
-	}
-	return false
+	// hasLowUnderstanding returns true if ticket has low understanding.
+	hasLowUnderstanding := func(t model.Ticket) bool { return t.UnderstandingLevel == model.LowUnderstanding }
+	_, found := slice.From(activeTickets).Find(hasLowUnderstanding).Get()
+	return found
 }
 
 // LowUnderstandingString is the string representation of LOW understanding level.
@@ -40,12 +39,10 @@ func HasRedBufferWithLowTicketFromStrings(isRedBuffer bool, understandingLevels 
 	if !isRedBuffer {
 		return false
 	}
-	for _, u := range understandingLevels {
-		if u == LowUnderstandingString {
-			return true
-		}
-	}
-	return false
+	// isLowUnderstanding returns true if the string equals LowUnderstandingString.
+	isLowUnderstanding := func(u string) bool { return u == LowUnderstandingString }
+	_, found := slice.From(understandingLevels).Find(isLowUnderstanding).Get()
+	return found
 }
 
 // HasQueueImbalance detects UC20 trigger (engine mode).

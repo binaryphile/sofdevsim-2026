@@ -30,7 +30,7 @@ func (d Display) Header(text string) {
 // Event displays a tick event with narration lines.
 func (d Display) Event(tick int, title string, lines ...string) {
 	fmt.Printf("[Tick %d] %s\n", tick, title)
-	for _, line := range lines {
+	for _, line := range lines { // justified:SM
 		if line == "" {
 			fmt.Println()
 		} else {
@@ -48,7 +48,7 @@ func (d Display) Text(text string) {
 // Success displays a success message with details.
 func (d Display) Success(title string, lines ...string) {
 	fmt.Printf("\n✓ %s\n", title)
-	for _, line := range lines {
+	for _, line := range lines { // justified:SM
 		fmt.Printf("  %s\n", line)
 	}
 }
@@ -73,14 +73,14 @@ func (d Display) PromptYN(question string) bool {
 // Loops until a valid choice is made.
 func (d Display) PromptChoice(question string, options []string) int {
 	fmt.Printf("\n%s\n", question)
-	for i, opt := range options {
+	for i, opt := range options { // justified:SM
 		fmt.Printf("  %d. %s\n", i+1, opt)
 	}
 
 	// Fresh reader for each prompt to avoid buffering issues with live output
 	reader := bufio.NewReader(os.Stdin)
 
-	for {
+	for { // justified:SM
 		fmt.Print("\nYour choice: ")
 
 		response, err := reader.ReadString('\n')
@@ -118,7 +118,7 @@ func (d Display) Spinner(message string, work func() error) error {
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
 
-	for {
+	for { // justified:SM
 		select {
 		case err := <-done:
 			fmt.Printf("\r%s done\n", message)

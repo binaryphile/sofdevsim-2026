@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/binaryphile/fluentfp/must"
+	"github.com/binaryphile/fluentfp/slice"
 	"github.com/binaryphile/sofdevsim-2026/internal/engine"
 	"github.com/binaryphile/sofdevsim-2026/internal/events"
 	"github.com/binaryphile/sofdevsim-2026/internal/model"
@@ -99,7 +101,7 @@ func (l BufferCrisisLesson) Run(proverPath string) error {
 	}
 
 	// Add multiple developers to maximize active tickets
-	for _, dev := range []struct{ id, name string }{
+	for _, dev := range []struct{ id, name string }{ // justified:EP
 		{"dev-1", "Alex"},
 		{"dev-2", "Blake"},
 		{"dev-3", "Casey"},
@@ -118,7 +120,7 @@ func (l BufferCrisisLesson) Run(proverPath string) error {
 		model.NewTicket("TKT-002", "New feature", 25, model.LowUnderstanding),
 		model.NewTicket("TKT-003", "Technical debt", 25, model.LowUnderstanding),
 	}
-	for _, t := range tickets {
+	for _, t := range tickets { // justified:EP
 		eng, err = eng.AddTicket(t)
 		if err != nil {
 			return fmt.Errorf("add ticket: %w", err)
@@ -136,7 +138,7 @@ func (l BufferCrisisLesson) Run(proverPath string) error {
 	accumulatedDebt := 0.0 // Bad choices accumulate debt that carries to next sprint
 
 	// Run simulation with interactive decision points
-	for sprintNum := 0; sprintNum < 4 && recoveryTick == 0; sprintNum++ {
+	for sprintNum := 0; sprintNum < 4 && recoveryTick == 0; sprintNum++ { // justified:EP
 		// Start sprint
 		eng, err = eng.StartSprint()
 		if err != nil {
@@ -146,13 +148,13 @@ func (l BufferCrisisLesson) Run(proverPath string) error {
 		// Apply accumulated debt from previous sprint's bad choices
 		// This prevents "free reset" at sprint boundary
 		if accumulatedDebt > 0 && sprintNum > 0 {
-			sprint, _ := eng.Sim().CurrentSprintOption.Get()
+			sprint := eng.Sim().CurrentSprintOption.MustGet()
 			debtDays := sprint.BufferDays * accumulatedDebt
 			if debtDays > 0 {
 				display.Text(fmt.Sprintf("\n⚠️  Debt carried forward: %.0f%% of buffer already consumed", accumulatedDebt*100))
 				display.Text("   (Consequence of previous choices)\n")
 				// Emit buffer consumption for the debt
-				eng, _ = eng.EmitBufferConsumed(debtDays)
+				eng = must.Get(eng.EmitBufferConsumed(debtDays))
 			}
 		}
 
@@ -160,7 +162,7 @@ func (l BufferCrisisLesson) Run(proverPath string) error {
 		eng = l.assignAvailableWork(eng)
 
 		// Run through the sprint, showing live simulation state
-		sprint, _ := eng.Sim().CurrentSprintOption.Get()
+		sprint := eng.Sim().CurrentSprintOption.MustGet()
 		fmt.Printf("\n── Sprint %d (days %d-%d) ──\n", sprintNum+1, sprint.StartDay+1, sprint.EndDay)
 
 		for eng.Sim().CurrentTick < sprint.EndDay && recoveryTick == 0 {
@@ -249,10 +251,10 @@ func (l BufferCrisisLesson) Run(proverPath string) error {
 						case "overtime":
 							display.Text("\n→ Overtime initiated. Watch what happens to the buffer...\n")
 							// Overtime causes bugs - adds rework tickets AND debt
-							eng, _ = eng.AddTicket(model.NewTicket(
-								fmt.Sprintf("TKT-BUG-%d", tick), "Bug from fatigue", 4, model.LowUnderstanding))
-							eng, _ = eng.AddTicket(model.NewTicket(
-								fmt.Sprintf("TKT-BUG2-%d", tick), "Another bug", 3, model.LowUnderstanding))
+							eng = must.Get(eng.AddTicket(model.NewTicket(
+								fmt.Sprintf("TKT-BUG-%d", tick), "Bug from fatigue", 4, model.LowUnderstanding)))
+							eng = must.Get(eng.AddTicket(model.NewTicket(
+								fmt.Sprintf("TKT-BUG2-%d", tick), "Another bug", 3, model.LowUnderstanding)))
 							eng = l.assignAvailableWork(eng)
 							accumulatedDebt += 0.3 // 30% buffer penalty carries forward
 						case "wait":
@@ -274,17 +276,17 @@ func (l BufferCrisisLesson) Run(proverPath string) error {
 						case "meeting":
 							display.Text("\n→ Meeting called. Team stops coding for 2 hours...\n")
 							// Meeting adds action items AND significant debt
-							eng, _ = eng.AddTicket(model.NewTicket(
-								fmt.Sprintf("TKT-ACTIONS-%d", tick), "Meeting action items", 4, model.MediumUnderstanding))
+							eng = must.Get(eng.AddTicket(model.NewTicket(
+								fmt.Sprintf("TKT-ACTIONS-%d", tick), "Meeting action items", 4, model.MediumUnderstanding)))
 							eng = l.assignAvailableWork(eng)
 							accumulatedDebt += 0.25
 						case "add-people":
 							display.Text("\n→ Contractors joining. They need onboarding...\n")
 							// Brooks's Law - severe debt penalty
-							eng, _ = eng.AddTicket(model.NewTicket(
-								fmt.Sprintf("TKT-ONBOARD-%d", tick), "Contractor onboarding", 6, model.LowUnderstanding))
-							eng, _ = eng.AddTicket(model.NewTicket(
-								fmt.Sprintf("TKT-DOCS-%d", tick), "Write setup docs", 3, model.LowUnderstanding))
+							eng = must.Get(eng.AddTicket(model.NewTicket(
+								fmt.Sprintf("TKT-ONBOARD-%d", tick), "Contractor onboarding", 6, model.LowUnderstanding)))
+							eng = must.Get(eng.AddTicket(model.NewTicket(
+								fmt.Sprintf("TKT-DOCS-%d", tick), "Write setup docs", 3, model.LowUnderstanding)))
 							eng = l.assignAvailableWork(eng)
 							accumulatedDebt += 0.5 // 50% buffer penalty - Brooks's Law hits hard
 						default:
@@ -361,7 +363,7 @@ func (l BufferCrisisLesson) Run(proverPath string) error {
 
 // assignAvailableWork assigns backlog tickets to idle developers.
 func (l BufferCrisisLesson) assignAvailableWork(eng engine.Engine) engine.Engine {
-	for {
+	for { // justified:CF
 		sim := eng.Sim()
 		if len(sim.Backlog) == 0 {
 			break
@@ -371,7 +373,7 @@ func (l BufferCrisisLesson) assignAvailableWork(eng engine.Engine) engine.Engine
 		assigned := false
 		for _, dev := range sim.Developers {
 			if dev.IsIdle() {
-				eng, _ = eng.AssignTicket(ticketID, dev.ID)
+				eng = must.Get(eng.AssignTicket(ticketID, dev.ID))
 				assigned = true
 				break
 			}
@@ -499,16 +501,11 @@ func (l BufferCrisisLesson) displayZoneChangeFromState(d Display, tick int, oldZ
 // generateProof creates the ZK proof and saves it to a file.
 func (l BufferCrisisLesson) generateProof(d Display, simID, proverPath string, zoneChanges []zoneChange, crisisTick, recoveryTick int) error {
 	// Build events from zone changes for the prover
-	var proofEvents []events.Event
-	for _, zc := range zoneChanges {
-		proofEvents = append(proofEvents, events.NewBufferZoneChanged(
-			simID,
-			zc.tick,
-			zc.oldZone,
-			zc.newZone,
-			0.5, // Penetration ratio not critical for proof
-		))
+	// toBufferZoneEvent converts a zone change record to a BufferZoneChanged event.
+	toBufferZoneEvent := func(zc zoneChange) events.Event {
+		return events.NewBufferZoneChanged(simID, zc.tick, zc.oldZone, zc.newZone, 0.5)
 	}
+	proofEvents := slice.MapTo[events.Event](zoneChanges).Map(toBufferZoneEvent)
 
 	// Detect crisis sequences
 	sequences := zkproof.DetectBufferCrisis(proofEvents)

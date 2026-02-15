@@ -118,7 +118,7 @@ func TestTutorialWalkthrough(t *testing.T) {
 	t.Logf("  Available links: %v", halResp.Links)
 
 	// Auto-assign first 3 tickets (one per developer)
-	for i := 0; i < 3; i++ {
+	for i := 0; i < 3; i++ { // justified:SM
 		ticketID := fmt.Sprintf("TKT-%03d", i+1)
 		assignBody := fmt.Sprintf(`{"ticketId": "%s"}`, ticketID) // Auto-assign
 		resp = post(t, srv, "/simulations/"+simID+"/assignments", assignBody)
@@ -132,7 +132,7 @@ func TestTutorialWalkthrough(t *testing.T) {
 	// Step 6: Advance simulation by ticking
 	t.Logf("Step 6: Advance simulation (tick until sprint ends)")
 	tickCount := 0
-	for {
+	for { // justified:WL
 		resp = get(t, srv, "/simulations/"+simID)
 		unmarshalHAL(resp)
 
@@ -170,10 +170,10 @@ func TestTutorialWalkthrough(t *testing.T) {
 
 	// Count by type
 	eventCounts := make(map[string]int)
-	for _, e := range events {
+	for _, e := range events { // justified:MB
 		eventCounts[e.EventType()]++
 	}
-	for eventType, count := range eventCounts {
+	for eventType, count := range eventCounts { // justified:MB
 		t.Logf("    %s: %d", eventType, count)
 	}
 	t.Logf("")

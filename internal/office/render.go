@@ -178,7 +178,7 @@ func RenderCubicleGrid(state OfficeState, names []string, width int) string {
 
 	// Build 2 rows of 3 cubicles each
 	var rows []string
-	for row := 0; row < 2; row++ {
+	for row := 0; row < 2; row++ { // justified:IX
 		var rowCubicles []string
 		for col := 0; col < 3; col++ {
 			idx := row*3 + col
@@ -298,12 +298,7 @@ func renderConferenceRoomDetailed(anims []DeveloperAnimation, width int) string 
 	innerWidth := width - 2
 
 	// Filter to devs in conference
-	var conferenceDevs []DeveloperAnimation
-	for _, a := range anims {
-		if a.IsInConference() {
-			conferenceDevs = append(conferenceDevs, a)
-		}
-	}
+	conferenceDevs := slice.From(anims).KeepIf(DeveloperAnimation.IsInConference)
 
 	// Render dev icons with colors
 	renderIcon := func(idx int) string {
@@ -372,7 +367,7 @@ func renderCubicleGridDetailed(state OfficeState, names []string, width int) str
 
 	// Build row 0 (devs 0-2, doors on bottom)
 	var row0Cubicles []string
-	for col := 0; col < 3; col++ {
+	for col := 0; col < 3; col++ { // justified:IX
 		idx := col
 		if idx >= len(state.Animations) {
 			break
@@ -391,7 +386,7 @@ func renderCubicleGridDetailed(state OfficeState, names []string, width int) str
 	// Check for frustrated row-1 dev with active Late! bubble
 	hallwayWidth := width
 	var bubbleCol int = -1
-	for col := 0; col < 3; col++ {
+	for col := 0; col < 3; col++ { // justified:IX
 		idx := 3 + col
 		if idx < len(state.Animations) && state.Animations[idx].LateBubbleFrames > 0 {
 			bubbleCol = col
@@ -418,7 +413,7 @@ func renderCubicleGridDetailed(state OfficeState, names []string, width int) str
 
 	// Build row 1 (devs 3-5, doors on top)
 	var row1Cubicles []string
-	for col := 0; col < 3; col++ {
+	for col := 0; col < 3; col++ { // justified:IX
 		idx := 3 + col
 		if idx >= len(state.Animations) {
 			break

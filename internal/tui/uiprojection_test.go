@@ -212,7 +212,7 @@ func TestUIProjection_Idempotent_SameEventsProduceSameState(t *testing.T) {
 	p1 := NewUIProjection()
 	p2 := NewUIProjection()
 
-	for _, e := range events {
+	for _, e := range events { // justified:SM
 		p1 = p1.Record(e)
 		p2 = p2.Record(e)
 	}
@@ -225,7 +225,7 @@ func TestUIProjection_Idempotent_SameEventsProduceSameState(t *testing.T) {
 	}
 
 	// Call State() multiple times - should always return same result
-	for i := 0; i < 3; i++ {
+	for i := 0; i < 3; i++ { // justified:SM
 		if p1.State() != s1 {
 			t.Errorf("State() not idempotent on call %d", i+1)
 		}
@@ -235,7 +235,7 @@ func TestUIProjection_Idempotent_SameEventsProduceSameState(t *testing.T) {
 func BenchmarkUIProjection_State(b *testing.B) {
 	// Build projection with typical session events
 	p := NewUIProjection()
-	for i := 0; i < 50; i++ {
+	for i := 0; i < 50; i++ { // justified:SM
 		p = p.Record(ViewSwitched{To: View(i % 4)})
 		p = p.Record(TicketSelected{ID: "TKT-001"})
 		p = p.Record(SprintStartAttempted{Outcome: Succeeded{}})
@@ -252,7 +252,7 @@ func BenchmarkUIProjection_State(b *testing.B) {
 func BenchmarkUIProjection_Record(b *testing.B) {
 	// Build projection with typical session (150 events)
 	p := NewUIProjection()
-	for i := 0; i < 50; i++ {
+	for i := 0; i < 50; i++ { // justified:SM
 		p = p.Record(ViewSwitched{To: View(i % 4)})
 		p = p.Record(TicketSelected{ID: "TKT-001"})
 		p = p.Record(SprintStartAttempted{Outcome: Succeeded{}})

@@ -420,7 +420,7 @@ func BenchmarkProjection_ReplayFull(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		proj := events.NewProjection()
-		for _, e := range evts {
+		for _, e := range evts { // justified:SM
 			proj = proj.Apply(e)
 		}
 	}
@@ -433,14 +433,14 @@ func BenchmarkProjection_IdempotencySkip(b *testing.B) {
 
 	// Setup: create projection with all events already processed
 	proj := events.NewProjection()
-	for _, e := range evts {
+	for _, e := range evts { // justified:SM
 		proj = proj.Apply(e)
 	}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		// All events are duplicates - measures pure skip cost
-		for _, e := range evts {
+		for _, e := range evts { // justified:SM
 			proj.Apply(e)
 		}
 	}
@@ -459,7 +459,7 @@ func generateTestEvents(n int) []events.Event {
 	result = append(result, events.NewDeveloperAdded("sim-1", 0, "dev-3", "Carol", 1.2))
 
 	// Fill rest with Ticked events (most common event type)
-	for i := len(result); i < n; i++ {
+	for i := len(result); i < n; i++ { // justified:SM
 		result = append(result, events.NewTicked("sim-1", i))
 	}
 
@@ -473,7 +473,7 @@ func TestProjection_ReplayManyEvents_Correctness(t *testing.T) {
 	evts := generateTestEvents(1000)
 
 	proj := events.NewProjection()
-	for _, e := range evts {
+	for _, e := range evts { // justified:SM
 		proj = proj.Apply(e)
 	}
 
@@ -878,7 +878,7 @@ func TestProjection_Apply_TicketDecomposed(t *testing.T) {
 	state := got.State()
 
 	// Parent should be removed from backlog
-	for _, ticket := range state.Backlog {
+	for _, ticket := range state.Backlog { // justified:AS
 		if ticket.ID == "TKT-PARENT" {
 			t.Errorf("Parent ticket should be removed from backlog, but found it")
 		}
@@ -891,7 +891,7 @@ func TestProjection_Apply_TicketDecomposed(t *testing.T) {
 
 	// Verify child tickets exist with correct properties
 	childIDs := map[string]bool{}
-	for _, ticket := range state.Backlog {
+	for _, ticket := range state.Backlog { // justified:MB
 		childIDs[ticket.ID] = true
 		if ticket.Phase != model.PhaseBacklog {
 			t.Errorf("Child %s Phase = %v, want PhaseBacklog", ticket.ID, ticket.Phase)
@@ -1073,7 +1073,7 @@ func TestProjection_CalculateSprintProgress_IgnoresOtherTickets(t *testing.T) {
 	proj = proj.Apply(events.NewDeveloperAdded("sim-1", 0, "dev-1", "Alice", 1.0))
 
 	// Create and complete tickets BEFORE sprint starts (not in sprint)
-	for i := 0; i < 3; i++ {
+	for i := 0; i < 3; i++ { // justified:SM
 		id := fmt.Sprintf("T-BEFORE-%d", i)
 		proj = proj.Apply(events.NewTicketCreated("sim-1", 0, id, "Before Sprint", 5.0, model.HighUnderstanding))
 		proj = proj.Apply(events.NewTicketAssigned("sim-1", 0, id, "dev-1", time.Time{}))

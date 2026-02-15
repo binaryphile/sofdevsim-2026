@@ -7,7 +7,7 @@ import "github.com/binaryphile/sofdevsim-2026/internal/model"
 // Calculation: []Ticket → map[Phase]count
 func QueueDepthPerPhase(activeTickets []model.Ticket) map[model.WorkflowPhase]int {
 	depths := make(map[model.WorkflowPhase]int)
-	for _, t := range activeTickets {
+	for _, t := range activeTickets { // justified:MB
 		depths[t.Phase]++
 	}
 	return depths
@@ -22,12 +22,12 @@ func HasQueueImbalance(activeTickets []model.Ticket) bool {
 	}
 
 	var sum int
-	for _, d := range depths {
+	for _, d := range depths { // justified:MB
 		sum += d
 	}
 	avg := float64(sum) / float64(len(depths))
 
-	for _, d := range depths {
+	for _, d := range depths { // justified:MB
 		if float64(d) > 2*avg {
 			return true
 		}

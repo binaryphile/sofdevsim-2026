@@ -129,7 +129,7 @@ func TestExporter_Export_HappyPath(t *testing.T) {
 		"metrics.csv",
 	}
 
-	for _, file := range expectedFiles {
+	for _, file := range expectedFiles { // justified:AS
 		path := filepath.Join(result.Path, file)
 		if _, err := os.Stat(path); os.IsNotExist(err) {
 			t.Errorf("Expected file %s not created", file)
@@ -143,7 +143,7 @@ func TestExporter_Export_HappyPath(t *testing.T) {
 	}
 
 	// Observable outcome: each CSV has header + at least structure
-	for _, file := range expectedFiles {
+	for _, file := range expectedFiles { // justified:AS
 		content, err := os.ReadFile(filepath.Join(result.Path, file))
 		if err != nil {
 			t.Errorf("Failed to read %s: %v", file, err)

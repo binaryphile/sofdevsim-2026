@@ -147,7 +147,7 @@ func TestNewDeveloperAnimation_Accessories(t *testing.T) {
 
 func TestStaggeredAnimator_RoundRobin(t *testing.T) {
 	s := StaggeredAnimator{LastChangedIndex: -1}
-	for i := 0; i < 6; i++ {
+	for i := 0; i < 6; i++ { // justified:SM
 		var idx int
 		var ok bool
 		s, idx, ok = s.NextToAnimate(3, false)

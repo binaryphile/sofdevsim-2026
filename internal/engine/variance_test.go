@@ -50,7 +50,7 @@ func TestVarianceModel_Calculate(t *testing.T) {
 			min = 999
 			max = 0
 
-			for i := 0; i < iterations; i++ {
+			for i := 0; i < iterations; i++ { // justified:SM
 				v := vm.Calculate(ticket, i)
 				sum += v
 				if v < min {
@@ -84,7 +84,7 @@ func TestVarianceModel_Reproducibility(t *testing.T) {
 	ticket := model.NewTicket("TKT-001", "Test", 5, model.MediumUnderstanding)
 	ticket.Phase = model.PhaseImplement
 
-	for tick := 0; tick < 100; tick++ {
+	for tick := 0; tick < 100; tick++ { // justified:SM
 		v1 := vm1.Calculate(ticket, tick)
 		v2 := vm2.Calculate(ticket, tick)
 
@@ -103,7 +103,7 @@ func TestVarianceModel_ZeroSeed(t *testing.T) {
 	ticket := model.NewTicket("TKT-001", "Test", 5, model.MediumUnderstanding)
 	ticket.Phase = model.PhaseImplement
 
-	for tick := 0; tick < 100; tick++ {
+	for tick := 0; tick < 100; tick++ { // justified:SM
 		v1 := vm1.Calculate(ticket, tick)
 		v2 := vm2.Calculate(ticket, tick)
 

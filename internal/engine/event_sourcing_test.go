@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/binaryphile/fluentfp/slice"
+
 	"github.com/binaryphile/sofdevsim-2026/internal/events"
 	"github.com/binaryphile/sofdevsim-2026/internal/model"
 )
@@ -72,13 +74,9 @@ func TestEngine_EmitsSprintStartedEvent(t *testing.T) {
 
 	// Find SprintStarted event
 	evts := store.Replay(sim.ID)
-	found := false
-	for _, e := range evts {
-		if e.EventType() == "SprintStarted" {
-			found = true
-			break
-		}
-	}
+	// isSprintStarted returns true if event is SprintStarted.
+	isSprintStarted := func(e events.Event) bool { return e.EventType() == "SprintStarted" }
+	_, found := slice.From(evts).Find(isSprintStarted).Get()
 
 	if !found {
 		t.Error("Expected SprintStarted event not found")
@@ -105,16 +103,12 @@ func TestEngine_EmitsTicketAssignedEvent(t *testing.T) {
 
 	// Find TicketAssigned event
 	evts := store.Replay(sim.ID)
-	found := false
-	for _, e := range evts {
-		if e.EventType() == "TicketAssigned" {
-			assigned, ok := e.(events.TicketAssigned)
-			if ok && assigned.TicketID == "TKT-001" && assigned.DeveloperID == "DEV-001" {
-				found = true
-				break
-			}
-		}
+	// isTargetAssignment returns true if event is a TicketAssigned for TKT-001 to DEV-001.
+	isTargetAssignment := func(e events.Event) bool {
+		assigned, ok := e.(events.TicketAssigned)
+		return ok && assigned.TicketID == "TKT-001" && assigned.DeveloperID == "DEV-001"
 	}
+	_, found := slice.From(evts).Find(isTargetAssignment).Get()
 
 	if !found {
 		t.Error("Expected TicketAssigned event not found")
@@ -140,13 +134,9 @@ func TestEngine_EmitsTicketCompletedEvent(t *testing.T) {
 
 	// Find TicketCompleted event
 	evts := store.Replay(sim.ID)
-	found := false
-	for _, e := range evts {
-		if e.EventType() == "TicketCompleted" {
-			found = true
-			break
-		}
-	}
+	// isTicketCompleted returns true if event is TicketCompleted.
+	isTicketCompleted := func(e events.Event) bool { return e.EventType() == "TicketCompleted" }
+	_, found := slice.From(evts).Find(isTicketCompleted).Get()
 
 	if !found {
 		t.Error("Expected TicketCompleted event not found")
@@ -171,7 +161,7 @@ func TestEngine_TracingAppliedToEvents(t *testing.T) {
 	}
 
 	// All events should have the trace context
-	for _, e := range evts {
+	for _, e := range evts { // justified:AS
 		if e.TraceID() != tc.TraceID {
 			t.Errorf("Event %s TraceID = %s, want %s", e.EventType(), e.TraceID(), tc.TraceID)
 		}
@@ -327,7 +317,7 @@ func TestEngine_ApplyEventIdempotent(t *testing.T) {
 	// Get the SprintStarted event from the store
 	evts := store.Replay(sim.ID)
 	var sprintEvt events.Event
-	for _, e := range evts {
+	for _, e := range evts { // justified:FL
 		if e.EventType() == "SprintStarted" {
 			sprintEvt = e
 		}
@@ -358,16 +348,8 @@ func TestEngine_AddDeveloperEmitsEvent(t *testing.T) {
 
 	// Find DeveloperAdded event
 	evts := store.Replay(sim.ID)
-	var found *events.DeveloperAdded
-	for _, e := range evts {
-		if e.EventType() == "DeveloperAdded" {
-			da := e.(events.DeveloperAdded)
-			found = &da
-			break
-		}
-	}
-
-	if found == nil {
+	found, ok := slice.FindAs[events.DeveloperAdded](evts).Get()
+	if !ok {
 		t.Fatal("Expected DeveloperAdded event not found")
 	}
 
@@ -399,16 +381,8 @@ func TestEngine_AddTicketEmitsEvent(t *testing.T) {
 
 	// Find TicketCreated event
 	evts := store.Replay(sim.ID)
-	var found *events.TicketCreated
-	for _, e := range evts {
-		if e.EventType() == "TicketCreated" {
-			tc := e.(events.TicketCreated)
-			found = &tc
-			break
-		}
-	}
-
-	if found == nil {
+	found, ok := slice.FindAs[events.TicketCreated](evts).Get()
+	if !ok {
 		t.Fatal("Expected TicketCreated event not found")
 	}
 
@@ -445,16 +419,8 @@ func TestEngine_EmitsWorkProgressedEvent(t *testing.T) {
 
 	// Find WorkProgressed event
 	evts := store.Replay(sim.ID)
-	var found *events.WorkProgressed
-	for _, e := range evts {
-		if e.EventType() == "WorkProgressed" {
-			wp := e.(events.WorkProgressed)
-			found = &wp
-			break
-		}
-	}
-
-	if found == nil {
+	found, ok := slice.FindAs[events.WorkProgressed](evts).Get()
+	if !ok {
 		t.Fatal("Expected WorkProgressed event not found")
 	}
 
@@ -485,16 +451,8 @@ func TestEngine_EmitsTicketPhaseChangedEvent(t *testing.T) {
 
 	// Find TicketPhaseChanged event
 	evts := store.Replay(sim.ID)
-	var found *events.TicketPhaseChanged
-	for _, e := range evts {
-		if e.EventType() == "TicketPhaseChanged" {
-			pc := e.(events.TicketPhaseChanged)
-			found = &pc
-			break
-		}
-	}
-
-	if found == nil {
+	found, ok := slice.FindAs[events.TicketPhaseChanged](evts).Get()
+	if !ok {
 		t.Fatal("Expected TicketPhaseChanged event not found")
 	}
 
@@ -522,22 +480,14 @@ func TestEngine_EmitsSprintEndedEvent(t *testing.T) {
 	sprint, _ := eng.Sim().CurrentSprintOption.Get()
 
 	// Advance to sprint end using projection state
-	for eng.Sim().CurrentTick < sprint.EndDay {
+	for eng.Sim().CurrentTick < sprint.EndDay { // justified:WL
 		eng, _, _ = eng.Tick()
 	}
 
 	// Find SprintEnded event
 	evts := store.Replay(eng.Sim().ID)
-	var found *events.SprintEnded
-	for _, e := range evts {
-		if e.EventType() == "SprintEnded" {
-			se := e.(events.SprintEnded)
-			found = &se
-			break
-		}
-	}
-
-	if found == nil {
+	found, ok := slice.FindAs[events.SprintEnded](evts).Get()
+	if !ok {
 		t.Fatal("Expected SprintEnded event not found")
 	}
 
@@ -557,16 +507,8 @@ func TestEngine_SetPolicyEmitsEvent(t *testing.T) {
 
 	// Find PolicyChanged event
 	evts := store.Replay(sim.ID)
-	var found *events.PolicyChanged
-	for _, e := range evts {
-		if e.EventType() == "PolicyChanged" {
-			pc := e.(events.PolicyChanged)
-			found = &pc
-			break
-		}
-	}
-
-	if found == nil {
+	found, ok := slice.FindAs[events.PolicyChanged](evts).Get()
+	if !ok {
 		t.Fatal("Expected PolicyChanged event not found")
 	}
 
@@ -717,7 +659,7 @@ func TestEngine_ConcurrencyConflictErrorMessage(t *testing.T) {
 
 // containsSubstr checks if s contains substr.
 func containsSubstr(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
+	for i := 0; i <= len(s)-len(substr); i++ { // justified:IX
 		if s[i:i+len(substr)] == substr {
 			return true
 		}

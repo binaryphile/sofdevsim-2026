@@ -11,7 +11,7 @@ import (
 
 func TestBufferCrisisLesson_FindWorkingSeed(t *testing.T) {
 	// Find a seed that produces a crisis-recovery cycle by monitoring state
-	for seed := int64(1); seed <= 500; seed++ {
+	for seed := int64(1); seed <= 500; seed++ { // justified:SM
 		store := events.NewMemoryStore()
 		eng := engine.NewEngineWithStore(seed, store)
 
@@ -41,7 +41,7 @@ func TestBufferCrisisLesson_FindWorkingSeed(t *testing.T) {
 			model.NewTicket("TKT-002", "Task 2", 20, model.LowUnderstanding),
 			model.NewTicket("TKT-003", "Task 3", 20, model.LowUnderstanding),
 		}
-		for _, ticket := range tickets {
+		for _, ticket := range tickets { // justified:SM
 			eng, _ = eng.AddTicket(ticket)
 		}
 
@@ -51,11 +51,11 @@ func TestBufferCrisisLesson_FindWorkingSeed(t *testing.T) {
 		sprintFound := false
 
 		// Run multiple sprints to allow recovery
-		for sprintNum := 0; sprintNum < 3; sprintNum++ {
+		for sprintNum := 0; sprintNum < 3; sprintNum++ { // justified:SM
 			eng, _ = eng.StartSprint()
 
 			// Assign all backlog tickets to idle developers
-			for {
+			for { // justified:CF
 				// Re-fetch state each iteration since eng changes
 				sim := eng.Sim()
 				if len(sim.Backlog) == 0 {
@@ -65,7 +65,7 @@ func TestBufferCrisisLesson_FindWorkingSeed(t *testing.T) {
 
 				// Find an idle developer
 				assigned := false
-				for _, dev := range sim.Developers {
+				for _, dev := range sim.Developers { // justified:CF
 					if dev.IsIdle() {
 						eng, _ = eng.AssignTicket(ticketID, dev.ID)
 						assigned = true
@@ -79,7 +79,7 @@ func TestBufferCrisisLesson_FindWorkingSeed(t *testing.T) {
 
 			// Run through the sprint
 			sprint, _ := eng.Sim().CurrentSprintOption.Get()
-			for eng.Sim().CurrentTick < sprint.EndDay {
+			for eng.Sim().CurrentTick < sprint.EndDay { // justified:WL
 				eng, _, _ = eng.Tick()
 
 				if sp, ok := eng.Sim().CurrentSprintOption.Get(); ok {
@@ -170,7 +170,7 @@ func TestBufferCrisisLesson_ProducesCrisisRecovery(t *testing.T) {
 		model.NewTicket("TKT-002", "New feature", 20, model.LowUnderstanding),
 		model.NewTicket("TKT-003", "Technical debt", 20, model.LowUnderstanding),
 	}
-	for _, ticket := range tickets {
+	for _, ticket := range tickets { // justified:SM
 		eng, _ = eng.AddTicket(ticket)
 	}
 
@@ -180,11 +180,11 @@ func TestBufferCrisisLesson_ProducesCrisisRecovery(t *testing.T) {
 	var zoneChanges []string
 
 	// Run multiple sprints (same as lesson)
-	for sprintNum := 0; sprintNum < 3 && recoveryTick == 0; sprintNum++ {
+	for sprintNum := 0; sprintNum < 3 && recoveryTick == 0; sprintNum++ { // justified:SM
 		eng, _ = eng.StartSprint()
 
 		// Assign all backlog tickets to idle developers
-		for {
+		for { // justified:CF
 			sim := eng.Sim()
 			if len(sim.Backlog) == 0 {
 				break
@@ -192,7 +192,7 @@ func TestBufferCrisisLesson_ProducesCrisisRecovery(t *testing.T) {
 			ticketID := sim.Backlog[0].ID
 
 			assigned := false
-			for _, dev := range sim.Developers {
+			for _, dev := range sim.Developers { // justified:CF
 				if dev.IsIdle() {
 					eng, _ = eng.AssignTicket(ticketID, dev.ID)
 					assigned = true
@@ -206,7 +206,7 @@ func TestBufferCrisisLesson_ProducesCrisisRecovery(t *testing.T) {
 
 		// Run through the sprint
 		sprint, _ := eng.Sim().CurrentSprintOption.Get()
-		for eng.Sim().CurrentTick < sprint.EndDay && recoveryTick == 0 {
+		for eng.Sim().CurrentTick < sprint.EndDay && recoveryTick == 0 { // justified:WL
 			eng, _, err = eng.Tick()
 			if err != nil {
 				t.Fatalf("Tick: %v", err)
@@ -230,7 +230,7 @@ func TestBufferCrisisLesson_ProducesCrisisRecovery(t *testing.T) {
 	}
 
 	t.Log("Zone changes observed:")
-	for _, zc := range zoneChanges {
+	for _, zc := range zoneChanges { // justified:SM
 		t.Log("  " + zc)
 	}
 

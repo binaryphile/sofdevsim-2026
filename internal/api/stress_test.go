@@ -41,7 +41,7 @@ func TestAPI_ConcurrentTicks(t *testing.T) {
 	var successCount, conflictCount atomic.Int32
 
 	// 10 concurrent tick requests - with retry+409 some will fail under contention
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 10; i++ { // justified:SM
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -114,7 +114,7 @@ func TestAPI_ConcurrentMixedOperations(t *testing.T) {
 	var readSuccess, writeSuccess atomic.Int32
 
 	// Mixed read/write operations (10 iterations, sprint is 10 days)
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 10; i++ { // justified:SM
 		wg.Add(2)
 		go func() {
 			defer wg.Done()

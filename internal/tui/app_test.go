@@ -4,13 +4,16 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/binaryphile/fluentfp/either"
 	"github.com/binaryphile/fluentfp/must"
 	"github.com/binaryphile/fluentfp/option"
+	"github.com/binaryphile/fluentfp/slice"
 	"github.com/binaryphile/sofdevsim-2026/internal/api"
+	"github.com/binaryphile/sofdevsim-2026/internal/events"
 	"github.com/binaryphile/sofdevsim-2026/internal/office"
 	"github.com/binaryphile/sofdevsim-2026/internal/registry"
 	tea "github.com/charmbracelet/bubbletea"
@@ -72,7 +75,7 @@ func TestSprintEndsWhenDurationReached(t *testing.T) {
 	}
 
 	// Run ticks until sprint ends (engine handles everything via events)
-	for i := 0; i < sprint.DurationDays+1; i++ {
+	for i := 0; i < sprint.DurationDays+1; i++ { // justified:SM
 		app.Update(tickMsg(time.Now()))
 	}
 
@@ -251,6 +254,11 @@ func TestTUI_ReceivesExternalEvents(t *testing.T) {
 			t.Errorf("Expected 'Sprint started (via API)', got %q", app.statusMessage)
 		}
 
+		// Assert: TUI remains paused (API is the command handler, TUI is read-only projection)
+		if !app.paused {
+			t.Error("Expected app.paused=true after external SprintStarted — TUI should not auto-tick")
+		}
+
 		// Assert: Events panel populated for external events
 		if len(app.modelEvents) == 0 {
 			t.Error("Expected modelEvents to be populated for external event")
@@ -294,6 +302,83 @@ func TestTUI_ReceivesExternalEvents(t *testing.T) {
 			t.Errorf("Expected sprint complete message, got %q", app.statusMessage)
 		}
 	})
+}
+
+// TestTUI_SelfEventDedup_RecordsInputEvent verifies that self-events received via
+// subscription are deduplicated and recorded as EventDeduplicated input events.
+func TestTUI_SelfEventDedup_RecordsInputEvent(t *testing.T) {
+	reg := registry.NewSimRegistry()
+	app := NewAppWithRegistry(42, reg)
+
+	// TUI starts sprint locally (self-event: TUI is the writer)
+	eng, _ := app.mode.GetLeft()
+	eng.Engine = must.Get(eng.Engine.StartSprint())
+	app.mode = either.Left[EngineMode, ClientMode](eng)
+
+	// Drain subscription — self-events arrive back via the channel.
+	// Channel consumption requires plain loop (FluentFP: "When NOT to Use").
+	drainAll := func() {
+		eng, _ := app.mode.GetLeft()
+		for {
+			select {
+			case evt := <-eng.EventSub:
+				newApp, _ := app.Update(eventMsg(evt))
+				app = newApp.(*App)
+				eng, _ = app.mode.GetLeft()
+			default:
+				return
+			}
+		}
+	}
+	drainAll()
+
+	// isDedup returns true if the input event is an EventDeduplicated.
+	isDedup := func(evt InputEvent) bool { _, ok := evt.(EventDeduplicated); return ok }
+
+	dedupCount := slice.From(app.uiProjection.events).
+		KeepIf(isDedup).
+		Len()
+
+	if dedupCount == 0 {
+		t.Fatal("Expected at least one EventDeduplicated for self-events from StartSprint")
+	}
+	t.Logf("Deduplicated %d self-events", dedupCount)
+}
+
+// TestTUI_TickConflict_RecordsInputEvent verifies that a concurrency conflict on Tick()
+// records a TickAttempted{Failed{Conflict}} input event instead of panicking.
+// Pattern: same as event_sourcing_test.go storeWithConflict — advance store version
+// behind the engine's back so engine's expected version is stale.
+func TestTUI_TickConflict_RecordsInputEvent(t *testing.T) {
+	reg := registry.NewSimRegistry()
+	app := NewAppWithRegistry(42, reg)
+
+	// Start sprint so Tick() will emit events (and hit the store)
+	eng, _ := app.mode.GetLeft()
+	eng.Engine = must.Get(eng.Engine.StartSprint())
+	app.mode = either.Left[EngineMode, ClientMode](eng)
+	app.paused = false
+	app.currentView = ViewExecution
+
+	// Advance store version behind the engine's back.
+	// Engine expects version N; store is now at N+1 → concurrency conflict.
+	storeVersion := reg.Store().EventCount("sim-42")
+	err := reg.Store().Append("sim-42", storeVersion, events.NewTicked("sim-42", 999))
+	if err != nil {
+		t.Fatalf("store.Append: %v", err)
+	}
+
+	// Send tickMsg — should NOT panic (old code used must.Get2 which panicked)
+	app.Update(tickMsg(time.Now()))
+
+	// Assert: TickAttempted{Failed{Conflict}} recorded in input events
+	state := app.uiProjection.State()
+	if state.ErrorMessage == "" {
+		t.Fatal("Expected ErrorMessage from concurrency conflict, got empty")
+	}
+	if !strings.Contains(state.ErrorMessage, "concurrency conflict") {
+		t.Errorf("Expected error to mention concurrency conflict, got %q", state.ErrorMessage)
+	}
 }
 
 // TestApp_UsesHTTPClient verifies app makes HTTP calls instead of direct engine access.
@@ -859,7 +944,7 @@ func TestApp_FullSessionWalkthrough(t *testing.T) {
 	// 9. RUN SPRINT TO COMPLETION
 	app.currentView = ViewExecution
 	app.paused = false
-	for i := 0; i < 11; i++ { // 10 days + 1 to trigger end
+	for i := 0; i < 11; i++ { // justified:SM
 		app.Update(tickMsg(time.Now()))
 	}
 	if !app.paused {
@@ -913,7 +998,7 @@ func TestWorkflow_SprintCycle_ClientMode(t *testing.T) {
 	// Run ticks via Space (client mode)
 	app.currentView = ViewExecution
 	app.paused = false
-	for i := 0; i < 11; i++ {
+	for i := 0; i < 11; i++ { // justified:SM
 		_, cmd := app.Update(tea.KeyMsg{Type: tea.KeySpace})
 		if cmd != nil {
 			msg := cmd()
@@ -942,7 +1027,7 @@ func TestWorkflow_PolicyComparison(t *testing.T) {
 	app := NewAppWithSeed(42)
 
 	// Navigate to Comparison view (Tab×3: Planning → Execution → Metrics → Comparison)
-	for i := 0; i < 3; i++ {
+	for i := 0; i < 3; i++ { // justified:SM
 		app.Update(tea.KeyMsg{Type: tea.KeyTab})
 	}
 	if app.uiProjection.State().CurrentView != ViewComparison {
@@ -1032,7 +1117,7 @@ func TestTUI_SyncsOfficeOnTick(t *testing.T) {
 	app.paused = false
 
 	// Run several ticks - should trigger DevStartedWorking and sync
-	for i := 0; i < 5; i++ {
+	for i := 0; i < 5; i++ { // justified:SM
 		app.Update(tickMsg(time.Now()))
 	}
 
@@ -1069,7 +1154,7 @@ func TestTUI_SyncsOfficeOnSprintEnd(t *testing.T) {
 	app.paused = false
 
 	// Run ticks until sprint ends (10 day sprint)
-	for i := 0; i < 15; i++ {
+	for i := 0; i < 15; i++ { // justified:SM
 		app.Update(tickMsg(time.Now()))
 		if app.paused {
 			break // Sprint ended
@@ -1084,7 +1169,7 @@ func TestTUI_SyncsOfficeOnSprintEnd(t *testing.T) {
 
 	// Find a conference transition
 	hasConferenceTransition := false
-	for _, tr := range inst.Office.Transitions() {
+	for _, tr := range inst.Office.Transitions() { // justified:AS
 		if tr.ToState == "conference" {
 			hasConferenceTransition = true
 			break

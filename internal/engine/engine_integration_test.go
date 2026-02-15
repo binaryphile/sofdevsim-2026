@@ -67,7 +67,7 @@ func TestEngine_FullSimulationRun(t *testing.T) {
 
 			// At least one ticket should have made progress
 			hasProgress := false
-			for _, ticket := range state.ActiveTickets {
+			for _, ticket := range state.ActiveTickets { // justified:CF
 				if ticket.Phase > model.PhaseBacklog {
 					hasProgress = true
 					break
@@ -161,11 +161,11 @@ func TestEngine_TryDecompose_Either(t *testing.T) {
 				// Verify children are in backlog
 				state := eng.Sim()
 				childIDs := make(map[string]bool)
-				for _, child := range children {
+				for _, child := range children { // justified:MB
 					childIDs[child.ID] = true
 				}
 				childrenInBacklog := 0
-				for _, ticket := range state.Backlog {
+				for _, ticket := range state.Backlog { // justified:MB
 					if childIDs[ticket.ID] {
 						childrenInBacklog++
 					}
@@ -211,7 +211,7 @@ func TestEngine_WIPTracking(t *testing.T) {
 	evts := store.Replay("wip-test")
 	wipEvents := 0
 	maxWIPSeen := 0
-	for _, evt := range evts {
+	for _, evt := range evts { // justified:CF
 		if wipEvt, ok := evt.(events.SprintWIPUpdated); ok {
 			wipEvents++
 			if wipEvt.CurrentWIP > maxWIPSeen {
@@ -292,7 +292,7 @@ func TestEngine_SprintEndsExactlyOnBoundary(t *testing.T) {
 	}
 
 	// Tick exactly to sprint end (10 ticks)
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 10; i++ { // justified:SM
 		eng, _, _ = eng.Tick()
 	}
 
@@ -388,7 +388,7 @@ func TestEngine_BufferAdjustment_AtCompletion(t *testing.T) {
 	eng, _ = eng.AssignTicket("TKT-001", "dev-1")
 
 	// Run until ticket completes
-	for i := 0; i < 50; i++ {
+	for i := 0; i < 50; i++ { // justified:CF
 		eng, _, _ = eng.Tick()
 		if len(eng.Sim().CompletedTickets) > 0 {
 			break
@@ -416,7 +416,7 @@ func TestEngine_BufferAdjustment_AtCompletion(t *testing.T) {
 	evts := store.Replay("buffer-test")
 	var bufferConsumedAfterCompletion *events.BufferConsumed
 	foundCompletion := false
-	for _, evt := range evts {
+	for _, evt := range evts { // justified:CF
 		if _, ok := evt.(events.TicketCompleted); ok {
 			foundCompletion = true
 			continue

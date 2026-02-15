@@ -75,7 +75,7 @@ func TestDetectBufferCrisis_Max32Events(t *testing.T) {
 	// Sequence with >32 events should be truncated
 	evts := make([]events.Event, 0, 35)
 	evts = append(evts, events.NewBufferZoneChanged("sim-1", 1, model.FeverGreen, model.FeverRed, 0.70))
-	for i := 2; i <= 33; i++ {
+	for i := 2; i <= 33; i++ { // justified:IX
 		// Add intermediate events (staying in red)
 		evts = append(evts, events.NewBufferZoneChanged("sim-1", i, model.FeverRed, model.FeverRed, 0.70))
 	}

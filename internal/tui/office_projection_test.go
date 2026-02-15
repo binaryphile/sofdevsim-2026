@@ -125,7 +125,7 @@ func TestOfficeProjection_FrameAdvance(t *testing.T) {
 	proj = proj.Record(DevStartedWorking{DevID: "dev-1"}, 1, testTime)
 
 	// Advance 3 frames
-	for i := 0; i < 3; i++ {
+	for i := 0; i < 3; i++ { // justified:SM
 		proj = proj.Record(AnimationFrameAdvanced{}, 1, testTime)
 	}
 
@@ -192,7 +192,7 @@ func TestOfficeProjection_MultipleDevsConference(t *testing.T) {
 		t.Fatalf("Animations count = %d, want 3", len(state.Animations))
 	}
 
-	for _, anim := range state.Animations {
+	for _, anim := range state.Animations { // justified:AS
 		if anim.State != StateConference {
 			t.Errorf("%s: State = %v, want StateConference", anim.DevID, anim.State)
 		}

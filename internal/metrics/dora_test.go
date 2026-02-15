@@ -109,7 +109,7 @@ func TestDORAMetrics_History(t *testing.T) {
 	dora := metrics.NewDORAMetrics()
 
 	// Update multiple times
-	for tick := 1; tick <= 5; tick++ {
+	for tick := 1; tick <= 5; tick++ { // justified:SM
 		sim.CurrentTick = tick
 		dora = dora.Updated(sim)
 	}
@@ -119,7 +119,7 @@ func TestDORAMetrics_History(t *testing.T) {
 	}
 
 	// Each snapshot should have increasing day
-	for i, snap := range dora.History {
+	for i, snap := range dora.History { // justified:IX
 		if snap.Day != i+1 {
 			t.Errorf("History[%d].Day = %d, want %d", i, snap.Day, i+1)
 		}

@@ -5,7 +5,7 @@ go 1.25.5
 require (
 	github.com/NimbleMarkets/ntcharts v0.3.1
 	github.com/acarl005/stripansi v0.0.0-20180116102854-5a71ef0e047d
-	github.com/binaryphile/fluentfp v0.18.0
+	github.com/binaryphile/fluentfp v0.22.0
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/charmbracelet/x/exp/teatest v0.0.0-20260122224438-b01af16209d9
@@ -36,3 +36,5 @@ require (
 	golang.org/x/sys v0.36.0 // indirect
 	golang.org/x/text v0.28.0 // indirect
 )
+
+replace github.com/binaryphile/fluentfp => ../fluentfp

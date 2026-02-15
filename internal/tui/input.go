@@ -55,6 +55,12 @@ type AssignmentAttempted struct {
 	Outcome  Outcome
 }
 
+// Data: EventDeduplicated records when a self-event was received via subscription
+// and skipped (projection already applied it locally).
+type EventDeduplicated struct {
+	EventType string // e.g. "SprintStarted", "Ticked"
+}
+
 // Marker methods for sealed interface pattern.
 func (SprintStartAttempted) inputEvent() {}
 func (TickAttempted) inputEvent()        {}
@@ -62,3 +68,4 @@ func (ViewSwitched) inputEvent()         {}
 func (LessonPanelToggled) inputEvent()   {}
 func (TicketSelected) inputEvent()       {}
 func (AssignmentAttempted) inputEvent()  {}
+func (EventDeduplicated) inputEvent()    {}

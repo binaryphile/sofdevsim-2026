@@ -26,7 +26,7 @@ func TestCaptureAllCheckpoints(t *testing.T) {
 
 	// Assign first 3 tickets to developers
 	sim := eng.Engine.Sim()
-	for i, dev := range sim.Developers {
+	for i, dev := range sim.Developers { // justified:CF
 		if i < len(sim.Backlog) {
 			ticket := sim.Backlog[0] // Always take first (it gets removed)
 			eng.Engine.AssignTicket(ticket.ID, dev.ID)
@@ -42,7 +42,7 @@ func TestCaptureAllCheckpoints(t *testing.T) {
 
 	eng.Engine.StartSprint()
 	sim = eng.Engine.Sim()
-	for sim.CurrentTick < 5 {
+	for sim.CurrentTick < 5 { // justified:WL
 		eng.Engine.Tick()
 		sim = eng.Engine.Sim()
 		eng.Tracker = eng.Tracker.Updated(sim)
@@ -57,7 +57,7 @@ func TestCaptureAllCheckpoints(t *testing.T) {
 	fmt.Println(strings.Repeat("=", 60))
 
 	sim = eng.Engine.Sim()
-	for sim.CurrentTick < 10 {
+	for sim.CurrentTick < 10 { // justified:WL
 		eng.Engine.Tick()
 		sim = eng.Engine.Sim()
 		eng.Tracker = eng.Tracker.Updated(sim)
@@ -81,7 +81,7 @@ func printStateWithEngine(eng EngineMode, label string) {
 	fmt.Printf("  Policy: %s\n", sim.SizingPolicy)
 
 	fmt.Println("  Team:")
-	for _, dev := range sim.Developers {
+	for _, dev := range sim.Developers { // justified:CF
 		status := "idle"
 		ticket := ""
 		if !dev.IsIdle() {
@@ -111,10 +111,10 @@ func printFeverWithEngine(eng EngineMode) {
 func printActiveWorkWithEngine(eng EngineMode) {
 	sim := eng.Engine.Sim()
 	fmt.Println("\n  Active Work:")
-	for _, dev := range sim.Developers {
+	for _, dev := range sim.Developers { // justified:CF
 		if !dev.IsIdle() {
 			// Find the ticket
-			for _, t := range sim.ActiveTickets {
+			for _, t := range sim.ActiveTickets { // justified:FL
 				if t.ID == dev.CurrentTicket {
 					progress := 0.0
 					if t.EstimatedDays > 0 {
@@ -134,7 +134,7 @@ func printActiveWorkWithEngine(eng EngineMode) {
 func printCompletedWithEngine(eng EngineMode) {
 	sim := eng.Engine.Sim()
 	fmt.Println("\n  Completed Tickets:")
-	for _, t := range sim.CompletedTickets {
+	for _, t := range sim.CompletedTickets { // justified:CF
 		ratio := 0.0
 		if t.EstimatedDays > 0 {
 			ratio = t.ActualDays / t.EstimatedDays

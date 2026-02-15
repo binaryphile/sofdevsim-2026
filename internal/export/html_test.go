@@ -200,7 +200,7 @@ func TestTriggeredLessons_SeenMultiple_ReturnsAll(t *testing.T) {
 
 	// Verify both lessons are present
 	ids := make(map[lessons.LessonID]bool)
-	for _, l := range result {
+	for _, l := range result { // justified:AS
 		ids[l.ID] = true
 	}
 	if !ids[lessons.UncertaintyConstraint] {
@@ -257,7 +257,7 @@ func TestTransferQuestions_UC19Seen_IncludesUncertaintyQuestion(t *testing.T) {
 
 	// Should include question about LOW understanding tickets
 	found := false
-	for _, q := range questions {
+	for _, q := range questions { // justified:AS
 		if strings.Contains(q, "LOW understanding") || strings.Contains(q, "understanding") {
 			found = true
 			break
@@ -281,7 +281,7 @@ func TestTransferQuestions_UC20Seen_IncludesConstraintQuestion(t *testing.T) {
 
 	// Should include question about queues/constraint
 	found := false
-	for _, q := range questions {
+	for _, q := range questions { // justified:AS
 		if strings.Contains(q, "queue") || strings.Contains(q, "constraint") {
 			found = true
 			break
@@ -340,7 +340,7 @@ func TestGenerateHTML_TypicalSimulation_ContainsAllSections(t *testing.T) {
 		"Monday Morning",
 		"Policy Comparison",
 	}
-	for _, section := range sections {
+	for _, section := range sections { // justified:AS
 		if !strings.Contains(html, section) {
 			t.Errorf("expected section %q in HTML", section)
 		}

@@ -91,7 +91,7 @@ func TestMemoryStore_AppendAndReplay_ReturnsStoredEvents(t *testing.T) {
 			}
 
 			// Verify order preserved
-			for i, e := range got {
+			for i, e := range got { // justified:IX
 				if e.EventType() != tt.events[i].EventType() {
 					t.Errorf("Replay()[%d] = %s, want %s", i, e.EventType(), tt.events[i].EventType())
 				}
@@ -325,7 +325,7 @@ func TestMemoryStore_Append_VersionConflicts(t *testing.T) {
 
 // contains checks if s contains substr (simple helper to avoid strings import).
 func contains(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
+	for i := 0; i <= len(s)-len(substr); i++ { // justified:IX
 		if s[i:i+len(substr)] == substr {
 			return true
 		}
@@ -421,7 +421,7 @@ func TestMemoryStore_ConcurrentAppend(t *testing.T) {
 	var successCount, conflictCount int64
 	var mu sync.Mutex
 
-	for g := 0; g < goroutines; g++ {
+	for g := 0; g < goroutines; g++ { // justified:SM
 		wg.Add(1)
 		go func(goroutineID int) {
 			defer wg.Done()

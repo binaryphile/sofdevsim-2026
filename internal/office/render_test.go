@@ -9,12 +9,12 @@ import (
 
 // containsFaceEmoji returns true if the string contains any developer face emoji.
 func containsFaceEmoji(s string) bool {
-	for _, face := range WorkingFrames {
+	for _, face := range WorkingFrames { // justified:CF
 		if strings.Contains(s, face) {
 			return true
 		}
 	}
-	for _, face := range FrustratedFrames {
+	for _, face := range FrustratedFrames { // justified:CF
 		if strings.Contains(s, face) {
 			return true
 		}
@@ -134,7 +134,7 @@ func TestRenderCubicleCompact_LateBubble(t *testing.T) {
 	}
 
 	// After countdown, bubble should disappear
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 10; i++ { // justified:IX
 		anim = anim.NextFrame()
 	}
 	cubicle = RenderCubicleCompact(anim, "Mei", 10)
@@ -187,7 +187,7 @@ func TestRenderCubicleGrid(t *testing.T) {
 	plain := StripANSI(grid)
 
 	// Should contain all 6 developer names
-	for _, name := range names {
+	for _, name := range names { // justified:AS
 		if !strings.Contains(plain, name) {
 			t.Errorf("Grid should contain %s", name)
 		}
@@ -246,7 +246,7 @@ func TestCubicleFaceVisibility(t *testing.T) {
 		}},
 	}
 
-	for _, r := range renderers {
+	for _, r := range renderers { // justified:SM
 		for _, s := range allStates {
 			t.Run(r.name+"/"+s.name, func(t *testing.T) {
 				anim := DeveloperAnimation{State: s.state, ColorIndex: 0}
@@ -273,7 +273,7 @@ func TestRenderCubicle_LateBubble(t *testing.T) {
 	}
 
 	// After 10 frames, bubble should disappear
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 10; i++ { // justified:IX
 		anim = anim.NextFrame()
 	}
 	cubicle = RenderCubicle(anim, "Mei", 12)
@@ -295,7 +295,7 @@ func TestRenderOffice_ValidWidth(t *testing.T) {
 	if !strings.Contains(plain, "CONFERENCE ROOM") {
 		t.Error("Should contain conference room")
 	}
-	for _, name := range names {
+	for _, name := range names { // justified:AS
 		if !strings.Contains(plain, name) {
 			t.Errorf("Should contain developer name %s", name)
 		}
@@ -337,7 +337,7 @@ func TestRenderCubicleDetailed(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			result := renderCubicleDetailed(tt.anim, tt.devName, 14, tt.doorOnTop)
 			plain := StripANSI(result)
-			for _, want := range tt.wantIn {
+			for _, want := range tt.wantIn { // justified:AS
 				if !strings.Contains(plain, want) {
 					t.Errorf("renderCubicleDetailed() missing %q\ngot:\n%s", want, plain)
 				}
@@ -449,7 +449,7 @@ func TestRenderCubicleGridDetailed(t *testing.T) {
 	// Find the door borders: bottom of row0 has ┴, top of row1 has ┬
 	lines := strings.Split(plain, "\n")
 	var row0End, row1Start int
-	for i, line := range lines {
+	for i, line := range lines { // justified:IX
 		if strings.Contains(line, "┴") && row0End == 0 {
 			row0End = i
 		}
@@ -464,7 +464,7 @@ func TestRenderCubicleGridDetailed(t *testing.T) {
 	}
 
 	// Should have all 6 developer names
-	for _, name := range names {
+	for _, name := range names { // justified:AS
 		if !strings.Contains(plain, name) {
 			t.Errorf("Should contain developer name %q", name)
 		}
@@ -567,7 +567,7 @@ func TestRenderConferenceRoomDetailed(t *testing.T) {
 		"🪑", // chairs (empty seats)
 		"🚪", // door (in right wall)
 	}
-	for _, want := range wantElements {
+	for _, want := range wantElements { // justified:AS
 		if !strings.Contains(plain, want) {
 			t.Errorf("Conference room missing %q\ngot:\n%s", want, plain)
 		}
@@ -604,7 +604,7 @@ func TestCubicleAccessoryOnDesk(t *testing.T) {
 		{StateMovingToCubicle, "movingToCubicle"},
 	}
 
-	for _, s := range allStates {
+	for _, s := range allStates { // justified:AS
 		t.Run(s.name, func(t *testing.T) {
 			anim := DeveloperAnimation{
 				State:      s.state,
@@ -700,14 +700,14 @@ func TestRenderOfficeEnhanced(t *testing.T) {
 	}
 
 	// Conference elements
-	for _, want := range []string{"📊", "🪑", "╦", "🚪"} {
+	for _, want := range []string{"📊", "🪑", "╦", "🚪"} { // justified:AS
 		if !strings.Contains(plain, want) {
 			t.Errorf("Enhanced layout should contain %s", want)
 		}
 	}
 
 	// Cubicle elements
-	for _, want := range []string{"🖥️", "🗑️", "HALLWAY"} {
+	for _, want := range []string{"🖥️", "🗑️", "HALLWAY"} { // justified:AS
 		if !strings.Contains(plain, want) {
 			t.Errorf("Enhanced layout should contain %s", want)
 		}

@@ -11,7 +11,7 @@ import (
 func setupBenchmarkSimulation(numDevs, numTickets int) model.Simulation {
 	sim := model.NewSimulation("bench", model.PolicyDORAStrict, 12345)
 
-	for i := 0; i < numDevs; i++ {
+	for i := 0; i < numDevs; i++ { // justified:IX
 		sim.Developers = append(sim.Developers, model.NewDeveloper(
 			idFor("dev", i),
 			nameFor(i),
@@ -19,7 +19,7 @@ func setupBenchmarkSimulation(numDevs, numTickets int) model.Simulation {
 		))
 	}
 
-	for i := 0; i < numTickets; i++ {
+	for i := 0; i < numTickets; i++ { // justified:IX
 		understanding := model.UnderstandingLevel(i % 3) // Cycle through H/M/L
 		sim.Backlog = append(sim.Backlog, model.NewTicket(
 			idFor("TKT", i),
@@ -54,7 +54,7 @@ func itoa(n int) string {
 		return "0"
 	}
 	digits := ""
-	for n > 0 {
+	for n > 0 { // justified:IX
 		digits = string(rune('0'+n%10)) + digits
 		n /= 10
 	}
@@ -76,7 +76,7 @@ func BenchmarkTick(b *testing.B) {
 
 	// Assign some tickets to make tick do real work
 	state := eng.Sim()
-	for i := 0; i < 10 && i < len(state.Backlog); i++ {
+	for i := 0; i < 10 && i < len(state.Backlog); i++ { // justified:IX
 		eng.AssignTicket(state.Backlog[0].ID, state.Developers[i%len(state.Developers)].ID)
 		state = eng.Sim()
 	}
@@ -98,7 +98,7 @@ func BenchmarkTick_LargeSimulation(b *testing.B) {
 
 	// Assign tickets
 	state := eng.Sim()
-	for i := 0; i < 30 && i < len(state.Backlog); i++ {
+	for i := 0; i < 30 && i < len(state.Backlog); i++ { // justified:IX
 		eng.AssignTicket(state.Backlog[0].ID, state.Developers[i%len(state.Developers)].ID)
 		state = eng.Sim()
 	}
@@ -117,7 +117,7 @@ func BenchmarkFindActiveTicketIndex(b *testing.B) {
 	sim := setupBenchmarkSimulation(0, 100)
 
 	// Move all tickets to active
-	for i := 0; i < 100; i++ {
+	for i := 0; i < 100; i++ { // justified:IX
 		if len(sim.Backlog) > 0 {
 			ticket := sim.Backlog[0]
 			sim.ActiveTickets = append(sim.ActiveTickets, ticket)
@@ -138,7 +138,7 @@ func BenchmarkFindActiveTicketIndex(b *testing.B) {
 func BenchmarkFindActiveTicketIndex_Small(b *testing.B) {
 	sim := setupBenchmarkSimulation(0, 10)
 
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 10; i++ { // justified:IX
 		if len(sim.Backlog) > 0 {
 			ticket := sim.Backlog[0]
 			sim.ActiveTickets = append(sim.ActiveTickets, ticket)
@@ -177,7 +177,7 @@ func BenchmarkRunSprint(b *testing.B) {
 
 		// Assign tickets
 		state := eng.Sim()
-		for j := 0; j < 5 && j < len(state.Backlog); j++ {
+		for j := 0; j < 5 && j < len(state.Backlog); j++ { // justified:IX
 			eng.AssignTicket(state.Backlog[0].ID, state.Developers[j].ID)
 			state = eng.Sim()
 		}

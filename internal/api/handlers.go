@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/binaryphile/fluentfp/either"
+	"github.com/binaryphile/fluentfp/must"
+	"github.com/binaryphile/fluentfp/option"
 	"github.com/binaryphile/fluentfp/slice"
 	"github.com/binaryphile/sofdevsim-2026/internal/engine"
 	"github.com/binaryphile/sofdevsim-2026/internal/events"
@@ -185,7 +187,7 @@ func (r SimRegistry) HandleStartSprint(w http.ResponseWriter, req *http.Request)
 	id := req.PathValue("id")
 
 	const maxRetries = 3
-	for attempt := 0; attempt < maxRetries; attempt++ {
+	for attempt := 0; attempt < maxRetries; attempt++ { // justified:CF
 		inst, ok := r.GetInstanceOption(id).Get()
 		if !ok {
 			writeError(w, http.StatusNotFound, "simulation not found")
@@ -217,7 +219,7 @@ func (r SimRegistry) HandleTick(w http.ResponseWriter, req *http.Request) {
 	id := req.PathValue("id")
 
 	const maxRetries = 3
-	for attempt := 0; attempt < maxRetries; attempt++ {
+	for attempt := 0; attempt < maxRetries; attempt++ { // justified:CF
 		inst, ok := r.GetInstanceOption(id).Get()
 		if !ok {
 			writeError(w, http.StatusNotFound, "simulation not found")
@@ -317,7 +319,7 @@ func (r SimRegistry) HandleAssignTicket(w http.ResponseWriter, req *http.Request
 
 // findDeveloperIndex returns the index of a developer by ID, or -1 if not found.
 func findDeveloperIndex(devs []model.Developer, id string) int {
-	for i := range devs {
+	for i := range devs { // justified:IX
 		if devs[i].ID == id {
 			return i
 		}
@@ -371,20 +373,20 @@ func (r SimRegistry) HandleCompare(w http.ResponseWriter, req *http.Request) {
 // addStandardTeam adds the fixed 3-developer team for comparison runs.
 // Calculation: pure transformation (engine in → engine out).
 func addStandardTeam(eng engine.Engine) engine.Engine {
-	eng, _ = eng.AddDeveloper("dev-1", "Alice", 1.0)
-	eng, _ = eng.AddDeveloper("dev-2", "Bob", 0.8)
-	eng, _ = eng.AddDeveloper("dev-3", "Carol", 1.2)
+	eng = must.Get(eng.AddDeveloper("dev-1", "Alice", 1.0))
+	eng = must.Get(eng.AddDeveloper("dev-2", "Bob", 0.8))
+	eng = must.Get(eng.AddDeveloper("dev-3", "Carol", 1.2))
 	return eng
 }
 
 // addStandardBacklog adds the fixed 5-ticket backlog for comparison runs.
 // Calculation: pure transformation (engine in → engine out).
 func addStandardBacklog(eng engine.Engine) engine.Engine {
-	eng, _ = eng.AddTicket(model.NewTicket("TKT-001", "Small clear", 2, model.HighUnderstanding))
-	eng, _ = eng.AddTicket(model.NewTicket("TKT-002", "Medium clear", 4, model.HighUnderstanding))
-	eng, _ = eng.AddTicket(model.NewTicket("TKT-003", "Small unclear", 2, model.LowUnderstanding))
-	eng, _ = eng.AddTicket(model.NewTicket("TKT-004", "Large unclear", 8, model.LowUnderstanding))
-	eng, _ = eng.AddTicket(model.NewTicket("TKT-005", "Medium mixed", 5, model.MediumUnderstanding))
+	eng = must.Get(eng.AddTicket(model.NewTicket("TKT-001", "Small clear", 2, model.HighUnderstanding)))
+	eng = must.Get(eng.AddTicket(model.NewTicket("TKT-002", "Medium clear", 4, model.HighUnderstanding)))
+	eng = must.Get(eng.AddTicket(model.NewTicket("TKT-003", "Small unclear", 2, model.LowUnderstanding)))
+	eng = must.Get(eng.AddTicket(model.NewTicket("TKT-004", "Large unclear", 8, model.LowUnderstanding)))
+	eng = must.Get(eng.AddTicket(model.NewTicket("TKT-005", "Medium mixed", 5, model.MediumUnderstanding)))
 	return eng
 }
 
@@ -393,9 +395,9 @@ func addStandardBacklog(eng engine.Engine) engine.Engine {
 func runSprintsWithTracking(eng engine.Engine, policy model.SizingPolicy, sprints int) metrics.SimulationResult {
 	tracker := metrics.NewTracker()
 	for i := 0; i < sprints; i++ {
-		eng, _ = eng.StartSprint()
+		eng = must.Get(eng.StartSprint())
 		eng = autoAssignForComparison(eng)
-		eng, _, _ = eng.RunSprint()
+		eng, _ = must.Get2(eng.RunSprint())
 		state := eng.Sim()
 		tracker = tracker.Updated(state)
 	}
@@ -410,12 +412,12 @@ func runComparison(policy model.SizingPolicy, seed int64, sprints int) metrics.S
 	sim := model.NewSimulation(simID, policy, seed)
 
 	eng := engine.NewEngine(sim.Seed)
-	eng, _ = eng.EmitCreated(sim.ID, sim.CurrentTick, events.SimConfig{
+	eng = must.Get(eng.EmitCreated(sim.ID, sim.CurrentTick, events.SimConfig{
 		TeamSize:     3,
 		SprintLength: sim.SprintLength,
 		Seed:         sim.Seed,
 		Policy:       policy,
-	})
+	}))
 
 	eng = addStandardTeam(eng)
 	eng = addStandardBacklog(eng)
@@ -434,7 +436,7 @@ func autoAssignForComparison(eng engine.Engine) engine.Engine {
 	idleDevs := state.IdleDevelopers()
 	for i := 0; i < len(idleDevs) && len(state.Backlog) > 0; i++ {
 		dev := idleDevs[i]
-		eng, _ = eng.AssignTicket(state.Backlog[0].ID, dev.ID)
+		eng = must.Get(eng.AssignTicket(state.Backlog[0].ID, dev.ID))
 		state = eng.Sim() // Re-read after assignment - updates Backlog for next iteration
 	}
 	return eng
@@ -457,7 +459,7 @@ func decomposeEligibleTickets(eng engine.Engine) engine.Engine {
 		anyDecomposed := false
 		for _, ticket := range state.Backlog {
 			var result either.Either[engine.NotDecomposable, []model.Ticket]
-			eng, result, _ = eng.TryDecompose(ticket.ID)
+			eng, result = must.Get2(eng.TryDecompose(ticket.ID))
 			_, decomposed := result.Get()
 			if decomposed {
 				anyDecomposed = true
@@ -557,7 +559,7 @@ func (r SimRegistry) HandleUpdateSimulation(w http.ResponseWriter, req *http.Req
 	}
 
 	const maxRetries = 3
-	for attempt := 0; attempt < maxRetries; attempt++ {
+	for attempt := 0; attempt < maxRetries; attempt++ { // justified:CF
 		inst, ok := r.GetInstanceOption(id).Get()
 		if !ok {
 			writeError(w, http.StatusNotFound, "simulation not found")
@@ -607,7 +609,7 @@ func (r SimRegistry) HandleDecompose(w http.ResponseWriter, req *http.Request) {
 	}
 
 	const maxRetries = 3
-	for attempt := 0; attempt < maxRetries; attempt++ {
+	for attempt := 0; attempt < maxRetries; attempt++ { // justified:CF
 		inst, ok := r.GetInstanceOption(id).Get()
 		if !ok {
 			writeError(w, http.StatusNotFound, "simulation not found")
@@ -690,7 +692,7 @@ func deriveOfficeEvents(proj office.OfficeProjection, oldSim, newSim model.Simul
 	oldSprintActive := oldSim.CurrentSprintOption.IsOk()
 	newSprintActive := newSim.CurrentSprintOption.IsOk()
 	if oldSprintActive && !newSprintActive {
-		for _, dev := range newSim.Developers {
+		for _, dev := range newSim.Developers { // justified:SM
 			proj = proj.Record(office.DevEnteredConference{DevID: dev.ID}, tick, now)
 		}
 		return proj
@@ -698,8 +700,8 @@ func deriveOfficeEvents(proj office.OfficeProjection, oldSim, newSim model.Simul
 
 	// Check each developer for state changes
 	for _, newDev := range newSim.Developers {
-		oldDev := findDeveloper(oldSim.Developers, newDev.ID)
-		if oldDev == nil {
+		oldDev, ok := findDeveloper(oldSim.Developers, newDev.ID).Get()
+		if !ok {
 			continue
 		}
 
@@ -714,8 +716,7 @@ func deriveOfficeEvents(proj office.OfficeProjection, oldSim, newSim model.Simul
 
 		// Developer still working - check for frustration
 		if !newDev.IsIdle() {
-			ticket := findActiveTicket(newSim.ActiveTickets, newDev.CurrentTicket)
-			if ticket != nil && ticket.ActualDays > ticket.EstimatedDays {
+			if ticket, ok := findActiveTicket(newSim.ActiveTickets, newDev.CurrentTicket).Get(); ok && ticket.ActualDays > ticket.EstimatedDays {
 				// Check if already frustrated
 				if anim, ok := proj.State().GetAnimationOption(newDev.ID).Get(); ok {
 					if anim.State != office.StateFrustrated {
@@ -733,23 +734,17 @@ func deriveOfficeEvents(proj office.OfficeProjection, oldSim, newSim model.Simul
 }
 
 // findDeveloper finds a developer by ID in a slice.
-func findDeveloper(devs []model.Developer, id string) *model.Developer {
-	for i := range devs {
-		if devs[i].ID == id {
-			return &devs[i]
-		}
-	}
-	return nil
+func findDeveloper(devs []model.Developer, id string) option.Basic[model.Developer] {
+	// hasID returns true if developer ID matches.
+	hasID := func(d model.Developer) bool { return d.ID == id }
+	return slice.From(devs).Find(hasID)
 }
 
 // findActiveTicket finds a ticket by ID in the active tickets slice.
-func findActiveTicket(tickets []model.Ticket, id string) *model.Ticket {
-	for i := range tickets {
-		if tickets[i].ID == id {
-			return &tickets[i]
-		}
-	}
-	return nil
+func findActiveTicket(tickets []model.Ticket, id string) option.Basic[model.Ticket] {
+	// hasID returns true if ticket ID matches.
+	hasID := func(t model.Ticket) bool { return t.ID == id }
+	return slice.From(tickets).Find(hasID)
 }
 
 // HandleGetOffice returns the office animation state for Claude vision.
@@ -778,7 +773,7 @@ func (r SimRegistry) HandleGetOffice(w http.ResponseWriter, req *http.Request) {
 
 	// Build developer animation states
 	devStates := make([]DeveloperAnimationState, 0, len(state.Animations))
-	for i, anim := range state.Animations {
+	for i, anim := range state.Animations { // justified:IX
 		name := ""
 		if i < len(names) {
 			name = names[i]
@@ -789,7 +784,7 @@ func (r SimRegistry) HandleGetOffice(w http.ResponseWriter, req *http.Request) {
 		}
 		// Find current ticket if working
 		ticketID := ""
-		if dev := findDeveloper(sim.Developers, anim.DevID); dev != nil {
+		if dev, ok := findDeveloper(sim.Developers, anim.DevID).Get(); ok {
 			ticketID = dev.CurrentTicket
 		}
 		devStates = append(devStates, DeveloperAnimationState{
@@ -808,7 +803,7 @@ func (r SimRegistry) HandleGetOffice(w http.ResponseWriter, req *http.Request) {
 		recentCount = len(transitions)
 	}
 	recentTransitions := make([]StateTransitionResponse, recentCount)
-	for i := 0; i < recentCount; i++ {
+	for i := 0; i < recentCount; i++ { // justified:IX
 		t := transitions[len(transitions)-recentCount+i]
 		recentTransitions[i] = StateTransitionResponse{
 			DevID:     t.DevID,

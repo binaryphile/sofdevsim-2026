@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/binaryphile/fluentfp/slice"
 	"github.com/binaryphile/sofdevsim-2026/internal/lessons"
 )
 
@@ -426,7 +427,7 @@ func (e HTMLExporter) lessonsSection() string {
   <section id="lessons">
     <h2><span class="section-icon">💡</span>Lessons Learned</h2>
 `)
-	for _, lesson := range triggered {
+	for _, lesson := range triggered { // justified:CF
 		formattedContent := formatLessonContent(lesson.Content)
 		// Use first tip as tooltip TL;DR if available
 		tooltip := ""
@@ -498,10 +499,12 @@ func (e HTMLExporter) questionsSection() string {
     <p class="section-hint">Apply the lessons above to your real work:</p>
     <div class="questions-list">
 `)
-	for _, q := range questions {
+	// writeQuestion writes a question item HTML element.
+	writeQuestion := func(q string) {
 		b.WriteString(fmt.Sprintf(`      <div class="question-item">%s</div>
 `, q))
 	}
+	slice.From(questions).Each(writeQuestion)
 	b.WriteString("    </div>\n  </section>\n  </div>\n")
 	return b.String()
 }
@@ -606,7 +609,7 @@ func triggeredLessons(seen map[lessons.LessonID]bool) []lessons.Lesson {
 	}
 
 	var result []lessons.Lesson
-	for id, wasSeen := range seen {
+	for id, wasSeen := range seen { // justified:IX
 		if !wasSeen {
 			continue
 		}
@@ -632,7 +635,7 @@ func bufferTimelineHTML(history []float64) string {
 	}
 
 	var bars []string
-	for i, pct := range history {
+	for i, pct := range history { // justified:IX
 		class := classForBufferPercent(pct)
 		label := fmt.Sprintf("%.0f%%", pct)
 		// Add time labels: Start for first, End for last
@@ -710,7 +713,7 @@ func transferQuestions(seen map[lessons.LessonID]bool) []string {
 	}
 
 	var questions []string
-	for id, wasSeen := range seen {
+	for id, wasSeen := range seen { // justified:IX
 		if !wasSeen {
 			continue
 		}
@@ -735,7 +738,7 @@ func generateSparklineSVG(data []float64) string {
 
 	// Find min/max for normalization
 	minVal, maxVal := data[0], data[0]
-	for _, v := range data {
+	for _, v := range data { // justified:MB
 		if v < minVal {
 			minVal = v
 		}
@@ -755,7 +758,7 @@ func generateSparklineSVG(data []float64) string {
 
 	// Generate points string: "x1,y1 x2,y2 ..."
 	var points []string
-	for i, v := range data {
+	for i, v := range data { // justified:IX
 		x := float64(i) * xStep
 		// Normalize Y: 0 at top, height at bottom (SVG coordinates)
 		// y = height - (v - min) / range * height

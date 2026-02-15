@@ -220,7 +220,7 @@ func TestListSaves_ReturnsFiles(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Create multiple saves
-	for _, name := range []string{"save1", "save2", "save3"} {
+	for _, name := range []string{"save1", "save2", "save3"} { // justified:SM
 		savePath := filepath.Join(tmpDir, name+".sds")
 		err := persistence.Save(savePath, name, sim, tracker)
 		if err != nil {

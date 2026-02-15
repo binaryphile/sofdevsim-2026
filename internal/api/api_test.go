@@ -79,7 +79,7 @@ func TestAPI_AssignmentErrors(t *testing.T) {
 				resp := postJSON(t, srv.URL+"/simulations", map[string]any{"seed": 42})
 				postJSON(t, srv.URL+resp.Links["start-sprint"], nil)
 				// Assign tickets to all 6 developers
-				for i := 1; i <= 6; i++ {
+				for i := 1; i <= 6; i++ { // justified:SM
 					postJSONExpectOK(t, srv.URL+"/simulations/sim-42/assignments",
 						map[string]any{"ticketId": fmt.Sprintf("TKT-%03d", i), "developerId": fmt.Sprintf("dev-%d", i)})
 				}
@@ -560,14 +560,14 @@ func TestAPI_ListSimulations(t *testing.T) {
 			}
 
 			gotIDs := make([]string, len(result.Simulations))
-			for i, sim := range result.Simulations {
+			for i, sim := range result.Simulations { // justified:IX
 				gotIDs[i] = sim.ID
 			}
 
 			// Check all expected IDs are present (order may vary)
-			for _, wantID := range tt.wantIDs {
+			for _, wantID := range tt.wantIDs { // justified:AS
 				found := false
-				for _, gotID := range gotIDs {
+				for _, gotID := range gotIDs { // justified:FL
 					if gotID == wantID {
 						found = true
 						break
@@ -676,7 +676,7 @@ func TestAPI_Decompose(t *testing.T) {
 	json.Unmarshal(result.Simulation, &sim)
 
 	var largeTicketID string
-	for _, t := range sim.Backlog {
+	for _, t := range sim.Backlog { // justified:FL
 		if t.EstimatedDays > 5 {
 			largeTicketID = t.ID
 			break

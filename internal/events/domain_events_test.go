@@ -173,7 +173,7 @@ func TestEventInterfaceCompliance(t *testing.T) {
 		NewBufferZoneChanged("s", 0, model.FeverGreen, model.FeverRed, 0.7),
 	}
 
-	for _, e := range events {
+	for _, e := range events { // justified:AS
 		if e.SimulationID() != "s" {
 			t.Errorf("%T.SimulationID() = %s, want s", e, e.SimulationID())
 		}
@@ -368,7 +368,7 @@ func TestAllConstructors_ReturnVersionOne(t *testing.T) {
 		NewScopeCreepOccurred("s", 0, "t", 1.0, 1.0),
 	}
 
-	for _, e := range events {
+	for _, e := range events { // justified:AS
 		if e.EventVersion() != 1 {
 			t.Errorf("%s.EventVersion() = %d, want 1", e.EventType(), e.EventVersion())
 		}

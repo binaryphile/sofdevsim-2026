@@ -4,6 +4,7 @@ import (
 	"math/rand"
 	"testing"
 
+	"github.com/binaryphile/fluentfp/slice"
 	"github.com/binaryphile/sofdevsim-2026/internal/engine"
 	"github.com/binaryphile/sofdevsim-2026/internal/model"
 )
@@ -23,7 +24,7 @@ func TestTicketGenerator_Generate(t *testing.T) {
 	var low, med, high int
 	var totalSize float64
 
-	for _, ticket := range tickets {
+	for _, ticket := range tickets { // justified:CF
 		switch ticket.UnderstandingLevel {
 		case model.LowUnderstanding:
 			low++
@@ -81,13 +82,8 @@ func TestScenarios_HaveDifferentCharacteristics(t *testing.T) {
 	uncertainTickets := uncertain.Generate(rand.New(rand.NewSource(12345)), 50)
 
 	// Calculate mean sizes
-	var healthySum, overloadedSum float64
-	for _, t := range healthyTickets {
-		healthySum += t.EstimatedDays
-	}
-	for _, t := range overloadedTickets {
-		overloadedSum += t.EstimatedDays
-	}
+	healthySum := slice.From(healthyTickets).ToFloat64(model.Ticket.GetEstimatedDays).Sum()
+	overloadedSum := slice.From(overloadedTickets).ToFloat64(model.Ticket.GetEstimatedDays).Sum()
 
 	healthyMean := healthySum / 50
 	overloadedMean := overloadedSum / 50
@@ -98,12 +94,9 @@ func TestScenarios_HaveDifferentCharacteristics(t *testing.T) {
 	}
 
 	// Count low understanding in uncertain scenario
-	var uncertainLow int
-	for _, ticket := range uncertainTickets {
-		if ticket.UnderstandingLevel == model.LowUnderstanding {
-			uncertainLow++
-		}
-	}
+	// isLowUnderstanding returns true if ticket has low understanding.
+	isLowUnderstanding := func(t model.Ticket) bool { return t.UnderstandingLevel == model.LowUnderstanding }
+	uncertainLow := slice.From(uncertainTickets).KeepIf(isLowUnderstanding).Len()
 
 	// Uncertain should have high proportion of low understanding (60%)
 	if float64(uncertainLow)/50 < 0.45 {

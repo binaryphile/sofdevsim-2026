@@ -74,7 +74,7 @@ func (m DORAMetrics) Updated(sim model.Simulation) DORAMetrics {
 func (m DORAMetrics) updatedLeadTime(sim model.Simulation) DORAMetrics {
 	m.LeadTimes = m.LeadTimes[:0]
 
-	for _, ticket := range sim.CompletedTickets {
+	for _, ticket := range sim.CompletedTickets { // justified:CF
 		// Use tick-based calculation (1 tick = 1 day in simulation)
 		// Wall-clock time (StartedAt/CompletedAt) is unreliable in fast simulations
 		// Check CompletedTick > StartedTick to allow tickets starting at tick 0
@@ -126,7 +126,7 @@ func (m DORAMetrics) updatedDeployFrequency(sim model.Simulation) DORAMetrics {
 func (m DORAMetrics) updatedMTTR(sim model.Simulation) DORAMetrics {
 	m.MTTRs = m.MTTRs[:0]
 
-	for _, inc := range sim.ResolvedIncidents {
+	for _, inc := range sim.ResolvedIncidents { // justified:CF
 		if inc.ResolvedAt != nil {
 			mttr := inc.ResolvedAt.Sub(inc.CreatedAt)
 			m.MTTRs = append(m.MTTRs, mttr)

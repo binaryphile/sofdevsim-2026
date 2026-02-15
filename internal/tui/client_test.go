@@ -5,7 +5,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/binaryphile/fluentfp/slice"
 	"github.com/binaryphile/sofdevsim-2026/internal/api"
+	"github.com/binaryphile/sofdevsim-2026/internal/model"
 	"github.com/google/go-cmp/cmp"
 )
 
@@ -120,13 +122,9 @@ func TestClient_Assign_MovesTicketToActive(t *testing.T) {
 	// This is the correct pattern when verifying state after any registry mutation.
 	inst = registry.GetInstanceOption(resp.Simulation.ID).OrZero()
 	state = inst.Engine.Sim()
-	found := false
-	for _, at := range state.ActiveTickets {
-		if at.ID == ticketID {
-			found = true
-			break
-		}
-	}
+	// isTarget returns true if ticket ID matches.
+	isTarget := func(t model.Ticket) bool { return t.ID == ticketID }
+	_, found := slice.From(state.ActiveTickets).Find(isTarget).Get()
 	if !found {
 		t.Error("Ticket not assigned")
 	}
@@ -248,7 +246,7 @@ func TestClient_RequestIDHeader(t *testing.T) {
 	client := NewClient(srv.URL)
 
 	// Multiple requests should all succeed (each gets unique ID)
-	for i := 0; i < 3; i++ {
+	for i := 0; i < 3; i++ { // justified:SM
 		_, err := client.CreateSimulation(int64(100+i), "")
 		if err != nil {
 			t.Errorf("Request %d failed: %v", i, err)
@@ -401,15 +399,11 @@ func TestClient_Decompose_SplitsTicketIntoChildren(t *testing.T) {
 	state := inst.Engine.Sim()
 
 	// Find a ticket that might be decomposable (large, unclear)
-	var ticketID string
-	for _, t := range state.Backlog {
-		ticketID = t.ID
-		break
-	}
-
-	if ticketID == "" {
+	first, ok := slice.From(state.Backlog).First().Get()
+	if !ok {
 		t.Fatal("No tickets in backlog")
 	}
+	ticketID := first.ID
 
 	// Try to decompose
 	resp, err := client.Decompose(createResp.Simulation.ID, ticketID)
