@@ -338,31 +338,61 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case eventMsg:
-		// Received event from subscription - update display
-		// This enables live updates when API modifies the simulation
-		// Only applicable in engine mode (client mode doesn't use eventSub)
+		// Apply incoming event to local projection (idempotent: self-events are no-ops)
 		eng, ok := a.mode.GetLeft()
 		if !ok {
-			return a, nil // Client mode - ignore
+			return a, nil
 		}
-		sim := eng.Engine.Sim()
-		eng.Tracker = eng.Tracker.Updated(sim)
+
+		oldSim := eng.Engine.Sim()
+		oldVersion := eng.Engine.ProjectionVersion()
+		eng.Engine = eng.Engine.ApplyEvent(events.Event(msg))
+
+		if eng.Engine.ProjectionVersion() == oldVersion {
+			// Self-event — already applied locally, skip all updates
+			a.mode = either.Left[EngineMode, ClientMode](eng)
+			return a, a.listenForEvents()
+		}
+
+		// External event — derive office animations and update tracker
+		newSim := eng.Engine.Sim()
+
+		a.officeProjection = a.officeProjection.Record(BubblesExpired{}, newSim.CurrentTick, a.clock())
+		a.updateDeveloperAnimationStates(newSim)
+
+		// Sprint ended — all devs return to conference
+		if _, hadSprint := oldSim.CurrentSprintOption.Get(); hadSprint {
+			if _, hasSprint := newSim.CurrentSprintOption.Get(); !hasSprint {
+				for _, dev := range newSim.Developers {
+					a.officeProjection = a.officeProjection.Record(
+						DevEnteredConference{DevID: dev.ID}, newSim.CurrentTick, a.clock())
+				}
+			}
+		}
+
+		a.syncOfficeToRegistry()
+		eng.Tracker = eng.Tracker.Updated(newSim)
 		a.mode = either.Left[EngineMode, ClientMode](eng)
-		// Show status for significant events
+
+		// Status messages — only for external events (self-events exited above)
 		switch events.Event(msg).EventType() {
 		case "SprintStarted":
-			a.statusMessage = "Sprint started (external)"
+			a.statusMessage = "Sprint started (via API)"
 			a.statusExpiry = time.Now().Add(2 * time.Second)
 			a.currentView = ViewExecution
 			a.paused = false
+		case "SprintEnded":
+			a.paused = true
+			a.statusMessage = "Sprint complete (via API) — press 's' for next sprint"
+			a.statusExpiry = time.Now().Add(5 * time.Second)
 		case "TicketAssigned":
-			a.statusMessage = "Ticket assigned (external)"
+			a.statusMessage = "Ticket assigned (via API)"
 			a.statusExpiry = time.Now().Add(2 * time.Second)
 		case "Ticked":
-			a.statusMessage = fmt.Sprintf("Tick %d (external)", sim.CurrentTick)
+			a.statusMessage = fmt.Sprintf("Tick %d (via API)", newSim.CurrentTick)
 			a.statusExpiry = time.Now().Add(1 * time.Second)
 		}
-		// Continue listening for more events
+
 		return a, a.listenForEvents()
 
 	case animationTickMsg:

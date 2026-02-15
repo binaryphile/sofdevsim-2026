@@ -411,8 +411,8 @@ Track coverage changes, not absolute numbers. Updated 2026-02-14.
 
 | Package | Coverage | Notes |
 |---------|----------|-------|
-| engine | 79.2% | Domain + controller logic |
-| api | 79.1% | HTTP integration tests |
+| engine | 79.4% | Domain + controller logic |
+| api | 86.2% | HTTP integration tests |
 | events | 68.9% | Event store infrastructure |
 | lessons | 82.8% | Domain calculations |
 | export | 65.4% | Controller with domain helpers |
@@ -421,7 +421,7 @@ Track coverage changes, not absolute numbers. Updated 2026-02-14.
 | model | 30.3% | Mostly data structures (trivial) |
 | office | 85.0% | Domain rendering (Q1), property tests |
 
-**Note:** TUI coverage increased from 0% to 52% via workflow integration tests (Phase 7). Per Khorikov, this is appropriate for a controller - we test complete workflows, not individual methods.
+**Note:** TUI coverage at 58.1% via workflow integration tests (Phase 7+8). Per Khorikov, this is appropriate for a controller - we test complete workflows, not individual methods.
 
 ## Benchmarking
 

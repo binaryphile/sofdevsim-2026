@@ -313,6 +313,41 @@ func TestEngine_SimReturnsProjectionState(t *testing.T) {
 	}
 }
 
+func TestEngine_ApplyEventIdempotent(t *testing.T) {
+	store := events.NewMemoryStore()
+	sim := createTestSimulation()
+	eng := NewEngineWithStore(sim.Seed, store)
+	eng = emitCreatedFromSim(t, eng, sim)
+
+	eng, err := eng.StartSprint()
+	if err != nil {
+		t.Fatalf("StartSprint: %v", err)
+	}
+
+	// Get the SprintStarted event from the store
+	evts := store.Replay(sim.ID)
+	var sprintEvt events.Event
+	for _, e := range evts {
+		if e.EventType() == "SprintStarted" {
+			sprintEvt = e
+		}
+	}
+
+	// ApplyEvent on an already-processed event should be a no-op
+	versionBefore := eng.ProjectionVersion()
+	eng2 := eng.ApplyEvent(sprintEvt)
+	versionAfter := eng2.ProjectionVersion()
+
+	if versionBefore != versionAfter {
+		t.Errorf("Expected idempotent apply: version %d → %d", versionBefore, versionAfter)
+	}
+
+	// Sim state should be identical
+	if eng.Sim().SprintNumber != eng2.Sim().SprintNumber {
+		t.Error("Expected identical sim state after idempotent apply")
+	}
+}
+
 func TestEngine_AddDeveloperEmitsEvent(t *testing.T) {
 	store := events.NewMemoryStore()
 	sim := model.NewSimulation("test-sim", model.PolicyNone, 42)

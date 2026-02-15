@@ -147,6 +147,17 @@ func (e Engine) withProj(proj events.Projection) Engine {
 	}
 }
 
+// ApplyEvent applies an external event to the projection without writing to store.
+// Idempotent: if the event was already processed (self-event), returns unchanged Engine.
+func (e Engine) ApplyEvent(evt events.Event) Engine {
+	return e.withProj(e.proj.Apply(evt))
+}
+
+// ProjectionVersion returns the projection's event count for self-event detection.
+func (e Engine) ProjectionVersion() int {
+	return e.proj.Version()
+}
+
 // applyTrace applies the current trace context to an event using the Event interface.
 func (e Engine) applyTrace(evt events.Event) events.Event {
 	return events.ApplyTrace(evt, e.trace)

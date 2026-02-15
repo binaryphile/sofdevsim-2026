@@ -28486,3 +28486,48 @@ Coverage: engine 79.2%, api 79.1% (api +4.8 from new tests)
 [x] Projection idempotency documented (evidence: line 1476 after §Projection)
 [x] eventMsg handler pseudo-code updated (evidence: lines 1635-1646 show ApplyEvent)
 [x] No contradictions (evidence: grep SetInstance shows 1 hit in §Registry role only)
+2026-02-14T18:30:00Z | Contract: Phase 4 - ES-aligned eventMsg handler implementation
+[ ] Engine.ApplyEvent + ProjectionVersion methods
+[ ] TestEngine_ApplyEventIdempotent verifies idempotency
+[ ] eventMsg handler applies events to local projection
+[ ] Self-event idempotency via version check
+[ ] TestTUI_ReceivesExternalEvents exercises handler
+[ ] Sprint walkthrough live mode discovers existing sim
+[ ] All existing tests pass
+Red: TestEngine_ApplyEventIdempotent — eng.ApplyEvent undefined, eng.ProjectionVersion undefined
+Green: TestEngine_ApplyEventIdempotent PASS
+Red: TestTUI_ReceivesExternalEvents — projection not updated, status says "external" not "via API"
+Green: TestTUI_ReceivesExternalEvents PASS (added BubblesExpired re-export)
+Refactor: eventMsg vs tickMsg handlers differ enough to stay separate (self-event guard, BubblesExpired, oldSim/newSim comparison, different status messages)
+Green: TestSprintWalkthrough PASS (discoverOrCreateSim helper, milestone 2 state validation)
+Khorikov rebalancing: Q1 engine test (ApplyEvent), Q3 controller tests (TUI handler, sprint walkthrough). No redundant tests found. No pruning needed.
+2026-02-14T23:55:00Z | Completion: Phase 4
+[x] Engine.ApplyEvent + ProjectionVersion (evidence: see Red/Green log entries above)
+[x] TestEngine_ApplyEventIdempotent (evidence: see Red/Green log entries above)
+[x] eventMsg handler applies events (evidence: see Red/Green log entries above)
+[x] Self-event idempotency (evidence: TestTUI_SprintLifecycle still passes in full suite)
+[x] Test exercises handler (evidence: asserts projection, view, status for SprintStarted + SprintEnded)
+[x] Live mode sim discovery (evidence: TestSprintWalkthrough passes in full suite)
+[x] All tests pass (evidence: go test ./... — PASS)
+[x] Coverage baseline updated in docs/testing-strategy.md (engine 79.4%, tui 57.4%, api 86.2%)
+[x] Benchmarks checked — within baseline variance (BenchmarkTick 19370 ns/op)
+[x] Khorikov rebalancing — no redundant tests
+2026-02-15T00:10:00Z | Khorikov Rebalancing (proper analysis)
+
+Test landscape survey — 6 tests touch eventMsg/tickMsg handler paths:
+- TestSprintEndsWhenDurationReached: tickMsg → sprint ends (projection, paused)
+- TestTUI_ReceivesExternalEvents/SprintStarted: eventMsg → ApplyEvent → sprint started (projection, view, status)
+- TestTUI_ReceivesExternalEvents/SprintEnded: eventMsg → ApplyEvent → tick through → sprint ends (projection, paused, status)
+- TestTUI_SyncsOfficeToRegistry: key 'a' → office sync (registry animation)
+- TestTUI_SyncsOfficeOnTick: tickMsg → office sync (registry transitions)
+- TestTUI_SyncsOfficeOnSprintEnd: tickMsg → sprint ends → conference (registry transition)
+
+Overlap analysis: No redundancy. tickMsg and eventMsg tests cover different trigger paths (local vs external). Office sync tests cover different entry points.
+
+Branch coverage decision:
+- SprintStarted: tested (non-trivial — sets view, paused, calls ApplyEvent)
+- SprintEnded: tested (non-trivial — sets paused, conference transitions)
+- TicketAssigned: NOT tested — Q2 trivial (sets one status string)
+- Ticked: NOT tested — Q2 trivial (sets one formatted status string)
+
+Result: No tests pruned, no tests added. 2 of 4 branches tested (the non-trivial ones).

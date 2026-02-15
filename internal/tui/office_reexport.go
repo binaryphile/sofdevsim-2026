@@ -21,6 +21,7 @@ type DevBecameFrustrated = office.DevBecameFrustrated
 type DevCompletedTicket = office.DevCompletedTicket
 type DevEnteredConference = office.DevEnteredConference
 type AnimationFrameAdvanced = office.AnimationFrameAdvanced
+type BubblesExpired = office.BubblesExpired
 
 // Type alias for projection
 type OfficeProjection = office.OfficeProjection

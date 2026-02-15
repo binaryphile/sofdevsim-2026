@@ -196,25 +196,99 @@ func TestNewAppWithSeed_ProjectionHasInitialState(t *testing.T) {
 	}
 }
 
-// TestTUI_ReceivesExternalEvents verifies TUI receives events from API actions.
+// TestTUI_ReceivesExternalEvents verifies the eventMsg handler applies external events
+// to the local projection, updates office animations, and sets status messages.
 func TestTUI_ReceivesExternalEvents(t *testing.T) {
 	reg := registry.NewSimRegistry()
 	app := NewAppWithRegistry(42, reg)
-	eng, _ := app.mode.GetLeft()
 
-	// Simulate API starting a sprint (external to TUI)
-	// This goes through the same engine, which emits to shared store
-	eng.Engine.StartSprint()
-
-	// TUI should receive the event via subscription
-	select {
-	case evt := <-eng.EventSub:
-		if evt.EventType() != "SprintStarted" {
-			t.Errorf("Expected SprintStarted event, got %s", evt.EventType())
+	// drainAndApply reads all buffered events from subscription and applies them via handler.
+	// Returns the last event type seen, or "" if no events.
+	// Channel is buffered (100), so events are available immediately after SetInstance.
+	drainAndApply := func() string {
+		eng, _ := app.mode.GetLeft()
+		lastType := ""
+		for {
+			select {
+			case evt := <-eng.EventSub:
+				lastType = evt.EventType()
+				newApp, _ := app.Update(eventMsg(evt))
+				app = newApp.(*App)
+				eng, _ = app.mode.GetLeft()
+			default:
+				return lastType
+			}
 		}
-	case <-time.After(100 * time.Millisecond):
-		t.Error("Timed out waiting for SprintStarted event")
 	}
+
+	t.Run("SprintStarted", func(t *testing.T) {
+		// Simulate API starting a sprint externally
+		inst, ok := reg.GetInstanceOption("sim-42").Get()
+		if !ok {
+			t.Fatal("expected sim-42 in registry")
+		}
+		newEngine := must.Get(inst.Engine.StartSprint())
+		inst.Engine = newEngine
+		reg.SetInstance("sim-42", inst)
+
+		if lastType := drainAndApply(); lastType == "" {
+			t.Fatal("expected at least one event from StartSprint")
+		}
+
+		// Assert: TUI projection now reflects the sprint start
+		eng, _ := app.mode.GetLeft()
+		if _, ok := eng.Engine.Sim().CurrentSprintOption.Get(); !ok {
+			t.Error("Expected TUI projection to show active sprint after external event")
+		}
+
+		// Assert: handler switched to execution view
+		if app.currentView != ViewExecution {
+			t.Errorf("Expected ViewExecution, got %v", app.currentView)
+		}
+
+		// Assert: status message indicates API origin
+		if app.statusMessage != "Sprint started (via API)" {
+			t.Errorf("Expected 'Sprint started (via API)', got %q", app.statusMessage)
+		}
+	})
+
+	t.Run("SprintEnded", func(t *testing.T) {
+		// Tick the engine externally until the sprint ends
+		for i := 0; i < 100; i++ {
+			inst, ok := reg.GetInstanceOption("sim-42").Get()
+			if !ok {
+				t.Fatal("expected sim-42 in registry")
+			}
+			newEngine, _, err := inst.Engine.Tick()
+			if err != nil {
+				t.Fatalf("Tick: %v", err)
+			}
+			inst.Engine = newEngine
+			reg.SetInstance("sim-42", inst)
+
+			lastType := drainAndApply()
+
+			if lastType == "SprintEnded" {
+				break
+			}
+		}
+
+		// Assert: TUI projection shows sprint ended
+		eng, _ := app.mode.GetLeft()
+		if _, ok := eng.Engine.Sim().CurrentSprintOption.Get(); ok {
+			t.Error("Expected sprint to be inactive after SprintEnded event")
+		}
+
+		// Assert: handler paused the simulation
+		if !app.paused {
+			t.Error("Expected app.paused=true after SprintEnded")
+		}
+
+		// Assert: status message indicates API origin
+		if app.statusMessage != "Sprint complete (via API) — press 's' for next sprint" {
+			t.Errorf("Expected sprint complete message, got %q", app.statusMessage)
+		}
+	})
 }
 
 // TestApp_UsesHTTPClient verifies app makes HTTP calls instead of direct engine access.

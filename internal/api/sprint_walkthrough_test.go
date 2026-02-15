@@ -38,9 +38,8 @@ func TestSprintWalkthrough(t *testing.T) {
 	t.Logf("Server: %s", ts.url)
 	t.Logf("")
 
-	// ── Milestone 1: Create simulation ──
-	t.Logf("Milestone 1: Create simulation")
-	resp := post(t, ts.srv(), "/simulations", `{"policy": "dora-strict", "seed": 42}`)
+	// ── Milestone 1: Create or discover simulation ──
+	t.Logf("Milestone 1: Create or discover simulation")
 
 	var hal struct {
 		Simulation json.RawMessage   `json:"simulation"`
@@ -51,8 +50,8 @@ func TestSprintWalkthrough(t *testing.T) {
 		json.Unmarshal([]byte(data), &hal)
 	}
 
+	resp, sim := discoverOrCreateSim(t, ts)
 	unmarshalHAL(resp)
-	sim := parseSim(t, hal.Simulation)
 
 	if sim.BacklogCount == 0 {
 		t.Fatal("expected backlog > 0")
@@ -68,6 +67,10 @@ func TestSprintWalkthrough(t *testing.T) {
 
 	// ── Milestone 2: Initial office ──
 	t.Logf("Milestone 2: Initial office state")
+	// In live mode, TUI sim must be in initial state
+	if sim.SprintActive {
+		t.Fatal("live mode: simulation has active sprint — restart TUI fresh")
+	}
 	officeResp := getOffice(t, ts, sim.ID)
 
 	for _, dev := range officeResp.Developers {
@@ -286,4 +289,45 @@ func getOffice(t *testing.T, ts testServer, simID string) officeState {
 		t.Fatalf("failed to parse office: %v", err)
 	}
 	return office
+}
+
+// discoverOrCreateSim returns the HAL response body and parsed sim state.
+// httptest mode: creates sim-42. Live mode: discovers TUI's existing sim.
+func discoverOrCreateSim(t *testing.T, ts testServer) (string, simState) {
+	t.Helper()
+
+	if ts.registry != nil {
+		// httptest mode: create sim-42 as before
+		resp := post(t, ts.srv(), "/simulations", `{"policy": "dora-strict", "seed": 42}`)
+		var hal struct {
+			Simulation json.RawMessage `json:"simulation"`
+		}
+		json.Unmarshal([]byte(resp), &hal)
+		return resp, parseSim(t, hal.Simulation)
+	}
+
+	// Live mode: discover existing TUI simulation via GET /simulations
+	listBody := get(t, ts.srv(), "/simulations")
+	var listResp struct {
+		Simulations []struct {
+			ID string `json:"id"`
+		} `json:"simulations"`
+	}
+	if err := json.Unmarshal([]byte(listBody), &listResp); err != nil {
+		t.Fatalf("failed to parse simulations list: %v", err)
+	}
+	if len(listResp.Simulations) == 0 {
+		t.Fatal("live mode: no simulations found — start TUI first")
+	}
+
+	simID := listResp.Simulations[0].ID
+	t.Logf("  Live mode: discovered simulation %s", simID)
+
+	// Get full HAL response for this sim (same format as POST /simulations)
+	resp := get(t, ts.srv(), "/simulations/"+simID)
+	var hal struct {
+		Simulation json.RawMessage `json:"simulation"`
+	}
+	json.Unmarshal([]byte(resp), &hal)
+	return resp, parseSim(t, hal.Simulation)
 }
