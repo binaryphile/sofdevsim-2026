@@ -28610,3 +28610,17 @@ Secondary: stale index in Engine.Tick after emit, Events panel blind to external
 [x] Multi-concern prompts where FluentFP is one of several concerns (evidence: 3 prompts with 4+ concerns each, baseline 7/9 not 9/9)
 [x] Raw output captured to log directory (evidence: /tmp/claude-md-context-outputs/ with 45 files)
 [x] Results documented with explicit conclusion (evidence: WEAK SIGNAL verdict, 11pp delta NEW>OLD at session depth)
+2026-02-15T14:30:00Z | Contract: Fix behavioral compliance test
+[ ] Prompts require complete Go files with imports (5 prompts)
+[ ] Scorer checks binaryphile/fluentfp import (binary compliance)
+[ ] Empty output: stderr capture, jq fix, retry once, inter-trial sleep
+[ ] N=5 for files/session (25/condition), N=3 baseline (validation)
+[ ] Fisher's exact test p-value in discrimination check
+[ ] Pre-run scorer validation passes on existing raw outputs
+2026-02-15T16:00:00Z | Completion: Fix behavioral compliance test
+[x] Prompts require complete Go files with imports (5 prompts) (evidence: lines 124-130 — all prefixed "Write a complete Go file with package declaration and all necessary imports")
+[x] Scorer checks binaryphile/fluentfp import (binary compliance) (evidence: score() lines 28-62, has_import/has_wrong_import/has_api/unjustified_loops, classify() returns COMPLIANT or NON_COMPLIANT)
+[x] Empty output: stderr capture, jq fix, retry once, inter-trial sleep (evidence: run_test() lines 135-171, jq '.result // ""', 2>"${output_file%.txt}.err", retry with 5s backoff, sleep 2 in suite runner)
+[x] N=5 for files/session (25/condition), N=3 baseline (validation) (evidence: N_BASELINE=3 line 14, N_MAIN=5 line 15)
+[x] Fisher's exact test p-value in discrimination check (evidence: lines 288-313, pure Python math.comb, verdicts at p<0.05/0.20)
+[x] Pre-run scorer validation passes on existing raw outputs (evidence: 5 test cases + 3 edge cases all correct — WRONG_IMPORT, COMPLIANT, EMPTY, NO_IMPORT, MIXED, COMPLIANT with justified)

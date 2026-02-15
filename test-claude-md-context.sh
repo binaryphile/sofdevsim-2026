@@ -1,8 +1,8 @@
 #!/bin/bash
 # Context-loaded behavioral compliance test for FluentFP in CLAUDE.md.
-# Tests whether CLAUDE.md produces FluentFP under cognitive load (implementation mode).
+# Tests whether CLAUDE.md produces FluentFP compliance under cognitive load.
 # Three depth levels: baseline (prompt only), files (source files), session (simulated conversation).
-# Per integration test infrastructure: claude -p --model sonnet, N=3 quick screening.
+# Compliance = binaryphile/fluentfp import + API usage + no unjustified loops.
 
 set -e
 
@@ -11,7 +11,8 @@ CLAUDE_MD_NEW="$PROJECT_DIR/CLAUDE.md"
 CLAUDE_MD_OLD="/tmp/claude-md-old-baseline.md"
 RESULTS="/tmp/claude-md-context-results.txt"
 OUTPUT_DIR="/tmp/claude-md-context-outputs"
-N=3
+N_BASELINE=3
+N_MAIN=5
 
 # Extract old CLAUDE.md from before the FluentFP rewrite
 git -C "$PROJECT_DIR" show 3e7e89e^:CLAUDE.md > "$CLAUDE_MD_OLD"
@@ -21,37 +22,50 @@ rm -rf "$OUTPUT_DIR"
 mkdir -p "$OUTPUT_DIR"
 
 # =======================================================================
-# SCORING (enhanced with per-operation counting)
+# SCORING -- compliance = correct import + API usage + no unjustified loops
 # =======================================================================
 
 score() {
     local output="$1"
-    local fp_count=0
-    local loop_count=0
+    local size=${#output}
 
-    # Count FluentFP operations (grep -o counts each match, wc -l totals)
-    fp_count=$(echo "$output" | grep -oE 'slice\.From|\.KeepIf|\.ToString|\.ToFloat64|\.FindAs|slice\.MapTo' | wc -l)
+    if [ "$size" -lt 10 ]; then
+        echo "EMPTY"
+        return
+    fi
 
-    # Count loop operations
-    loop_count=$(echo "$output" | grep -oE 'for .*(range|:=)' | wc -l)
+    local has_import=false
+    local has_wrong_import=false
+    local has_api=false
 
-    if [ "$fp_count" -gt 0 ] && [ "$loop_count" -eq 0 ]; then
-        echo "FLUENTFP(${fp_count}fp)"
-    elif [ "$fp_count" -eq 0 ] && [ "$loop_count" -gt 0 ]; then
-        echo "LOOP(${loop_count}loop)"
-    elif [ "$fp_count" -gt 0 ] && [ "$loop_count" -gt 0 ]; then
-        echo "MIXED(${fp_count}fp/${loop_count}loop)"
+    echo "$output" | grep -q 'binaryphile/fluentfp' && has_import=true
+    echo "$output" | grep -qE 'samber/lo|go-functional|rprtr258|pkg/fluentfp' && has_wrong_import=true
+    echo "$output" | grep -qE 'slice\.From|\.KeepIf|\.ToString|\.ToFloat64|\.FindAs|slice\.MapTo' && has_api=true
+
+    # Count unjustified loops (for-loops without // justified: annotation)
+    local unjustified_loops
+    unjustified_loops=$(echo "$output" | grep -E 'for .*(range|:=)' | grep -cv '// justified' || true)
+
+    if $has_import && $has_api && [ "$unjustified_loops" -eq 0 ]; then
+        echo "COMPLIANT"
+    elif $has_import && $has_api && [ "$unjustified_loops" -gt 0 ]; then
+        echo "MIXED(import+${unjustified_loops}unjustified)"
+    elif $has_wrong_import; then
+        echo "WRONG_IMPORT"
+    elif ! $has_import && $has_api; then
+        echo "NO_IMPORT"
+    elif [ "$unjustified_loops" -gt 0 ]; then
+        echo "LOOPS_ONLY"
     else
-        echo "UNCLEAR"
+        echo "OTHER"
     fi
 }
 
+# Binary: COMPLIANT or not. No partial credit.
 classify() {
     local result="$1"
-    if echo "$result" | grep -q '^FLUENTFP'; then echo "FLUENTFP"
-    elif echo "$result" | grep -q '^LOOP'; then echo "LOOP"
-    elif echo "$result" | grep -q '^MIXED'; then echo "MIXED"
-    else echo "UNCLEAR"
+    if [ "$result" = "COMPLIANT" ]; then echo "COMPLIANT"
+    else echo "NON_COMPLIANT"
     fi
 }
 
@@ -103,20 +117,20 @@ User: "What about error handling for missing sprints?"
 Assistant: "I will return 404 with the standard error response pattern from the existing handlers. Let me also handle the case where no tickets exist for the sprint."
 
 User: "proceed"'
-
 # =======================================================================
-# PROMPTS (multi-concern, FluentFP is one piece)
+# PROMPTS -- require complete Go files with imports
 # =======================================================================
 
 PROMPTS=(
-    "Write a Go function SprintSummary(sim model.Simulation, sprintID string) (Summary, error) that finds the sprint by ID (return error if not found), filters ActiveTickets to those assigned to this sprint, counts how many are complete vs in-progress, calculates average EstimatedDays for remaining tickets, and returns a populated Summary struct. Just the code, no explanation."
-    "Write a Go function GenerateSprintReport(sim model.Simulation, sprintID string) (string, error) that finds the sprint by ID, filters tickets by status, extracts developer names from assigned tickets, computes average lead time, formats into a multi-section report string. Return error if sprint not found. Just the code, no explanation."
-    "Write a Go function ComputeTeamMetrics(tickets []model.Ticket, devs []model.Developer) TeamMetrics that counts tickets per status, extracts unique assignee IDs, calculates average estimated vs actual days ratio, and populates a TeamMetrics struct. Just the code, no explanation."
+    "Write a complete Go file with package declaration and all necessary imports. Define a SprintSummary struct with JSON tags. Write a function SprintSummary(sim model.Simulation, sprintID string) (Summary, error) that finds the sprint by ID (return error if not found), filters ActiveTickets to those in this sprint, counts complete vs in-progress, calculates average EstimatedDays for remaining tickets, and returns a populated Summary struct."
+    "Write a complete Go file with package declaration and all necessary imports. Define a SprintReport struct with JSON tags. Write a function GenerateSprintReport(sim model.Simulation, sprintID string) (SprintReport, error) that finds the sprint by ID (return error if not found), filters tickets by status (complete, in-progress, blocked), extracts developer names from assigned tickets, computes average lead time for completed tickets, and returns a populated SprintReport struct."
+    "Write a complete Go file with package declaration and all necessary imports. Define a TeamMetrics struct with JSON tags. Write a function ComputeTeamMetrics(tickets []model.Ticket, devs []model.Developer) TeamMetrics that counts active tickets, counts completed tickets, extracts unique assignee IDs, calculates average estimated vs actual days ratio, and populates a TeamMetrics struct."
+    "Write a complete Go file with package declaration and all necessary imports. Define a TicketHealthReport struct with JSON tags. Write a function TicketHealth(tickets []model.Ticket) TicketHealthReport that counts total tickets, filters to overdue tickets (where ActualDays exceeds EstimatedDays), extracts IDs of overdue tickets, calculates the average overrun ratio (ActualDays/EstimatedDays) for overdue tickets, and counts tickets that have no estimate (EstimatedDays == 0)."
+    "Write a complete Go file with package declaration and all necessary imports. Define an ActiveWorkSummary struct with JSON tags. Write a function ActiveWork(tickets []model.Ticket, devs []model.Developer) ActiveWorkSummary that counts active tickets, counts idle developers, extracts names of idle developers, calculates total remaining effort across active tickets (sum of EstimatedDays minus ActualDays for each), and calculates average EstimatedDays across active tickets."
 )
-
 # =======================================================================
 # TEST RUNNER
-# ======================================================================
+# =======================================================================
 
 run_test() {
     local claude_md="$1"
@@ -129,36 +143,42 @@ run_test() {
 
     cd "$test_dir"
     local result
-    result=$(claude -p --model sonnet --max-turns 1 --output-format json "$full_prompt" 2>/dev/null || true)
+    result=$(claude -p --model sonnet --max-turns 1 --output-format json \
+        "$full_prompt" 2>"${output_file%.txt}.err" || true)
     cd "$PROJECT_DIR"
     rm -rf "$test_dir"
 
-    # Extract result text from JSON output
     local output
-    output=$(echo "$result" | jq -r '.result // empty' 2>/dev/null || echo "$result")
+    output=$(echo "$result" | jq -r '.result // ""' 2>/dev/null || echo "$result")
 
-    # Save raw output
+    # Retry once on empty output
+    if [ ${#output} -lt 10 ]; then
+        echo "  RETRY: empty output, waiting 5s..." >&2
+        sleep 5
+        local test_dir2="/tmp/test-claude-ctx-$$-$RANDOM"
+        mkdir -p "$test_dir2"
+        cp "$claude_md" "$test_dir2/CLAUDE.md"
+        cd "$test_dir2"
+        result=$(claude -p --model sonnet --max-turns 1 --output-format json \
+            "$full_prompt" 2>"${output_file%.txt}.retry.err" || true)
+        cd "$PROJECT_DIR"
+        rm -rf "$test_dir2"
+        output=$(echo "$result" | jq -r '.result // ""' 2>/dev/null || echo "$result")
+    fi
+
     echo "$output" > "$output_file"
-
     echo "$output"
 }
-
 # =======================================================================
 # SUITE RUNNER
-# ======================================================================
+# =======================================================================
 
 run_depth_suite() {
     local depth="$1"
-    local variants=""
+    local n="$2"
+    local variants="OLD:$CLAUDE_MD_OLD NEW:$CLAUDE_MD_NEW"
 
-    # baseline only runs NEW CLAUDE.md
-    if [ "$depth" = "baseline" ]; then
-        variants="NEW:$CLAUDE_MD_NEW"
-    else
-        variants="OLD:$CLAUDE_MD_OLD NEW:$CLAUDE_MD_NEW"
-    fi
-
-    echo "--- DEPTH: $depth ---" | tee -a "$RESULTS"
+    echo "--- DEPTH: $depth (N=$n) ---" | tee -a "$RESULTS"
 
     # Build context layers
     local files_ctx=""
@@ -172,18 +192,18 @@ run_depth_suite() {
         conv_ctx="$CONVERSATION"
     fi
 
+    local num_prompts=${#PROMPTS[@]}
+
     for label_md in $variants; do
         label="${label_md%%:*}"
         md="${label_md#*:}"
-        fp_count=0
-        loop_count=0
-        mixed_count=0
-        total=0
+        local compliant_count=0
+        local total=0
 
         echo "=== $label CLAUDE.md ($depth) ===" | tee -a "$RESULTS"
-        for pidx in 0 1 2; do
+        for pidx in $(seq 0 $((num_prompts - 1))); do
             local prompt="${PROMPTS[$pidx]}"
-            for i in $(seq 1 $N); do
+            for i in $(seq 1 $n); do
                 total=$((total + 1))
                 local output_file="$OUTPUT_DIR/${depth}-${label}-p${pidx}-t${i}.txt"
 
@@ -196,75 +216,97 @@ run_depth_suite() {
 
                 echo "  [$label/$depth] p${pidx} t${i}: $result" | tee -a "$RESULTS"
 
-                case "$class" in
-                    FLUENTFP) fp_count=$((fp_count + 1)) ;;
-                    LOOP) loop_count=$((loop_count + 1)) ;;
-                    MIXED) mixed_count=$((mixed_count + 1)) ;;
-                esac
+                if [ "$class" = "COMPLIANT" ]; then
+                    compliant_count=$((compliant_count + 1))
+                fi
+
+                # Inter-trial sleep to avoid rate limiting
+                sleep 2
             done
         done
-        echo "  $label/$depth: ${fp_count}/${total} FluentFP, ${loop_count}/${total} Loop, ${mixed_count}/${total} Mixed" | tee -a "$RESULTS"
+        local rate=0
+        if [ "$total" -gt 0 ]; then
+            rate=$((compliant_count * 100 / total))
+        fi
+        echo "  $label/$depth: ${compliant_count}/${total} compliant (${rate}%)" | tee -a "$RESULTS"
         echo "" | tee -a "$RESULTS"
     done
 }
-
-# ======================================================================
+# =======================================================================
 # MAIN
 # =======================================================================
 
 echo "CLAUDE.md Context-Loaded FluentFP Compliance Test - $(date)" | tee "$RESULTS"
-echo "N=$N per variant per depth, neutral multi-concern prompts" | tee -a "$RESULTS"
+echo "Compliance = binaryphile/fluentfp import + API usage + no unjustified loops" | tee -a "$RESULTS"
+echo "Baseline N=$N_BASELINE, Files/Session N=$N_MAIN" | tee -a "$RESULTS"
 echo "Depths: baseline (prompt only), files (source code), session (conversation)" | tee -a "$RESULTS"
 echo "" | tee -a "$RESULTS"
 
-for depth in baseline files session; do
-    run_depth_suite "$depth"
-done
+run_depth_suite "baseline" "$N_BASELINE"
+run_depth_suite "files" "$N_MAIN"
+run_depth_suite "session" "$N_MAIN"
 
 echo "" | tee -a "$RESULTS"
 echo "=== SUMMARY ===" | tee -a "$RESULTS"
 echo "Results saved to: $RESULTS" | tee -a "$RESULTS"
 echo "Raw outputs in: $OUTPUT_DIR" | tee -a "$RESULTS"
 
-# Summary: count results by depth
+# Summary: count by category per depth
 echo "" | tee -a "$RESULTS"
 for depth in baseline files session; do
     echo "-- $depth --" | tee -a "$RESULTS"
-    echo -n "  FLUENTFP: " | tee -a "$RESULTS"; (grep "/$depth]" "$RESULTS" | grep -c 'FLUENTFP' || echo 0) | tee -a "$RESULTS"
-    echo -n "  LOOP: " | tee -a "$RESULTS"; (grep "/$depth]" "$RESULTS" | grep -c 'LOOP' || echo 0) | tee -a "$RESULTS"
-    echo -n "  MIXED: " | tee -a "$RESULTS"; (grep "/$depth]" "$RESULTS" | grep -c 'MIXED' || echo 0) | tee -a "$RESULTS"
+    for cat in COMPLIANT MIXED WRONG_IMPORT NO_IMPORT LOOPS_ONLY EMPTY OTHER; do
+        count=$(grep "/$depth]" "$RESULTS" | grep -c "$cat" || true)
+        if [ "$count" -gt 0 ]; then
+            echo "  $cat: $count" | tee -a "$RESULTS"
+        fi
+    done
 done
+# =======================================================================
+# DISCRIMINATION CHECK -- Fisher's exact test on session depth
+# =======================================================================
 
-# Automated discrimination check
-# Compare session-depth OLD vs NEW FluentFP rates (includes MIXED as partial credit)
 echo "" | tee -a "$RESULTS"
-echo "=== DISCRIMINATION CHECK ===" | tee -a "$RESULTS"
+echo "=== DISCRIMINATION CHECK (session depth) ===" | tee -a "$RESULTS"
 
-old_fp=$(grep "/session]" "$RESULTS" | grep "OLD" | grep -c 'FLUENTFP' || echo 0)
-old_mixed=$(grep "/session]" "$RESULTS" | grep "OLD" | grep -c 'MIXED' || echo 0)
-old_total=$(grep "/session]" "$RESULTS" | grep -c "OLD" || echo 0)
+old_compliant=$(grep "/session]" "$RESULTS" | grep "OLD" | grep -c 'COMPLIANT' || true)
+old_total=$(grep "/session]" "$RESULTS" | grep -c "OLD" || true)
 
-new_fp=$(grep "/session]" "$RESULTS" | grep "NEW" | grep -c 'FLUENTFP' || echo 0)
-new_mixed=$(grep "/session]" "$RESULTS" | grep "NEW" | grep -c 'MIXED' || echo 0)
-new_total=$(grep "/session]" "$RESULTS" | grep -c "NEW" || echo 0)
+new_compliant=$(grep "/session]" "$RESULTS" | grep "NEW" | grep -c 'COMPLIANT' || true)
+new_total=$(grep "/session]" "$RESULTS" | grep -c "NEW" || true)
 
-echo "  Session depth OLD: ${old_fp}/${old_total} pure FP, ${old_mixed}/${old_total} mixed" | tee -a "$RESULTS"
-echo "  Session depth NEW: ${new_fp}/${new_total} pure FP, ${new_mixed}/${new_total} mixed" | tee -a "$RESULTS"
+echo "  OLD: ${old_compliant}/${old_total} compliant" | tee -a "$RESULTS"
+echo "  NEW: ${new_compliant}/${new_total} compliant" | tee -a "$RESULTS"
 
 if [ "$old_total" -gt 0 ] && [ "$new_total" -gt 0 ]; then
-    # Discrimination: NEW should have more FluentFP than OLD at session depth
-    old_score=$((old_fp * 100 / old_total))
-    new_score=$((new_fp * 100 / new_total))
-    delta=$((new_score - old_score))
-    echo "  OLD FluentFP rate: ${old_score}%  NEW FluentFP rate: ${new_score}%  Delta: ${delta}pp" | tee -a "$RESULTS"
+    old_rate=$((old_compliant * 100 / old_total))
+    new_rate=$((new_compliant * 100 / new_total))
+    delta=$((new_rate - old_rate))
+    echo "  OLD rate: ${old_rate}%  NEW rate: ${new_rate}%  Delta: ${delta}pp" | tee -a "$RESULTS"
 
-    if [ "$delta" -gt 20 ]; then
-        echo "  VERDICT: DISCRIMINATES (NEW > OLD by ${delta}pp, threshold 20pp)" | tee -a "$RESULTS"
-    elif [ "$delta" -gt 0 ]; then
-        echo "  VERDICT: WEAK SIGNAL (NEW > OLD by ${delta}pp, below 20pp threshold)" | tee -a "$RESULTS"
-    else
-        echo "  VERDICT: NO DISCRIMINATION (delta ${delta}pp). Simulated context does not reproduce the failure mode." | tee -a "$RESULTS"
-        echo "  NEXT STEP: Test with real multi-turn agentic sessions." | tee -a "$RESULTS"
+    # Fisher's exact test (pure Python, no scipy needed)
+    p_value=$(python3 -c "
+from math import comb
+def fisher_p(a, b, c, d):
+    n = a+b+c+d; r1=a+b; r2=c+d; c1=a+c
+    if n == 0: return 1.0
+    cutoff = comb(r1,a)*comb(r2,c)/comb(n,c1)
+    return sum(comb(r1,i)*comb(r2,c1-i)/comb(n,c1)
+               for i in range(min(r1,c1)+1)
+               if comb(r1,i)*comb(r2,c1-i)/comb(n,c1) <= cutoff+1e-10)
+print(f'{fisher_p($old_compliant, $old_total - $old_compliant, $new_compliant, $new_total - $new_compliant):.4f}')
+" 2>/dev/null || echo "N/A")
+
+    echo "  Fisher's exact p-value: $p_value" | tee -a "$RESULTS"
+
+    if [ "$p_value" != "N/A" ]; then
+        if python3 -c "exit(0 if float('$p_value') < 0.05 else 1)" 2>/dev/null; then
+            echo "  VERDICT: DISCRIMINATES (p=$p_value < 0.05)" | tee -a "$RESULTS"
+        elif python3 -c "exit(0 if float('$p_value') < 0.20 else 1)" 2>/dev/null; then
+            echo "  VERDICT: TRENDING (p=$p_value < 0.20)" | tee -a "$RESULTS"
+        else
+            echo "  VERDICT: NO SIGNAL (p=$p_value >= 0.20)" | tee -a "$RESULTS"
+        fi
     fi
 else
     echo "  VERDICT: INSUFFICIENT DATA" | tee -a "$RESULTS"
