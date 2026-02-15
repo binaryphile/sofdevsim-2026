@@ -29,7 +29,9 @@ slice.MapTo[R](ts []T) MapperTo[R,T]   // For mapping to arbitrary type R
 .Convert(fn func(T) T) Mapper[T]       // Map to same type
 .TakeFirst(n int) Mapper[T]            // First n elements
 .Each(fn func(T))                      // Side-effect iteration
+.First() option.Basic[T]               // First element
 .Find(fn func(T) bool) option.Basic[T] // First matching element
+.Any(fn func(T) bool) bool            // True if any element matches
 .Len() int                             // Count elements
 
 // Mapping methods (return Mapper of target type)
@@ -38,16 +40,29 @@ slice.MapTo[R](ts []T) MapperTo[R,T]   // For mapping to arbitrary type R
 .ToByte(fn func(T) byte) Mapper[byte]
 .ToError(fn func(T) error) Mapper[error]
 .ToFloat32(fn func(T) float32) Mapper[float32]
-.ToFloat64(fn func(T) float64) Mapper[float64]
+.ToFloat64(fn func(T) float64) Float64
 .ToInt(fn func(T) int) Mapper[int]
+.ToInt32(fn func(T) int32) Mapper[int32]
+.ToInt64(fn func(T) int64) Mapper[int64]
 .ToRune(fn func(T) rune) Mapper[rune]
-.ToString(fn func(T) string) Mapper[string]
+.ToString(fn func(T) string) String
 
 // MapperTo[R,T] additional method
-.To(fn func(T) R) Mapper[R]            // Map to type R
+.Map(fn func(T) R) Mapper[R]           // Map to type R
 
 // Standalone functions
 slice.Fold[T,R](ts []T, initial R, fn func(R,T) R) R    // Reduce to single value
+slice.Unzip2[T,A,B](ts, fa, fb) (Mapper[A], Mapper[B])  // Extract 2 fields
+slice.Unzip3[T,A,B,C](ts, fa, fb, fc) (...)              // Extract 3 fields
+slice.Unzip4[T,A,B,C,D](ts, fa, fb, fc, fd) (...)        // Extract 4 fields
+
+// Float64 terminal methods (Float64 is a defined type, not Mapper[float64])
+.Sum() float64                          // Sum all elements
+
+// String terminal methods (String is a defined type, not Mapper[string])
+.Unique() String                        // Remove duplicates, preserving order
+.Contains(target string) bool           // Check membership
+.Len() int                              // Count elements
 ```
 
 ## slice Patterns
@@ -60,6 +75,11 @@ count := slice.From(tickets).
 
 // Extract field to strings (1 operation = single line)
 ids := slice.From(tickets).ToString(Ticket.GetID)
+
+// Terminal operations on typed slices
+total := slice.From(tickets).ToFloat64(Ticket.GetEstimatedDays).Sum()
+names := slice.From(devs).ToString(Developer.GetName).Unique()
+hasIdle := slice.From(devs).Any(Developer.IsIdle)
 
 // Method expressions for clean chains
 actives := slice.From(users).
@@ -450,6 +470,9 @@ adults := slice.From(pair.Zip(names, ages)).KeepIf(NameAgePairIsAdult)
 // sumFloat64 adds two float64 values.
 sumFloat64 := func(acc, x float64) float64 { return acc + x }
 total := slice.Fold(amounts, 0.0, sumFloat64)
+
+// For simple sums, prefer .Sum() over Fold:
+estimate := slice.From(tickets).ToFloat64(Ticket.GetEstimatedDays).Sum()
 
 // Build map from slice
 // indexByMAC adds a device to the map keyed by its MAC address.

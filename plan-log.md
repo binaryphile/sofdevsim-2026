@@ -28658,3 +28658,18 @@ Secondary: stale index in Engine.Tick after emit, Events panel blind to external
 [x] Terminal examples added (CLAUDE.md:63-66 — Sum, Unique, Any)
 [x] Real method names (GetEstimatedDays, GetName, IsIdle all verified in codebase)
 [x] go build && go test passes (all 15 packages)
+2026-02-15T19:00:00Z | Contract: Phase 3 — Update fluentfp-guide.md
+[ ] First and Any in Mapper methods
+[ ] ToString/ToFloat64 return types fixed
+[ ] Float64 and String terminal sections
+[ ] Terminal operations examples
+[ ] .To() -> .Map() fix, Unzip in API block
+[ ] Fold/Sum cross-reference
+2026-02-15T19:30:00Z | Completion: Phase 3
+[x] First and Any added (guide lines 32-34)
+[x] Return types fixed (ToFloat64→Float64 line 43, ToString→String line 48)
+[x] Terminal sections added (Float64 lines 59-60, String lines 62-65)
+[x] Examples added (lines 77-80)
+[x] .To() -> .Map(), Unzip in API block (line 51, lines 55-57)
+[x] Fold/Sum cross-reference (lines 472-473)
+[x] ToInt32/ToInt64 added (lines 46-47)
