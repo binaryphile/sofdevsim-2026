@@ -113,3 +113,7 @@ Format: gob, extension: .sds
 1. Use Cases (`/use-case-skill`) → 2. Design Documents → 3. Implementation (Tandem Protocol)
 
 Trunk-based development. Commit to main when safe, short-lived branches for 1-2 day work.
+
+## Auto Memory
+
+Do not use MEMORY.md or the auto memory directory.
