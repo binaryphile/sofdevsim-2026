@@ -1000,7 +1000,9 @@ POST /comparisons
 
 1. SimRegistry uses `sync.RWMutex` to protect the shared instances map
 2. Engine uses immutable value semantics (value receivers, returns new Engine)
-3. No shared mutable state = no races (FP Guide §7, ES Guide §11)
+3. Event store uses optimistic concurrency (`Append` rejects stale version)
+4. Single-writer principle: one command handler per stream at a time (ES Guide §11)
+5. Conflicts recorded as input events, not panics (FP Guide §7: errors as values)
 
 ### SimRegistry
 
@@ -1035,33 +1037,54 @@ TUI and API share simulation state through the event stream. Each consumer maint
 
 > **Note:** Step 3 describes the target design. Current implementation creates the simulation and registers it via `SetInstance` at startup; event subscription for external changes is added in Phase 4.
 
-**Runtime sync (event-driven):**
-Both TUI and API write events to the shared store via Engine operations. Each consumer applies events to its local projection:
+**Single-writer principle (ES Guide §11):**
+At any given time, only ONE command handler writes to a simulation's event stream. The store enforces this via optimistic concurrency (`Append` fails if `expectedVersion` doesn't match actual version).
 
-- **API handlers**: Call Engine operations (e.g., `eng.Tick()`), which emit events to the store. The handler updates the registry's `SimInstance` for subsequent API lookups.
-- **TUI key handlers**: Same — call Engine operations locally, events emitted to store.
-- **TUI eventMsg handler**: Receives events from subscription, applies them to local Engine projection via `ApplyEvent`. Projection idempotency ensures self-events are no-ops.
+- **API-driven mode** (UC10): API handlers are the primary writers. TUI becomes a read-only projection for auto-tick — it receives events via subscription and applies them to its local projection, but does NOT unpause its auto-tick timer on external `SprintStarted`. The TUI user can still issue commands (start sprint, assign tickets) via key handlers; optimistic concurrency resolves conflicts if both write simultaneously.
+- **TUI-driven mode** (standalone): TUI key handlers are the writers. No API present.
+- **Concurrent writes**: If both TUI and API write to the same stream, the store's optimistic concurrency check rejects the stale writer. The conflict is recorded as `TickAttempted{Failed{Conflict}}` in the input event stream — observable, not fatal.
+
+**Runtime sync (event-driven):**
+The writer emits events to the shared store. The observer applies events to its local projection:
+
+- **Writer** (API or TUI): Calls Engine operations (e.g., `eng.Tick()`), which emit events to the store. Updates the registry's `SimInstance` for subsequent lookups.
+- **Observer** (TUI in API-driven mode): Receives events from subscription channel, applies them to local Engine projection via `ApplyEvent`. Self-events are no-ops (projection idempotency). External events update view, tracker, and office animations.
+
+**TUI as read-only projection:**
+When the API drives the simulation (UC10), the TUI does not unpause auto-tick on external `SprintStarted` — it stays paused as a projection. If the TUI's auto-tick fires and hits a concurrency conflict, the error is recorded as `TickAttempted{Failed{Conflict}}` in the input event stream rather than panicking. This makes concurrency conflicts observable and queryable.
+
+```
+      API-driven mode (UC10)         TUI-driven mode (standalone)
+
+    API POST /sprints                TUI presses 's'
+           │                              │
+           ▼                              ▼
+    eng.StartSprint()             eng.StartSprint()
+           │                              │
+           └── event → store              └── event → store
+                    │                              │
+                    ▼                              ▼
+              subscription                   (self-event)
+                    │
+                    ▼
+           TUI receives event
+           ApplyEvent → updates projection
+           (external event: update view)
+```
 
 **Projection idempotency:**
 `Projection.Apply()` tracks processed event IDs. When a consumer receives an event it already applied locally (a "self-event"), Apply returns the unchanged projection. This eliminates the need for ownership coordination — any consumer can safely apply any event without double-counting.
 
-```
-      TUI presses 's'           API POST /sprints
-           │                          │
-           ▼                          ▼
-    eng.StartSprint()          eng.StartSprint()
-           │                          │
-           ├── projection updated     ├── projection updated
-           └── event → store ─────────└── event → store
-                    │                          │
-                    ▼                          ▼
-              subscription                subscription
-                    │                          │
-                    ▼                          ▼
-           TUI receives event         API receives event
-           Apply → idempotent         Apply → idempotent
-           (self-event, no-op)        (self-event, no-op)
-```
+**Observability via input events:**
+All three event-sourcing boundary conditions are recorded as input events in the TUI's `UIProjection`:
+
+| Condition | Input Event | When |
+|-----------|-------------|------|
+| Self-event deduplicated | `EventDeduplicated{EventType}` | Subscription delivers event TUI already applied locally |
+| Concurrency conflict | `TickAttempted{Failed{Conflict}}` | Store rejects stale version on `Tick()` |
+| External event applied | (handled inline by `eventMsg` handler) | Subscription delivers event from API |
+
+This makes deduplication, conflicts, and external updates debuggable (replay stream), profilable (fold to count), and testable (assert in tests) — one mechanism for all three.
 
 **Invariant:** Event store is the source of truth. Projections are derived views, always reconstructable from event replay.
 

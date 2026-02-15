@@ -552,7 +552,7 @@ None (self-contained simulation, no external services)
 - 2a. *No simulations exist:* API returns empty list; client creates new simulation via POST
 - 3a. *Simulation not found:* API returns 404; client refreshes list
 - 5a. *TUI disconnected:* Events queued; TUI catches up on reconnect
-- 7a. *Conflicting action:* Event ordering resolves conflict (last write wins within tick)
+- 7a. *Conflicting action:* Optimistic concurrency rejects the stale writer (store returns version mismatch error). TUI records `TickAttempted{Failed{Conflict}}` as an observable input event; no crash or data corruption
 
 **Technology & Data Variations:**
 
@@ -562,10 +562,11 @@ None (self-contained simulation, no external services)
 **Technical Notes:**
 
 This use case requires event sourcing architecture:
-- Single event stream per simulation
-- TUI and API both subscribe to events
-- Each maintains projection of current state
+- Single event stream per simulation with optimistic concurrency
+- Single-writer principle: API is the primary writer in shared mode; TUI becomes a read-only projection (does not auto-tick on external SprintStarted)
+- TUI and API both subscribe to events; each maintains projection of current state
 - Events are the source of truth
+- Concurrency conflicts are recorded as input events (`TickAttempted{Failed{Conflict}}`), not panics
 
 ---
 

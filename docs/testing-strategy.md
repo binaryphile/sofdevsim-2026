@@ -343,6 +343,9 @@ Each distinct user workflow gets ONE integration test:
 | Client mode sprint cycle | `TestWorkflow_SprintCycle_ClientMode` | Same flow via HTTP |
 | Policy comparison | `TestWorkflow_PolicyComparison` | Comparison view → results |
 | Lesson triggers | `TestApp_UC19-23TriggerIntegration` | State → trigger → lesson |
+| External events (UC10) | `TestTUI_ReceivesExternalEvents` | SprintStarted/Ended via API → TUI projection |
+| Tick concurrency conflict | `TestTUI_TickConflict_RecordsInputEvent` | Store version mismatch → TickAttempted{Conflict} |
+| API sprint walkthrough | `TestSprintWalkthrough` | 7 milestones: create → office → assign → sprint → tick → end → verify |
 
 ### Lesson Trigger Tests
 
