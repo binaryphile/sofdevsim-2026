@@ -32,17 +32,34 @@ See `model.Simulation.Clone()` and `events.Projection.Apply()` for the pattern.
 - **Language**: Go
 - **Package Management**: Nix flakes
 
-## Code Style: FluentFP
+## Code Style: FluentFP (Mandatory Default)
 
-Use `github.com/binaryphile/fluentfp` for data transformation. **Full guide:** `docs/fluentfp-guide.md`
+**MUST use FluentFP for data transformation.** A `for` loop is the exception, not the default.
+**Full guide:** `docs/fluentfp-guide.md`
+
+### Decision Gate (before writing ANY for loop)
+
+Is the operation filter, map, find, count, sum, extract, or for-each? --> **Use FluentFP.**
+Does it need a justified escape? Annotate with `// justified:CODE`.
+
+**Justified codes:** AS=assertion, AT=anon type, CF=complex flow, EP=error propagation,
+IX=index-dependent, MB=map building, SM=state mutation, WL=while loop.
+Self-evident (no annotation needed): table-driven tests, benchmarks.
+
 ```go
+// BAD: manual loop for data extraction
+var ids []string
+for _, t := range tickets {
+    ids = append(ids, t.ID)
+}
+
+// GOOD: FluentFP — expresses WHAT not HOW
+ids := slice.From(tickets).ToString(Ticket.GetID)
+
 // Filter and count (2 ops = multiline)
 count := slice.From(tickets).
     KeepIf(Ticket.IsActive).
     Len()
-
-// Extract field (1 op = single line)
-ids := slice.From(tickets).ToString(Ticket.GetID)
 
 // Optional values
 assignee := option.Of(ticket.AssignedTo).Or("unassigned")
@@ -55,12 +72,6 @@ assignee := option.Of(ticket.AssignedTo).Or("unassigned")
 - **Named functions**: leading comment, single-expression on one line
 - **Accessors for FluentFP**: Add `Get*` methods to types used in ToFloat64/Unzip operations
 - **Invariants**: Use `must.Get` when errors indicate bugs, not runtime conditions
-
-### When NOT to Use
-
-- Performance-critical hot paths (use plain loops)
-- Complex control flow (break/continue/early return)
-- Channel consumption
 
 ## Testing
 
@@ -116,4 +127,4 @@ Trunk-based development. Commit to main when safe, short-lived branches for 1-2 
 
 ## Auto Memory
 
-Do not use MEMORY.md or the auto memory directory.
+Do not use MEMORY.md or the auto memory directory. Use the MCP memory tool instead.

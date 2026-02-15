@@ -2,6 +2,18 @@
 
 Complete API reference for `github.com/binaryphile/fluentfp`. For quick reference, see CLAUDE.md.
 
+## Decision Gate
+
+Before writing a `for` loop, check: is this a filter, map, find, count, sum, extract, or for-each?
+If yes, use FluentFP. If not, annotate with a justified code.
+
+```
+Need to iterate? --> filter/map/find/count/sum/extract/each? --YES--> FluentFP
+                                                              --NO---> for loop + // justified:CODE
+```
+
+See [Justified Loop Codes](#justified-loop-codes) for the complete code table.
+
 ## slice Package - Complete API
 
 ```go
@@ -165,6 +177,8 @@ Our methods should not return `(T, bool)` comma-ok for optional values. Comma-ok
 | `option.New(x.Get(id))` | Extra ceremony at call site | `x.GetOption(id).KeepOkIf(...)` |
 
 **Naming convention:** Methods returning `option.Basic[T]` use `Option` suffix: `GetAnimationOption`, `GetInstanceOption`.
+
+**Exception:** Functions named `find*` don't need the `Option` suffix since "find" already implies the result may be absent.
 
 ```go
 // BAD: comma-ok return (hidden option)
@@ -349,6 +363,22 @@ sprint := sim.CurrentSprintOption.MustGet() // Option has MustGet() for invarian
 - `must.Get`: Error indicates a bug (invariant violation), not a runtime condition
 - Error handling: Error is expected and recoverable (user input, network, file I/O)
 - If you think "this error can never happen here", use `must` to enforce that invariant
+
+**Anti-pattern: `eng, _ = eng.Something()`** — Never discard errors with blank identifier when the
+error would indicate a bug. Use `must.Get` to convert the invariant violation into a panic with a
+stack trace. Silent `_ =` discards hide bugs and make debugging harder.
+
+```go
+// BAD: error silently discarded
+eng, _ = eng.StartSprint()
+eng, _ = eng.AddTicket(ticket)
+sprint, _ := sim.CurrentSprintOption.Get() // after guard ensures IsOk
+
+// GOOD: invariant enforced — panics with stack trace if violated
+eng = must.Get(eng.StartSprint())
+eng = must.Get(eng.AddTicket(ticket))
+sprint := sim.CurrentSprintOption.MustGet() // option has MustGet for this
+```
 
 ## value Package
 
@@ -579,3 +609,24 @@ The loop forces you to think about *how*. FluentFP expresses *what*.
 3. **Index-dependent logic** - when you need `i` for more than just indexing
 
 See [fluentfp/slice/README.md](https://github.com/binaryphile/fluentfp/blob/develop/slice/README.md#when-loops-are-still-necessary) for detailed examples.
+
+## Justified Loop Codes
+
+Loops that intentionally use `for` instead of FluentFP are annotated with
+`// justified:<CODE>` comments. Search with: `grep "justified:" internal/**/*.go`
+
+| Code | Meaning |
+|------|---------|
+| AS   | Assertion with t.Errorf/t.Fatalf (early exit semantics) |
+| AT   | Anonymous type (FluentFP awkward) |
+| CF   | Complex control flow (break+continue, multi-state, switch) |
+| EP   | Error propagation |
+| FL   | Find-last (scans all, no break) |
+| IX   | Index-dependent logic |
+| MB   | Map building/iteration |
+| SM   | Sequential state mutation / side effects |
+| TAP  | Type assertion + pointer return (resolved in v0.21.0 — prefer FindAs now) |
+| WL   | While loop / condition-based iteration |
+
+Self-evident patterns need no annotation: table-driven tests (`for _, tt := range tests`)
+and benchmarks (`for i := 0; i < b.N; i++`).
