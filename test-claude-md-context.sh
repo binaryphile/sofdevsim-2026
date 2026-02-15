@@ -132,6 +132,10 @@ PROMPTS=(
 # TEST RUNNER
 # =======================================================================
 
+strip_ansi() {
+    sed 's/\x1b\[[0-9;]*[a-zA-Z]//g; s/\x1b\][^\x07]*\x07//g; s/\x1b\[?[0-9]*[a-zA-Z]//g; s/\r//g; s/\[<u//g'
+}
+
 run_test() {
     local claude_md="$1"
     local full_prompt="$2"
@@ -140,16 +144,13 @@ run_test() {
     local test_dir="/tmp/test-claude-ctx-$$-$RANDOM"
     mkdir -p "$test_dir"
     cp "$claude_md" "$test_dir/CLAUDE.md"
+    printf '\n\n## Pipe Mode\nRespond with code directly as text in markdown code blocks. Do not use file creation or editing tools.\n' >> "$test_dir/CLAUDE.md"
 
     cd "$test_dir"
-    local result
-    result=$(claude -p --model sonnet --max-turns 1 --output-format json \
-        "$full_prompt" 2>"${output_file%.txt}.err" || true)
+    local output
+    output=$(timeout 120 script -qc "claude -p --model sonnet --max-turns 1 $(printf '%q' "$full_prompt")" /dev/null 2>/dev/null | strip_ansi || true)
     cd "$PROJECT_DIR"
     rm -rf "$test_dir"
-
-    local output
-    output=$(echo "$result" | jq -r '.result // ""' 2>/dev/null || echo "$result")
 
     # Retry once on empty output
     if [ ${#output} -lt 10 ]; then
@@ -158,12 +159,11 @@ run_test() {
         local test_dir2="/tmp/test-claude-ctx-$$-$RANDOM"
         mkdir -p "$test_dir2"
         cp "$claude_md" "$test_dir2/CLAUDE.md"
+        printf '\n\n## Pipe Mode\nRespond with code directly as text in markdown code blocks. Do not use file creation or editing tools.\n' >> "$test_dir2/CLAUDE.md"
         cd "$test_dir2"
-        result=$(claude -p --model sonnet --max-turns 1 --output-format json \
-            "$full_prompt" 2>"${output_file%.txt}.retry.err" || true)
+        output=$(timeout 120 script -qc "claude -p --model sonnet --max-turns 1 $(printf '%q' "$full_prompt")" /dev/null 2>/dev/null | strip_ansi || true)
         cd "$PROJECT_DIR"
         rm -rf "$test_dir2"
-        output=$(echo "$result" | jq -r '.result // ""' 2>/dev/null || echo "$result")
     fi
 
     echo "$output" > "$output_file"
