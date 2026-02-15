@@ -28635,3 +28635,26 @@ Secondary: stale index in Engine.Tick after emit, Events panel blind to external
 [x] Spot-check validates scorer (evidence: COMPLIANT=real binaryphile import+API, MIXED=real loops, OTHER="Error: max turns", WRONG_IMPORT=hallucinated imports)
 [x] Phase 3 decision: restore github.com/binaryphile/fluentfp import path to CLAUDE.md (fixes 0% baseline), keep mandatory framing (drives 84% session vs 56% OLD)
 [x] Root cause: NEW CLAUDE.md rewrite dropped explicit import path, replacing with project name "FluentFP" that model can't resolve to Go module
+2026-02-15T16:30:00Z | Contract: Phase 1 — Add Unique, Contains, Any to fluentfp
+[ ] Any(fn) method on Mapper[T]
+[ ] String: alias → defined type with Unique(), Contains(), Len()
+[ ] ToString return type → String
+[ ] Tests pass (fluentfp + sofdevsim-2026)
+2026-02-15T17:30:00Z | Interaction: improve -> moved Any row next to Find in README table, added Float64 Methods section to README, added String/Float64 terminal methods to fluentfp CLAUDE.md
+2026-02-15T17:35:00Z | Interaction: improve -> added missing First() to README Mapper Methods table
+2026-02-15T17:40:00Z | Interaction: improve -> added missing First() to fluentfp CLAUDE.md Mapper methods
+2026-02-15T17:00:00Z | Completion: Phase 1
+[x] Any(fn) method on Mapper[T] (mapper.go:49-57, TestAny 5 cases)
+[x] String defined type with Unique(), Contains(), Len() (types.go:21-49, TestStringUnique 5 cases, TestStringContains 3 cases)
+[x] ToString returns String (mapper.go:210)
+[x] Tests pass (fluentfp slice PASS, sofdevsim all 15 packages PASS)
+2026-02-15T18:00:00Z | Contract: Phase 2 — Restore import path + terminal examples
+[ ] Import path in FluentFP section opener
+[ ] Terminal examples (Sum, Unique, Any)
+[ ] Real method names verified
+[ ] go build passes
+2026-02-15T18:30:00Z | Completion: Phase 2
+[x] Import path restored (CLAUDE.md:37 — github.com/binaryphile/fluentfp)
+[x] Terminal examples added (CLAUDE.md:63-66 — Sum, Unique, Any)
+[x] Real method names (GetEstimatedDays, GetName, IsIdle all verified in codebase)
+[x] go build && go test passes (all 15 packages)

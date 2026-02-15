@@ -32,10 +32,9 @@ See `model.Simulation.Clone()` and `events.Projection.Apply()` for the pattern.
 - **Language**: Go
 - **Package Management**: Nix flakes
 
-## Code Style: FluentFP (Mandatory Default)
+## Code Style: FluentFP
 
-**MUST use FluentFP for data transformation.** A `for` loop is the exception, not the default.
-**Full guide:** `docs/fluentfp-guide.md`
+Use `github.com/binaryphile/fluentfp` for data transformation. **Full guide:** `docs/fluentfp-guide.md`
 
 ### Decision Gate (before writing ANY for loop)
 
@@ -60,6 +59,11 @@ ids := slice.From(tickets).ToString(Ticket.GetID)
 count := slice.From(tickets).
     KeepIf(Ticket.IsActive).
     Len()
+
+// Terminal operations on typed slices
+total := slice.From(tickets).ToFloat64(Ticket.GetEstimatedDays).Sum()
+names := slice.From(devs).ToString(Developer.GetName).Unique()
+hasIdle := slice.From(devs).Any(Developer.IsIdle)
 
 // Optional values
 assignee := option.Of(ticket.AssignedTo).Or("unassigned")
