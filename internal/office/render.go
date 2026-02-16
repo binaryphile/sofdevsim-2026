@@ -542,11 +542,6 @@ func renderCubicleDetailed(anim DeveloperAnimation, name string, width int, door
 	// Shift monitor and face/chair left for visual variety (Pengo keeps centered).
 	// Same shift on both lines keeps the chair aligned in front of the monitor.
 	switch anim.ColorIndex {
-	case 0: // MsPac: 2 spaces left
-		monitorContent = monitorContent + "    "
-		if anim.LateBubbleFrames == 0 {
-			faceContent = faceContent + "    "
-		}
 	case 5: // Pengo: centered (no shift)
 	default: // everyone else: 1 space left
 		monitorContent = monitorContent + "  "

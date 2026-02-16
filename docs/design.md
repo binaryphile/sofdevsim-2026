@@ -1904,16 +1904,18 @@ Initial state (developers in cubicles, conference empty):
 ┌──────────────────────────────────────────────────────────────────────────┐
 │ ┌─────────────────────┐    ┌────────────┐  ┌────────────┐  ┌────────────┐│
 │ │      [charts]       │    │🗑   M      │  │    Mc      │  │    M      ││
-│ │                     │    │      F     │  │      F  🗑 │  │🗑   F    ││
-│ │      C   C   C      │    └────┤ ├ Mei─┘  └────┤ ├ Amir┘  └────┤ ├Suki┘│
-│ │    ══╦═══════╦══    │                                                  │
-│ │      ║       ║    ┤                                                  │
+│ │                     │    │🗑   F      │  │    F    🗑 │  │🗑   F    ││
+│ │      C   C   C      │    │            │  │            │  │            ││
+│ │    ══╦═══════╦══    │    │            │  │            │  │            ││
+│ │      ║       ║    ┤  └───┤ ├ MsPac─┘  └───┤ ├ Qbert┘  └───┤ ├Samus┘│
 │ │      C   C   C      │                                                  │
 │ │                     │                                                  │
 │ └─────────────────────┘                                                  │
-│                            ┌────┤ ├ Jay─┐  ┌────┤ ├Priya┐  ┌────┤ ├ Kofi┐│
-│                            │      F  🗑 │  │🗑   F     │  │      F     ││
-│                            │    Ms      │  │    M      │  │      M  🗑 ││
+│                            ┌───┤ ├Athena┐  ┌───┤ ├ Mappy┐  ┌───┤ ├Pengo┐│
+│                            │            │  │            │  │            ││
+│                            │            │  │            │  │            ││
+│                            │    F    🗑 │  │🗑   F      │  │    F      ││
+│                            │    Ms      │  │    M      │  │    M    🗑 ││
 │                            └────────────┘  └────────────┘  └────────────┘│
 └──────────────────────────────────────────────────────────────────────────┘
 
@@ -1922,16 +1924,18 @@ During planning (developers gathered in conference room, 3×2 layout):
 ┌──────────────────────────────────────────────────────────────────────────┐
 │ ┌─────────────────────┐    ┌────────────┐  ┌────────────┐  ┌────────────┐│
 │ │      [charts]       │    │🗑   M      │  │    M      │  │    M      ││
-│ │                     │    │            │  │         🗑 │  │🗑         ││
-│ │      F   Fc  F      │    └────┤ ├ Mei─┘  └────┤ ├ Amir┘  └────┤ ├Suki┘│
-│ │    ══╦═══════╦══    │                                                  │
-│ │      ║       ║    ┤                                                  │
+│ │                     │    │🗑   C      │  │    C    🗑 │  │🗑   C    ││
+│ │      F   Fc  F      │    │            │  │            │  │            ││
+│ │    ══╦═══════╦══    │    │            │  │            │  │            ││
+│ │      ║       ║    ┤  └───┤ ├ MsPac─┘  └───┤ ├ Qbert┘  └───┤ ├Samus┘│
 │ │     Fs  F    F      │                                                  │
 │ │                     │                                                  │
 │ └─────────────────────┘                                                  │
-│                            ┌────┤ ├ Jay─┐  ┌────┤ ├Priya┐  ┌────┤ ├ Kofi┐│
-│                            │         🗑 │  │🗑          │  │            ││
-│                            │    Ms      │  │    M      │  │      M  🗑 ││
+│                            ┌───┤ ├Athena┐  ┌───┤ ├ Mappy┐  ┌───┤ ├Pengo┐│
+│                            │            │  │            │  │            ││
+│                            │            │  │            │  │            ││
+│                            │    C    🗑 │  │🗑   C      │  │    C      ││
+│                            │    Ms      │  │    M      │  │    M    🗑 ││
 │                            └────────────┘  └────────────┘  └────────────┘│
 └──────────────────────────────────────────────────────────────────────────┘
 
@@ -1940,24 +1944,26 @@ During work (developers in cubicles, some frustrated):
 ┌──────────────────────────────────────────────────────────────────────────┐
 │ ┌─────────────────────┐    ┌────────────┐  ┌────────────┐  ┌────────────┐│
 │ │      [charts]       │    │🗑   M      │  │    Mc      │  │    M      ││
-│ │                     │    │      W     │  │      W  🗑 │  │🗑   W    ││
-│ │      C   C   C      │    └────┤ ├ Mei─┘  └────┤ ├ Amir┘  └────┤ ├Suki┘│
-│ │    ══╦═══════╦══    │                                                  │
-│ │      ║       ║    ┤ ┌──────┐                                      │
-│ │      C   C   C      │    │Late! │                                      │
-│ │                     │    └──┬───┘                                      │
-│ └─────────────────────┘                                                  │
-│                            ┌────┤ ├ Jay─┐  ┌────┤ ├Priya┐  ┌────┤ ├ Kofi┐│
-│                            │      X  🗑 │  │🗑   W     │  │      F     ││
-│                            │    Ms      │  │    M      │  │      M  🗑 ││
+│ │                     │    │🗑   W      │  │    W    🗑 │  │🗑   W    ││
+│ │      C   C   C      │    │            │  │            │  │            ││
+│ │    ══╦═══════╦══    │    │            │  │            │  │            ││
+│ │      ║       ║    ┤  └───┤ ├ MsPac─┘  └───┤ ├ Qbert┘  └───┤ ├Samus┘│
+│ │      C   C   C      │    ┌──────┐                                      │
+│ │                     │    │Late! │                                      │
+│ └─────────────────────┘    └──┬───┘                                      │
+│                            ┌───┤ ├Athena┐  ┌───┤ ├ Mappy┐  ┌───┤ ├Pengo┐│
+│                            │            │  │            │  │            ││
+│                            │            │  │            │  │            ││
+│                            │    X    🗑 │  │🗑   W      │  │    F      ││
+│                            │    Ms      │  │    M      │  │    M    🗑 ││
 │                            └────────────┘  └────────────┘  └────────────┘│
 └──────────────────────────────────────────────────────────────────────────┘
 ```
 
 **Layout elements:**
 - **Conference room**: [charts], ══╦═══════╦══ table with overhanging top and 1-line legs (╦ joins tabletop to ║ legs), C chairs (3×2 seating), opening in right wall with ┤ posts
-- **Cubicles**: 4-line cells (border, 2 content lines, border) arranged in 2 rows × 3 columns; M monitor/desk against back wall (shifted slightly left per dev for visual variety), T trash in a pseudo-random corner (varies per dev), ┤ ├ entryway posts facing hallway
-- **Cubicle layout**: Developer (F/W/X) sits on the hallway side; name embedded in the door border next to ┤ ├ entryway; monitor against the back wall; trash in one of four cubicle corners (deterministic per developer); accessories (c/s) placed next to monitor when developer is at desk
+- **Cubicles**: 6-line cells (border, 4 content lines, border) arranged in 2 rows × 3 columns; M monitor/desk against back wall (shifted slightly left per dev for visual variety), T trash in a pseudo-random corner (varies per dev), ┤ ├ entryway posts facing hallway
+- **Cubicle layout**: Developer (F/W/X) sits in front of the monitor; C chair shown when developer is away; name embedded in the door border next to ┤ ├ entryway; monitor against the back wall; face/chair aligned with monitor (same position shift); trash overlaid at cubicle corners without shifting centering (deterministic per developer); accessories (c/s) placed next to monitor when developer is at desk
 - **Hallway**: 3 lines of open space between cubicle rows, connecting to conference room
 - **Room sizes are constant**: Conference room and cubicles never resize during simulation
 - **Accessories**: c (coffee) and s (soda) placed next to monitor on desk when in cubicle, carried beside developer face when in conference
@@ -1973,8 +1979,8 @@ Two developers carry beverages that persist throughout the simulation:
 
 | Developer Index | Accessory | Emoji | Notes |
 |-----------------|-----------|-------|-------|
-| 1 (Amir) | Coffee | ☕ | Displayed next to face |
-| 3 (Jay) | Soda | 🥤 | Displayed next to face |
+| 1 (Qbert) | Coffee | ☕ | Displayed next to face |
+| 3 (Athena) | Soda | 🥤 | Displayed next to face |
 
 Accessories render adjacent to the developer's face icon in their cubicle.
 
@@ -2064,16 +2070,16 @@ Colors assigned by developer index (0-5), consistent across session.
 
 ### Developer Names
 
-Diverse, inclusive defaults:
+Classic video game characters (1975-1987 era), chosen for diversity of platform, origin, and character gender:
 
 ```go
 var DefaultDeveloperNames = []string{
-    "Mei",    // East Asian
-    "Amir",   // Middle Eastern
-    "Suki",   // Japanese
-    "Jay",    // Gender-neutral English
-    "Priya",  // South Asian
-    "Kofi",   // West African
+    "MsPac",  // Ms. Pac-Man (1982, Midway)
+    "Qbert",  // Q*bert (1982, Gottlieb)
+    "Samus",  // Metroid (1986, Nintendo)
+    "Athena", // Athena (1986, SNK)
+    "Mappy",  // Mappy (1983, Namco)
+    "Pengo",  // Pengo (1982, Sega)
 }
 ```
 
@@ -2527,7 +2533,7 @@ Animation events are triggered by domain events in `App.Update()`:
 
 On TUI startup, developers start in cubicles (StateIdle) and walk to the conference room one by one before user input is allowed.
 
-**Timing**: 300ms stagger between devs (3 animation ticks), 500ms movement duration. Dev 0 starts first, dev 5 starts at ~1500ms, all seated by ~2000ms.
+**Timing**: 600ms stagger between devs (6 animation ticks), 500ms movement duration. Dev 0 starts first, dev 5 starts at ~3000ms, all seated by ~3500ms.
 
 **Hallway rendering**: Walking devs (`StateMovingToConference`) appear on the middle line of the 3-line hallway between cubicle rows. Position interpolated from cubicle column toward conference room (x=0). Walking devs take priority over Late! bubbles.
 
@@ -2550,8 +2556,8 @@ The `/simulations/{id}/office` endpoint exposes office animation state for Claud
   "renderedOutput": "┌─────────────────────────────────┐\n│         CONFERENCE ROOM         │\n...",
   "renderedPlain": "┌─────────────────────────────────┐\n│         CONFERENCE ROOM         │\n...",
   "developers": [
-    {"devId": "dev-1", "devName": "Mei", "state": "working", "colorName": "blue", "ticketId": "TKT-001"},
-    {"devId": "dev-2", "devName": "Amir", "state": "conference", "colorName": "orange"}
+    {"devId": "dev-1", "devName": "MsPac", "state": "working", "colorName": "blue", "ticketId": "TKT-001"},
+    {"devId": "dev-2", "devName": "Qbert", "state": "conference", "colorName": "orange"}
   ],
   "transitions": [
     {"devId": "dev-1", "fromState": "conference", "toState": "moving", "tick": 0, "timestamp": "2026-02-12T10:00:00Z", "reason": "assigned to TKT-001"},
