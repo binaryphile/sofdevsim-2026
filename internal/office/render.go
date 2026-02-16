@@ -346,7 +346,7 @@ func renderConferenceRoomDetailed(anims []DeveloperAnimation, width int) string 
 	bottomSeatingLine := "│" + centerText(bottomSeating, innerWidth) + " "
 
 	// Trash + post below opening (bottom-left corner, away from door and charts)
-	trashPostLine := "│🗑" + strings.Repeat(" ", innerWidth-1) + "┤"
+	trashPostLine := "│🗑\uFE0F" + strings.Repeat(" ", innerWidth-2) + "┤"
 
 	lines := []string{
 		topBorder,
@@ -534,9 +534,9 @@ func renderCubicleDetailed(anim DeveloperAnimation, name string, width int, door
 	// Monitor content (always on back wall)
 	var monitorContent string
 	if !anim.IsAway() && anim.Accessory != AccessoryNone {
-		monitorContent = "🖥" + anim.Accessory.Emoji()
+		monitorContent = "🖥\uFE0F" + anim.Accessory.Emoji()
 	} else {
-		monitorContent = "🖥"
+		monitorContent = "🖥\uFE0F"
 	}
 
 	// Shift monitor and face/chair left for visual variety (Pengo keeps centered).
@@ -565,17 +565,17 @@ func renderCubicleDetailed(anim DeveloperAnimation, name string, width int, door
 
 	var backWallLine, faceLine string
 	if trashOnBackWall && trashOnLeft {
-		backWallLine = "│🗑" + centeredMonitor[1:] + "│"
+		backWallLine = "│🗑\uFE0F" + centeredMonitor[2:] + "│"
 	} else if trashOnBackWall {
-		backWallLine = "│" + centeredMonitor[:len(centeredMonitor)-2] + "🗑 │"
+		backWallLine = "│" + centeredMonitor[:len(centeredMonitor)-3] + "🗑\uFE0F │"
 	} else {
 		backWallLine = "│" + centeredMonitor + "│"
 	}
 
 	if !trashOnBackWall && trashOnLeft {
-		faceLine = "│🗑" + centeredFace[1:] + "│"
+		faceLine = "│🗑\uFE0F" + centeredFace[2:] + "│"
 	} else if !trashOnBackWall {
-		faceLine = "│" + centeredFace[:len(centeredFace)-2] + "🗑 │"
+		faceLine = "│" + centeredFace[:len(centeredFace)-3] + "🗑\uFE0F │"
 	} else {
 		faceLine = "│" + centeredFace + "│"
 	}

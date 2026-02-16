@@ -380,6 +380,19 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		newSim := eng.Engine.Sim()
 
 		a.officeProjection = a.officeProjection.Record(BubblesExpired{}, newSim.CurrentTick, a.clock())
+
+		// Detect newly assigned developers — record walk animation
+		cubiclePositions := CubicleLayout(len(newSim.Developers))
+		for i, newDev := range newSim.Developers { // justified:CF
+			if !newDev.IsIdle() && oldSim.Developers[i].IsIdle() {
+				a.officeProjection = a.officeProjection.Record(DevAssignedToTicket{
+					DevID:    newDev.ID,
+					TicketID: newDev.CurrentTicket,
+					Target:   cubiclePositions[i],
+				}, newSim.CurrentTick, a.clock())
+			}
+		}
+
 		a.updateDeveloperAnimationStates(newSim)
 
 		// Sprint ended — all devs return to conference
@@ -399,11 +412,10 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Status messages — only for external events (self-events exited above)
 		switch events.Event(msg).EventType() {
 		case "SprintStarted":
+			a.paused = true // API owns the tick cycle — prevent TUI auto-ticking
 			a.statusMessage = "Sprint started (via API)"
 			a.statusExpiry = time.Now().Add(2 * time.Second)
 			a.currentView = ViewExecution
-			// Don't unpause: API is the command handler, TUI is a read-only projection.
-			// Self-events (user presses 's') exit early at line 354.
 		case "SprintEnded":
 			a.paused = true
 			a.statusMessage = "Sprint complete (via API) — press 's' for next sprint"
@@ -431,9 +443,19 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		shouldPause := a.randFloat() < 0.2
 		var devIdx int
 		a.staggeredAnimator, devIdx, _ = a.staggeredAnimator.NextToAnimate(devCount, shouldPause)
+		oldAnims := a.officeProjection.State().Animations
 		a.officeProjection = a.officeProjection.Record(
 			AnimationFrameAdvanced{DevIdxToAdvance: devIdx},
-			a.state.CurrentTick, a.clock())
+			a.currentTick(), a.clock())
+
+		// Sync if any movement completed (state transition)
+		newAnims := a.officeProjection.State().Animations
+		for i := range oldAnims { // justified:CF
+			if oldAnims[i].State != newAnims[i].State {
+				a.syncOfficeToRegistry()
+				break
+			}
+		}
 
 		// Opening animation: stagger devs walking from cubicles to conference
 		if a.openingAnimation {
@@ -460,7 +482,6 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			if allDone {
 				a.openingAnimation = false
-				a.syncOfficeToRegistry()
 			}
 		}
 
@@ -659,7 +680,7 @@ func (a *App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 						DevID:    dev.ID,
 						TicketID: ticket.ID,
 						Target:   target,
-					}, a.state.CurrentTick, a.clock())
+					}, a.currentTick(), a.clock())
 					a.syncOfficeToRegistry()
 					a.recordInputEvent(AssignmentAttempted{TicketID: ticket.ID, Outcome: Succeeded{}})
 					assigned = true
@@ -1309,8 +1330,15 @@ func (a *App) updateDeveloperAnimationStates(sim model.Simulation) {
 }
 
 
+// currentTick returns the simulation's current tick regardless of mode.
+func (a *App) currentTick() int {
+	return either.Fold(a.mode,
+		func(eng EngineMode) int { return eng.Engine.Sim().CurrentTick },
+		func(_ ClientMode) int { return a.state.CurrentTick },
+	)
+}
+
 // syncOfficeToRegistry updates the registry's SimInstance.Office with current projection.
-// Called after state-changing office events (not AnimationFrameAdvanced).
 func (a *App) syncOfficeToRegistry() {
 	eng, isEngine := a.mode.GetLeft()
 	if !isEngine || eng.Registry == nil {

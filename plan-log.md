@@ -28704,3 +28704,17 @@ Secondary: stale index in Engine.Tick after emit, Events panel blind to external
 [x] Office layout identical between views (919cbd9)
 [x] computeOfficeWidth removed/simplified (919cbd9)
 [x] Tests pass (all green)
+2026-02-16T03:00:00Z | Contract: Fix Manual Sprint Walkthrough
+[ ] pollOffice helper + M2/M3 polling
+[ ] Walk animation for external TicketAssigned
+[ ] Registry sync on movement completion
+[ ] currentTick() helper
+[ ] All tests pass
+2026-02-16T08:00:00Z | Completion: Fix Manual Sprint Walkthrough
+[x] pollOffice helper + M2/M3 polling (pollOffice predicate loop, M2 10s timeout, M3 5s timeout)
+[x] Walk animation for external TicketAssigned (DevAssignedToTicket in eventMsg handler)
+[x] Registry sync on movement completion (state diff in animationTickMsg)
+[x] currentTick() helper (either.Fold over mode, 2 call sites)
+[x] All tests pass (15/15 packages green)
+[x] SprintStarted pause fix (prevents TUI/API tick race)
+[x] Chair/monitor alignment (VS16 on 🗑🖥, trash overlay byte indices)

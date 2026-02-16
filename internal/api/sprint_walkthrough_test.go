@@ -71,18 +71,24 @@ func TestSprintWalkthrough(t *testing.T) {
 	if sim.SprintActive {
 		t.Fatal("live mode: simulation has active sprint — restart TUI fresh")
 	}
-	officeResp := getOffice(t, ts, sim.ID)
+	// Poll until opening animation completes (live mode: ~3.5s; non-live: immediate)
+	allInConference := func(r officeState) bool {
+		if len(r.Developers) != 6 {
+			return false
+		}
+		for _, d := range r.Developers { // justified:AS
+			if d.State != "conference" {
+				return false
+			}
+		}
+		return true
+	}
+	officeResp := pollOffice(t, ts, sim.ID, 10*time.Second, allInConference)
 
 	for _, dev := range officeResp.Developers { // justified:AS
-		if dev.State != "conference" {
-			t.Fatalf("expected dev %s in conference, got %q", dev.DevID, dev.State)
-		}
 		if dev.TicketID != "" {
 			t.Fatalf("expected no ticketId for dev %s, got %q", dev.DevID, dev.TicketID)
 		}
-	}
-	if len(officeResp.Developers) != 6 {
-		t.Fatalf("expected 6 devs, got %d", len(officeResp.Developers))
 	}
 	t.Logf("  All 6 devs in conference, no tickets assigned")
 	maybeDelay(ts, t, "Milestone 2: Initial office")
@@ -95,20 +101,25 @@ func TestSprintWalkthrough(t *testing.T) {
 		unmarshalHAL(resp)
 	}
 
-	maybeDelay(ts, t, "Milestone 3: Assign tickets")
-
-	officeResp = getOffice(t, ts, sim.ID)
-	workingCount := 0
-	for _, dev := range officeResp.Developers { // justified:AS
-		if dev.State == "working" {
-			workingCount++
-			if dev.TicketID == "" {
-				t.Fatalf("working dev %s has no ticketId", dev.DevID)
+	// Poll until walk animations complete (live mode: ~500ms; non-live: immediate)
+	allWorking := func(r officeState) bool {
+		if len(r.Developers) != 6 {
+			return false
+		}
+		for _, d := range r.Developers { // justified:AS
+			if d.State != "working" {
+				return false
 			}
 		}
+		return true
 	}
-	if workingCount != 6 {
-		t.Fatalf("expected 6 working devs, got %d", workingCount)
+	officeResp = pollOffice(t, ts, sim.ID, 5*time.Second, allWorking)
+	maybeDelay(ts, t, "Milestone 3: Assign tickets")
+
+	for _, dev := range officeResp.Developers { // justified:AS
+		if dev.TicketID == "" {
+			t.Fatalf("working dev %s has no ticketId", dev.DevID)
+		}
 	}
 	t.Logf("  All 6 devs working with tickets assigned")
 
@@ -298,6 +309,23 @@ func getOffice(t *testing.T, ts testServer, simID string) officeState {
 		t.Fatalf("failed to parse office: %v", err)
 	}
 	return office
+}
+
+// pollOffice polls GET /office until pred returns true, or fails after timeout.
+func pollOffice(t *testing.T, ts testServer, simID string, timeout time.Duration,
+	pred func(officeState) bool) officeState {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for { // justified:WL — polling with timeout
+		resp := getOffice(t, ts, simID)
+		if pred(resp) {
+			return resp
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("pollOffice timed out after %v", timeout)
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
 }
 
 // discoverOrCreateSim returns the HAL response body and parsed sim state.
