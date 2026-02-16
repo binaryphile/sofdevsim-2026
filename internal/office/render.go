@@ -2,6 +2,7 @@ package office
 
 import (
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/binaryphile/fluentfp/slice"
@@ -334,20 +335,24 @@ func renderConferenceRoomDetailed(anims []DeveloperAnimation, width int) string 
 	tableWidth := lipgloss.Width(tableStr)
 	tablePad := (innerWidth - tableWidth) / 2
 	legsContent := strings.Repeat(" ", tablePad+2) + "║" + strings.Repeat(" ", 7) + "║"
-	legsLine := "│" + padRight(legsContent, innerWidth) + "│"
+	legsLine := "│" + padRight(legsContent, innerWidth) + "┤" // post above opening
 
-	// Bottom seating row (devs 3, 4, 5 or chairs) — door replaces right wall │
+	// Bottom seating row (devs 3, 4, 5 or chairs) — opening in right wall
 	bottomSeating := renderIcon(3) + "  " + renderIcon(4) + "  " + renderIcon(5)
-	bottomSeatingLine := "│" + centerText(bottomSeating, innerWidth) + "🚪"
+	bottomSeatingLine := "│" + centerText(bottomSeating, innerWidth) + " "
+
+	// Empty row with post below opening
+	emptyPostLine := "│" + strings.Repeat(" ", innerWidth) + "┤"
 
 	lines := []string{
 		topBorder,
 		chartsLine,
+		emptyLine,
 		topSeatingLine,
 		tableLine,
 		legsLine,
 		bottomSeatingLine,
-		emptyLine,
+		emptyPostLine,
 		bottomBorder,
 	}
 
@@ -356,7 +361,7 @@ func renderConferenceRoomDetailed(anims []DeveloperAnimation, width int) string 
 
 // renderCubicleGridDetailed renders a 2×3 grid of detailed cubicles with hallway.
 // Row 0: devs 0-2 with doors on bottom (facing hallway)
-// HALLWAY label
+// Hallway between cubicle rows (implicit — no label)
 // Row 1: devs 3-5 with doors on top (facing hallway)
 // Calculation: (OfficeState, []string, int) → string
 func renderCubicleGridDetailed(state OfficeState, names []string, width int) string {
@@ -383,8 +388,26 @@ func renderCubicleGridDetailed(state OfficeState, names []string, width int) str
 	row0 := lipgloss.JoinHorizontal(lipgloss.Top, row0Cubicles...)
 
 	// 3-line hallway between cubicle rows
-	// Check for frustrated row-1 dev with active Late! bubble
 	hallwayWidth := width
+
+	// Collect walking devs for hallway rendering
+	type walker struct {
+		pos  int    // display-width x position
+		icon string // colored face+accessory (ANSI-wrapped)
+	}
+	var walkers []walker
+	for i, anim := range state.Animations { // justified:CF
+		if anim.State == StateMovingToConference {
+			col := i % 3
+			startX := col*cubicleWidth + cubicleWidth/2
+			currentX := startX - int(float64(startX)*anim.Progress)
+			color := developerColor(anim.ColorIndex)
+			icon := lipgloss.NewStyle().Foreground(color).Render(RenderDeveloperIcon(anim))
+			walkers = append(walkers, walker{pos: currentX, icon: icon})
+		}
+	}
+
+	// Check for frustrated row-1 dev with active Late! bubble
 	var bubbleCol int = -1
 	for col := 0; col < 3; col++ { // justified:IX
 		idx := 3 + col
@@ -395,7 +418,26 @@ func renderCubicleGridDetailed(state OfficeState, names []string, width int) str
 	}
 
 	var hallway string
-	if bubbleCol >= 0 {
+	if len(walkers) > 0 {
+		// Render walking devs on middle hallway line
+		sort.Slice(walkers, func(i, j int) bool { return walkers[i].pos < walkers[j].pos })
+		var parts []string
+		cursor := 0
+		for _, w := range walkers { // justified:CF
+			if w.pos > cursor {
+				parts = append(parts, strings.Repeat(" ", w.pos-cursor))
+				cursor = w.pos
+			}
+			parts = append(parts, w.icon)
+			cursor += lipgloss.Width(w.icon)
+		}
+		if cursor < hallwayWidth {
+			parts = append(parts, strings.Repeat(" ", hallwayWidth-cursor))
+		}
+		middleLine := strings.Join(parts, "")
+		emptyLine := strings.Repeat(" ", hallwayWidth)
+		hallway = strings.Join([]string{emptyLine, middleLine, emptyLine}, "\n")
+	} else if bubbleCol >= 0 {
 		// Render Late! bubble in hallway, positioned above the frustrated dev's column
 		bubbleLines := strings.Split(RenderLateBubble(), "\n") // 3 lines: top, middle, bottom
 		offset := bubbleCol * cubicleWidth
@@ -407,8 +449,7 @@ func renderCubicleGridDetailed(state OfficeState, names []string, width int) str
 		hallway = strings.Join(hallwayLines, "\n")
 	} else {
 		emptyHallway := strings.Repeat(" ", hallwayWidth)
-		hallwayLabel := centerText("HALLWAY", hallwayWidth)
-		hallway = strings.Join([]string{emptyHallway, hallwayLabel, emptyHallway}, "\n")
+		hallway = strings.Join([]string{emptyHallway, emptyHallway, emptyHallway}, "\n")
 	}
 
 	// Build row 1 (devs 3-5, doors on top)
@@ -451,47 +492,88 @@ func renderCubicleDetailed(anim DeveloperAnimation, name string, width int, door
 	topBorder := "┌" + strings.Repeat("─", innerWidth) + "┐"
 	bottomBorder := "└" + strings.Repeat("─", innerWidth) + "┘"
 
-	// T-junction door borders: └────┴🚪┴─────┘ / ┌────┬🚪┬─────┐
-	// 🚪 is 2 display chars, ┴/┬ are 1 each, so door section is 4 chars
-	doorWidth := lipgloss.Width("┴🚪┴")
-	leftDash := (innerWidth - doorWidth) / 2
-	rightDash := innerWidth - doorWidth - leftDash
-	doorBorder := "└" + strings.Repeat("─", leftDash) + "┴🚪┴" + strings.Repeat("─", rightDash) + "┘"
-	doorBorderTop := "┌" + strings.Repeat("─", leftDash) + "┬🚪┬" + strings.Repeat("─", rightDash) + "┐"
+	// Entryway borders with embedded name: └── Mei ┤ ├────────┘
+	entryWidth := lipgloss.Width("┤ ├") // 3 display chars
+	leftDash := (innerWidth - entryWidth) / 2
+	rightDash := innerWidth - entryWidth - leftDash
 
-	// Name line - shows bubble overlay when frustrated, otherwise name
-	var nameContent string
-	if anim.LateBubbleFrames > 0 {
-		nameContent = style.Render(RenderLateBubbleInline())
+	// Name embedded in door border, right of entryway: └────┤ ├ Mei ────┘
+	maxNameW := rightDash - 1 // room for " name" on right of entryway
+	var doorBorder, doorBorderTop string
+	if maxNameW >= 1 && name != "" {
+		displayName := truncateText(name, maxNameW)
+		coloredName := style.Render(displayName)
+		nameW := lipgloss.Width(displayName)
+		trailingDash := rightDash - nameW - 1
+		if trailingDash < 0 {
+			trailingDash = 0
+		}
+		leftSection := strings.Repeat("─", leftDash) + "┤ ├"
+		rightSection := " " + coloredName + strings.Repeat("─", trailingDash)
+		doorBorder = "└" + leftSection + rightSection + "┘"
+		doorBorderTop = "┌" + leftSection + rightSection + "┐"
 	} else {
-		displayName := truncateText(name, innerWidth-2)
-		nameContent = style.Render(displayName)
+		doorBorder = "└" + strings.Repeat("─", leftDash) + "┤ ├" + strings.Repeat("─", rightDash) + "┘"
+		doorBorderTop = "┌" + strings.Repeat("─", leftDash) + "┤ ├" + strings.Repeat("─", rightDash) + "┐"
 	}
-	nameLine := "│" + centerText(nameContent, innerWidth) + "│"
 
-	// Face line (face only if dev is in cubicle, near door/hallway)
+	// Face line (face or LateBubble if dev is in cubicle)
 	var faceContent string
-	if !anim.IsAway() {
+	if anim.LateBubbleFrames > 0 {
+		faceContent = style.Render(RenderLateBubbleInline())
+	} else if !anim.IsAway() {
 		faceContent = renderFaceOnly(anim)
 	}
-	faceLine := "│" + centerText(faceContent, innerWidth) + "│"
 
-	// Back wall line: trash in far corner (left), monitor + optional accessory (right)
-	var backWallContent string
+	// Monitor content (always on back wall)
+	var monitorContent string
 	if !anim.IsAway() && anim.Accessory != AccessoryNone {
-		backWallContent = "🗑️  🖥️" + anim.Accessory.Emoji()
+		monitorContent = "🖥" + anim.Accessory.Emoji()
 	} else {
-		backWallContent = "🗑️  🖥️"
+		monitorContent = "🖥"
 	}
-	backWallLine := "│" + centerText(backWallContent, innerWidth) + "│"
+
+	// Shift monitor left for visual variety (Kofi keeps centered)
+	switch anim.ColorIndex {
+	case 0: // Mei: 2 spaces left
+		monitorContent = monitorContent + "    "
+	case 5: // Kofi: centered (no shift)
+	default: // everyone else: 1 space left
+		monitorContent = monitorContent + "  "
+	}
+
+	// Trash corner: pseudo-random placement among 4 cubicle corners
+	// 0=top-left, 1=top-right, 2=bottom-left, 3=bottom-right
+	trashCorner := (anim.ColorIndex * 3) % 4
+	trashOnLeft := trashCorner%2 == 0
+	trashOnBackWall := (trashCorner <= 1) != doorOnTop
+
+	var backWallLine, faceLine string
+	if trashOnBackWall && trashOnLeft {
+		backWallLine = "│🗑" + centerText(monitorContent, innerWidth-1) + "│"
+	} else if trashOnBackWall {
+		backWallLine = "│" + centerText(monitorContent, innerWidth-2) + "🗑 │"
+	} else {
+		backWallLine = "│" + centerText(monitorContent, innerWidth) + "│"
+	}
+
+	if !trashOnBackWall && trashOnLeft {
+		faceLine = "│🗑" + centerText(faceContent, innerWidth-1) + "│"
+	} else if !trashOnBackWall {
+		faceLine = "│" + centerText(faceContent, innerWidth-2) + "🗑 │"
+	} else {
+		faceLine = "│" + centerText(faceContent, innerWidth) + "│"
+	}
+
+	emptyLine := "│" + strings.Repeat(" ", innerWidth) + "│"
 
 	var lines []string
 	if doorOnTop {
-		// Row 1: door on top → face near door, desk at back wall (bottom)
-		lines = []string{doorBorderTop, faceLine, nameLine, backWallLine, bottomBorder}
+		// Row 1: door on top (name in top border) → face near door, desk against far wall
+		lines = []string{doorBorderTop, faceLine, emptyLine, emptyLine, backWallLine, bottomBorder}
 	} else {
-		// Row 0: door on bottom → desk at back wall (top), face near door
-		lines = []string{topBorder, backWallLine, nameLine, faceLine, doorBorder}
+		// Row 0: door on bottom (name in bottom border) → desk against far wall, face near door
+		lines = []string{topBorder, backWallLine, emptyLine, emptyLine, faceLine, doorBorder}
 	}
 
 	return strings.Join(lines, "\n")

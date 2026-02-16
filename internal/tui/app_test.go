@@ -1251,9 +1251,9 @@ func TestTUI_OfficeSizeSyncLifecycle(t *testing.T) {
 	// NewAppWithRegistry does NOT call syncOfficeToRegistry, so defaults until here.
 	app.Update(tea.WindowSizeMsg{Width: 160, Height: 45})
 	w, _ = reg.OfficeSize()
-	// Planning view (default): 160 * 40/100 = 64
-	if w != 64 {
-		t.Errorf("After resize in planning: width = %d, want 64", w)
+	// Planning view uses full terminal width (same as execution)
+	if w != 160 {
+		t.Errorf("After resize in planning: width = %d, want 160", w)
 	}
 
 	// 3. Tab to Execution — full width
@@ -1281,9 +1281,9 @@ func TestTUI_OfficeSizeSyncLifecycle(t *testing.T) {
 	app.Update(tea.KeyMsg{Type: tea.KeyTab}) // → Comparison
 	app.Update(tea.KeyMsg{Type: tea.KeyTab}) // → Planning
 	w, _ = reg.OfficeSize()
-	// Planning: 60 * 40/100 = 24, clamped to 40
-	if w != 40 {
-		t.Errorf("After tab to planning (narrow): width = %d, want 40", w)
+	// Planning uses full terminal width
+	if w != 60 {
+		t.Errorf("After tab to planning (narrow): width = %d, want 60", w)
 	}
 
 	// 7. API sees the same dimensions
@@ -1296,33 +1296,9 @@ func TestTUI_OfficeSizeSyncLifecycle(t *testing.T) {
 	defer resp.Body.Close()
 	var result struct{ Width int `json:"width"` }
 	json.NewDecoder(resp.Body).Decode(&result)
-	if result.Width != 40 {
-		t.Errorf("API width = %d, want 40", result.Width)
+	if result.Width != 60 {
+		t.Errorf("API width = %d, want 60", result.Width)
 	}
 }
 
-func TestComputeOfficeWidth(t *testing.T) {
-	tests := []struct {
-		name          string
-		view          View
-		terminalWidth int
-		want          int
-	}{
-		{"planning 200px", ViewPlanning, 200, 80},
-		{"planning 80px", ViewPlanning, 80, 40},
-		{"planning 50px", ViewPlanning, 50, 40},
-		{"execution full", ViewExecution, 200, 200},
-		{"execution narrow", ViewExecution, 60, 60},
-		{"metrics passthrough", ViewMetrics, 120, 120},
-		{"comparison passthrough", ViewComparison, 120, 120},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := computeOfficeWidth(tt.view, tt.terminalWidth)
-			if got != tt.want {
-				t.Errorf("computeOfficeWidth(%v, %d) = %d, want %d",
-					tt.view, tt.terminalWidth, got, tt.want)
-			}
-		})
-	}
-}
+

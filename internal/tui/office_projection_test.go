@@ -139,7 +139,7 @@ func TestOfficeProjection_FrameAdvance(t *testing.T) {
 
 func TestOfficeProjection_Events(t *testing.T) {
 	proj := NewOfficeProjection([]string{"dev-1"})
-	proj = proj.Record(DevAssignedToTicket{DevID: "dev-1", TicketID: "TKT-1", Target: Position{50, 2}}, 1, testTime)
+	proj = proj.Record(DevAssignedToTicket{DevID: "dev-1", TicketID: "TKT-1", Target: Position{X: 50, Y: 2}}, 1, testTime)
 	proj = proj.Record(AnimationFrameAdvanced{}, 1, testTime)
 	proj = proj.Record(DevBecameFrustrated{DevID: "dev-1", TicketID: "TKT-1"}, 2, testTime)
 

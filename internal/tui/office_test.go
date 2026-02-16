@@ -554,9 +554,9 @@ func TestApp_OfficeAnimation_ClientMode(t *testing.T) {
 	// Devs should appear in correct positions (no animation frames needed)
 	output := app.View()
 
-	// Client mode developers should appear in the conference room during planning
-	if !containsSubstring(output, "CONFERENCE") {
-		t.Error("Client mode: should show conference room in planning view")
+	// Client mode should render enhanced office layout with cubicle furniture
+	if !containsSubstring(output, "🖥") {
+		t.Error("Client mode: should show enhanced office layout in planning view")
 	}
 }
 
@@ -574,10 +574,10 @@ func TestApp_OfficeAnimation_Integration(t *testing.T) {
 	// Set window size (required for rendering)
 	send(tea.WindowSizeMsg{Width: 100, Height: 40})
 
-	// 1. Initial: devs should be in cubicles (idle), conference room visible but empty
+	// 1. Initial: devs should be in cubicles (idle), enhanced office with furniture
 	output := app.View()
-	if !containsSubstring(output, "CONFERENCE") {
-		t.Error("Planning view should show conference room")
+	if !containsSubstring(output, "🖥") {
+		t.Error("Planning view should show enhanced office layout")
 	}
 	// Cubicle grid shows all dev names (Mei is first)
 	if !containsSubstring(output, "Mei") {

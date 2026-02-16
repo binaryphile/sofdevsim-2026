@@ -39,6 +39,14 @@ type DevCompletedTicket struct {
 
 func (DevCompletedTicket) officeEvent() {}
 
+// DevStartedMovingToConference: developer begins walking from cubicle to conference.
+type DevStartedMovingToConference struct {
+	DevID  string
+	Target Position
+}
+
+func (DevStartedMovingToConference) officeEvent() {}
+
 // DevEnteredConference: developer returned to conference room (sprint ended or idle).
 type DevEnteredConference struct {
 	DevID string

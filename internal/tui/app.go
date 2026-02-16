@@ -102,6 +102,11 @@ type App struct {
 	// Staggered animation state (TUI-local, not projection state)
 	staggeredAnimator StaggeredAnimator
 
+	// Opening animation state (TUI-local, devs walk from cubicles to conference)
+	openingAnimation    bool
+	openingNextDevIdx   int // next dev to start walking (0-5)
+	openingStaggerTicks int // ticks since last dev started
+
 	// Clock for time injection (defaults to time.Now, injectable for tests)
 	clock func() time.Time
 
@@ -181,11 +186,9 @@ func NewAppWithRegistry(seed int64, reg *registry.SimRegistry) *App {
 	}
 
 	// Initialize office projection with developer IDs (event-sourced)
-	// Devs start at cubicles then move to conference for initial planning
+	// Default: devs in conference (ready for planning). EnableOpeningAnimation() overrides.
 	devIDs := []string{"dev-1", "dev-2", "dev-3", "dev-4", "dev-5", "dev-6"}
 	officeProjection := NewOfficeProjection(devIDs)
-
-	// Move all developers to conference for initial sprint planning
 	now := time.Now()
 	recordConferenceEntry := func(proj OfficeProjection, devID string) OfficeProjection {
 		return proj.Record(DevEnteredConference{DevID: devID}, 0, now)
@@ -229,6 +232,19 @@ func NewAppWithRegistry(seed int64, reg *registry.SimRegistry) *App {
 	}
 }
 
+// EnableOpeningAnimation resets devs to cubicles and enables the walk-to-conference animation.
+// Call after construction for production TUI. Tests skip this for instant conference state.
+func (a *App) EnableOpeningAnimation() {
+	// Re-create projection with devs at cubicles (StateIdle)
+	anims := a.officeProjection.State().Animations
+	devIDs := make([]string, len(anims))
+	for i, anim := range anims { // justified:CF
+		devIDs[i] = anim.DevID
+	}
+	a.officeProjection = NewOfficeProjection(devIDs)
+	a.openingAnimation = true
+}
+
 // NewAppWithClient creates a new App that uses HTTP client for all operations.
 // This is the Phase 8C constructor - TUI as pure HTTP client.
 // Client is passed by value - it contains a shared *http.Client reference.
@@ -240,9 +256,14 @@ func NewAppWithClient(client Client, initialState SimulationState) *App {
 	}
 
 	// Initialize office projection from client state (developers from HTTP response)
-	// Devs start in cubicles (StateIdle), will move to conference when planning begins
+	// Default: devs in conference (ready for planning). EnableOpeningAnimation() overrides.
 	devIDs := slice.From(initialState.Developers).ToString(DeveloperState.GetID)
 	officeProjection := NewOfficeProjection(devIDs)
+	now := time.Now()
+	recordConferenceEntry := func(proj OfficeProjection, devID string) OfficeProjection {
+		return proj.Record(DevEnteredConference{DevID: devID}, 0, now)
+	}
+	officeProjection = slice.Fold(devIDs, officeProjection, recordConferenceEntry)
 
 	return &App{
 		mode:              either.Right[EngineMode](clientMode),
@@ -413,6 +434,36 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.officeProjection = a.officeProjection.Record(
 			AnimationFrameAdvanced{DevIdxToAdvance: devIdx},
 			a.state.CurrentTick, a.clock())
+
+		// Opening animation: stagger devs walking from cubicles to conference
+		if a.openingAnimation {
+			a.openingStaggerTicks++
+			if a.openingNextDevIdx == 0 || a.openingStaggerTicks >= 3 {
+				if a.openingNextDevIdx < devCount {
+					anims := a.officeProjection.State().Animations
+					devID := anims[a.openingNextDevIdx].DevID
+					target := ConferencePosition(a.openingNextDevIdx, devCount)
+					a.officeProjection = a.officeProjection.Record(
+						DevStartedMovingToConference{DevID: devID, Target: target},
+						0, a.clock())
+					a.openingNextDevIdx++
+					a.openingStaggerTicks = 0
+				}
+			}
+			// Check if all devs have arrived in conference
+			allDone := true
+			for _, anim := range a.officeProjection.State().Animations { // justified:CF
+				if anim.State != StateConference {
+					allDone = false
+					break
+				}
+			}
+			if allDone {
+				a.openingAnimation = false
+				a.syncOfficeToRegistry()
+			}
+		}
+
 		return a, a.animationTickCmd()
 
 	case tickMsg:
@@ -463,6 +514,14 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (a *App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Block all input during opening animation (except quit)
+	if a.openingAnimation {
+		if msg.String() == "q" || msg.String() == "ctrl+c" {
+			return a, tea.Quit
+		}
+		return a, nil
+	}
+
 	switch msg.String() {
 	case "q", "ctrl+c":
 		return a, tea.Quit
@@ -1249,18 +1308,6 @@ func (a *App) updateDeveloperAnimationStates(sim model.Simulation) {
 	a.syncOfficeToRegistry()
 }
 
-// computeOfficeWidth returns the office panel width for a given view and terminal width.
-// Pure function (Q1 domain): planning=40% (min 40), execution/metrics/comparison=full width.
-func computeOfficeWidth(view View, terminalWidth int) int {
-	if view == ViewPlanning {
-		w := terminalWidth * 40 / 100
-		if w < 40 {
-			return 40
-		}
-		return w
-	}
-	return terminalWidth
-}
 
 // syncOfficeToRegistry updates the registry's SimInstance.Office with current projection.
 // Called after state-changing office events (not AnimationFrameAdvanced).
@@ -1269,7 +1316,7 @@ func (a *App) syncOfficeToRegistry() {
 	if !isEngine || eng.Registry == nil {
 		return // Client mode or no registry
 	}
-	eng.Registry.UpdateOfficeSize(computeOfficeWidth(a.currentView, a.width), a.height)
+	eng.Registry.UpdateOfficeSize(a.width, a.height)
 	simID := fmt.Sprintf("sim-%d", eng.Engine.Sim().Seed)
 	eng.Registry.UpdateOffice(simID, a.officeProjection)
 }

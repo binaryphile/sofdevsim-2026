@@ -3,6 +3,7 @@ package office
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/charmbracelet/lipgloss"
 )
@@ -316,21 +317,21 @@ func TestRenderCubicleDetailed(t *testing.T) {
 			DeveloperAnimation{State: StateWorking, ColorIndex: 0},
 			"Mei",
 			false,
-			[]string{"Mei", "🖥️", "🗑️", "🚪"},
+			[]string{"Mei", "🖥", "🗑", "┤"},
 		},
 		{
 			"working dev, door on top",
 			DeveloperAnimation{State: StateWorking, ColorIndex: 0},
 			"Jay",
 			true,
-			[]string{"Jay", "🖥️", "🗑️", "🚪"},
+			[]string{"Jay", "🖥", "🗑", "┤"},
 		},
 		{
 			"in conference, cubicle empty",
 			DeveloperAnimation{State: StateConference, ColorIndex: 0},
 			"Mei",
 			false,
-			[]string{"Mei", "🖥️", "🗑️", "🚪"}, // Structure still present, just no face
+			[]string{"Mei", "🖥", "🗑", "┤"}, // Structure still present, just no face
 		},
 	}
 	for _, tt := range tests {
@@ -350,50 +351,42 @@ func TestRenderCubicleDetailed_LineOrder(t *testing.T) {
 	anim := DeveloperAnimation{State: StateWorking, ColorIndex: 0}
 
 	t.Run("door on bottom: desk at back wall, face near door", func(t *testing.T) {
+		// ColorIndex=0, doorOnTop=false: trashCorner=0 (TL) → trash on back wall, left
+		// 6 lines: topBorder(0), backWall(1), empty(2), empty(3), face(4), doorBorder(5)
 		result := renderCubicleDetailed(anim, "Mei", 14, false)
 		plain := StripANSI(result)
 		lines := strings.Split(plain, "\n")
-		// Line 0: top border
-		// Line 1: back wall (trash + monitor)
-		// Line 2: name
-		// Line 3: face (near door)
-		// Line 4: door border with T-junctions
-		if !strings.Contains(lines[1], "🗑️") || !strings.Contains(lines[1], "🖥️") {
+		if !strings.Contains(lines[1], "🗑") || !strings.Contains(lines[1], "🖥") {
 			t.Errorf("line 1 (back wall) should have trash and monitor\ngot: %q", lines[1])
 		}
-		if !strings.Contains(lines[2], "Mei") {
-			t.Errorf("line 2 should have name\ngot: %q", lines[2])
+		if !containsFaceEmoji(lines[4]) {
+			t.Errorf("line 4 should have face\ngot: %q", lines[4])
 		}
-		if !containsFaceEmoji(lines[3]) {
-			t.Errorf("line 3 should have face\ngot: %q", lines[3])
+		if !strings.Contains(lines[5], "Mei") {
+			t.Errorf("door border should contain name\ngot: %q", lines[5])
 		}
-		// Door border should have T-junctions (┴)
-		if !strings.Contains(lines[4], "┴") {
-			t.Errorf("door border (bottom) should have ┴ T-junctions\ngot: %q", lines[4])
+		if !strings.Contains(lines[5], "┤") {
+			t.Errorf("door border should have ┤ ├ posts\ngot: %q", lines[5])
 		}
 	})
 
 	t.Run("door on top: face near door, desk at back wall", func(t *testing.T) {
+		// ColorIndex=0, doorOnTop=true: trashCorner=0 (TL) → trash on face line, left
+		// 6 lines: doorBorder(0), face(1), empty(2), empty(3), backWall(4), bottomBorder(5)
 		result := renderCubicleDetailed(anim, "Jay", 14, true)
 		plain := StripANSI(result)
 		lines := strings.Split(plain, "\n")
-		// Line 0: door border with T-junctions
-		// Line 1: face (near door)
-		// Line 2: name
-		// Line 3: back wall (trash + monitor)
-		// Line 4: bottom border
-		// Door border should have T-junctions (┬)
-		if !strings.Contains(lines[0], "┬") {
-			t.Errorf("door border (top) should have ┬ T-junctions\ngot: %q", lines[0])
+		if !strings.Contains(lines[0], "Jay") {
+			t.Errorf("door border should contain name\ngot: %q", lines[0])
 		}
-		if !containsFaceEmoji(lines[1]) {
-			t.Errorf("line 1 should have face\ngot: %q", lines[1])
+		if !strings.Contains(lines[0], "┤") {
+			t.Errorf("door border should have ┤ ├ posts\ngot: %q", lines[0])
 		}
-		if !strings.Contains(lines[2], "Jay") {
-			t.Errorf("line 2 should have name\ngot: %q", lines[2])
+		if !strings.Contains(lines[1], "🗑") {
+			t.Errorf("line 1 (face) should have trash in corner\ngot: %q", lines[1])
 		}
-		if !strings.Contains(lines[3], "🗑️") || !strings.Contains(lines[3], "🖥️") {
-			t.Errorf("line 3 (back wall) should have trash and monitor\ngot: %q", lines[3])
+		if !strings.Contains(lines[4], "🖥") {
+			t.Errorf("line 4 (back wall) should have monitor\ngot: %q", lines[4])
 		}
 	})
 }
@@ -437,23 +430,23 @@ func TestRenderCubicleGridDetailed(t *testing.T) {
 	state = state.SetDeveloperState("d1", StateWorking)
 	names := []string{"Mei", "Amir", "Suki", "Jay", "Priya", "Kofi"}
 
-	result := renderCubicleGridDetailed(state, names, 45)
+	result := renderCubicleGridDetailed(state, names, 48)
 	plain := StripANSI(result)
 
-	// Should have HALLWAY label
-	if !strings.Contains(plain, "HALLWAY") {
-		t.Errorf("Should contain HALLWAY label\ngot:\n%s", plain)
+	// Should have entryway posts (┤ ├) between cubicle rows
+	if !strings.Contains(plain, "┤") || !strings.Contains(plain, "├") {
+		t.Errorf("Should contain entryway posts between cubicle rows\ngot:\n%s", plain)
 	}
 
 	// Hallway should be 3 lines between cubicle rows
-	// Find the door borders: bottom of row0 has ┴, top of row1 has ┬
+	// Find the entryway borders: row0 ends with └──┤ ├──┘, row1 starts with ┌──┤ ├──┐
 	lines := strings.Split(plain, "\n")
 	var row0End, row1Start int
 	for i, line := range lines { // justified:IX
-		if strings.Contains(line, "┴") && row0End == 0 {
+		if strings.Contains(line, "┘") && strings.Contains(line, "┤") && row0End == 0 {
 			row0End = i
 		}
-		if strings.Contains(line, "┬") {
+		if strings.Contains(line, "┐") && strings.Contains(line, "├") {
 			row1Start = i
 			break
 		}
@@ -470,10 +463,10 @@ func TestRenderCubicleGridDetailed(t *testing.T) {
 		}
 	}
 
-	// Should have doors (🚪)
-	doorCount := strings.Count(plain, "🚪")
-	if doorCount < 6 {
-		t.Errorf("Expected 6 doors, got %d", doorCount)
+	// Should have entryway posts (6 cubicles × 2 posts = 12 ┤ chars)
+	postCount := strings.Count(plain, "┤")
+	if postCount < 6 {
+		t.Errorf("Expected at least 6 entryway posts, got %d", postCount)
 	}
 }
 
@@ -486,7 +479,7 @@ func TestRenderCubicleGridDetailed_LateBubble(t *testing.T) {
 		// d3 (Jay) in row 1 becomes frustrated → Late! bubble in hallway
 		state = state.SetDeveloperState("d3", StateFrustrated)
 
-		result := renderCubicleGridDetailed(state, names, 45)
+		result := renderCubicleGridDetailed(state, names, 48)
 		plain := StripANSI(result)
 
 		// Check for hallway bubble (full 3-line box), not just inline ╭Late!
@@ -512,10 +505,10 @@ func TestRenderCubicleGridDetailed_LateBubble(t *testing.T) {
 		state := NewOfficeState(devIDs)
 		state = state.SetDeveloperState("d3", StateWorking)
 
-		result := renderCubicleGridDetailed(state, names, 45)
+		result := renderCubicleGridDetailed(state, names, 48)
 		plain := StripANSI(result)
 
-		// HALLWAY should be present but no Late! bubble
+		// Hallway should be present but no Late! bubble
 		if strings.Contains(plain, "Late!") {
 			t.Errorf("Should not show Late! bubble when no dev is frustrated\ngot:\n%s", plain)
 		}
@@ -526,7 +519,7 @@ func TestRenderCubicleGridDetailed_LateBubble(t *testing.T) {
 		// d0 (Mei) in row 0 is frustrated — bubble should be inline in cubicle, not hallway
 		state = state.SetDeveloperState("d0", StateFrustrated)
 
-		result := renderCubicleGridDetailed(state, names, 45)
+		result := renderCubicleGridDetailed(state, names, 48)
 		plain := StripANSI(result)
 
 		// Find hallway section (between ┴ door borders and ┬ door borders)
@@ -548,6 +541,79 @@ func TestRenderCubicleGridDetailed_LateBubble(t *testing.T) {
 	})
 }
 
+// findHallwaySection extracts the 3-line hallway between cubicle rows from rendered grid.
+// Row 0 bottom border contains └ and ┘, row 1 top border contains ┌ and ┐.
+func findHallwaySection(plain string) string {
+	lines := strings.Split(plain, "\n")
+	var row0End, row1Start int
+	for i, line := range lines {
+		if strings.Contains(line, "┘") && strings.Contains(line, "┤") && row0End == 0 {
+			row0End = i
+		}
+		if strings.Contains(line, "┐") && strings.Contains(line, "├") {
+			row1Start = i
+			break
+		}
+	}
+	if row0End == 0 || row1Start == 0 || row1Start <= row0End+1 {
+		return ""
+	}
+	return strings.Join(lines[row0End+1:row1Start], "\n")
+}
+
+func TestRenderCubicleGridDetailed_WalkingDevInHallway(t *testing.T) {
+	now := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	devIDs := []string{"d0", "d1", "d2", "d3", "d4", "d5"}
+	names := []string{"Mei", "Amir", "Suki", "Jay", "Priya", "Kofi"}
+
+	t.Run("walking dev appears in hallway", func(t *testing.T) {
+		state := NewOfficeState(devIDs)
+		target := Position{X: 5, Y: 5}
+		state = state.StartDeveloperMovingToConference("d1", target, now)
+
+		result := renderCubicleGridDetailed(state, names, 48)
+		plain := StripANSI(result)
+		hallway := findHallwaySection(plain)
+
+		// Walking dev should show face emoji in hallway (default face: 🙂)
+		if !strings.Contains(hallway, "🙂") {
+			t.Errorf("Walking dev should appear in hallway with face\nhallway:\n%s\nfull:\n%s", hallway, plain)
+		}
+	})
+
+	t.Run("walking dev not shown in cubicle", func(t *testing.T) {
+		state := NewOfficeState(devIDs)
+		target := Position{X: 5, Y: 5}
+		state = state.StartDeveloperMovingToConference("d0", target, now)
+
+		// d0 is IsAway() = true during StateMovingToConference
+		anim := state.Animations[0]
+		if !anim.IsAway() {
+			t.Fatal("StateMovingToConference dev should be IsAway()")
+		}
+	})
+
+	t.Run("walkers take priority over Late bubble", func(t *testing.T) {
+		state := NewOfficeState(devIDs)
+		target := Position{X: 5, Y: 5}
+		// d3 frustrated with active bubble, but d1 walking (takes priority)
+		state = state.SetDeveloperState("d3", StateFrustrated)
+		state.Animations[3].LateBubbleFrames = 10 // active Late! bubble
+		state = state.StartDeveloperMovingToConference("d1", target, now)
+
+		result := renderCubicleGridDetailed(state, names, 48)
+		plain := StripANSI(result)
+		hallway := findHallwaySection(plain)
+
+		if strings.Contains(hallway, "Late!") {
+			t.Errorf("Walking devs should take priority over Late! bubble\nhallway:\n%s", hallway)
+		}
+		if !strings.Contains(hallway, "🙂") {
+			t.Errorf("Should show walking dev face in hallway\nhallway:\n%s", hallway)
+		}
+	})
+}
+
 // Cycle 3: Conference room with charts, table, chairs, door
 func TestRenderConferenceRoomDetailed(t *testing.T) {
 	anims := []DeveloperAnimation{
@@ -565,7 +631,6 @@ func TestRenderConferenceRoomDetailed(t *testing.T) {
 		"╦", // TT table connector (tabletop joins to legs)
 		"║", // table legs
 		"🪑", // chairs (empty seats)
-		"🚪", // door (in right wall)
 	}
 	for _, want := range wantElements { // justified:AS
 		if !strings.Contains(plain, want) {
@@ -631,8 +696,8 @@ func TestEmojiWidths(t *testing.T) {
 		want  int
 	}{
 		{"neutral face", "🙂", 2},
-		{"trash can", "🗑️", 2},
-		{"desktop", "🖥️", 2},
+		{"trash can", "🗑", 1},
+		{"desktop", "🖥", 1},
 		{"coffee", "☕", 2},
 		{"door", "🚪", 2},
 		{"chair", "🪑", 2},
@@ -700,14 +765,14 @@ func TestRenderOfficeEnhanced(t *testing.T) {
 	}
 
 	// Conference elements
-	for _, want := range []string{"📊", "🪑", "╦", "🚪"} { // justified:AS
+	for _, want := range []string{"📊", "🪑", "╦"} { // justified:AS
 		if !strings.Contains(plain, want) {
 			t.Errorf("Enhanced layout should contain %s", want)
 		}
 	}
 
 	// Cubicle elements
-	for _, want := range []string{"🖥️", "🗑️", "HALLWAY"} { // justified:AS
+	for _, want := range []string{"🖥", "🗑"} { // justified:AS
 		if !strings.Contains(plain, want) {
 			t.Errorf("Enhanced layout should contain %s", want)
 		}

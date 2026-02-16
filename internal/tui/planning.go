@@ -8,21 +8,12 @@ import (
 )
 
 func (a *App) planningView() string {
-	// Backlog table on left (~60% width)
 	backlog := a.backlogTable()
-
-	// Office visualization on right (~40% width)
-	// Shows both conference room and cubicle grid
 	names := a.getDeveloperNames()
-	officeWidth := computeOfficeWidth(ViewPlanning, a.width)
-	office := RenderOffice(a.officeProjection.State(), names, officeWidth, a.height)
+	office := RenderOffice(a.officeProjection.State(), names, a.width, a.height)
 
-	// Combine: ticket list left, office right
-	ticketWidth := a.width - officeWidth - 4 // Account for box borders
-	left := BoxStyle.Width(ticketWidth).Render(backlog)
-	right := office // No box - office renders its own borders
-
-	return lipgloss.JoinHorizontal(lipgloss.Top, left, right)
+	top := BoxStyle.Width(a.width - 2).Render(backlog)
+	return lipgloss.JoinVertical(lipgloss.Left, top, office)
 }
 
 func (a *App) backlogTable() string {

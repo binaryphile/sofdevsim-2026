@@ -20,6 +20,7 @@ type DevStartedWorking = office.DevStartedWorking
 type DevBecameFrustrated = office.DevBecameFrustrated
 type DevCompletedTicket = office.DevCompletedTicket
 type DevEnteredConference = office.DevEnteredConference
+type DevStartedMovingToConference = office.DevStartedMovingToConference
 type AnimationFrameAdvanced = office.AnimationFrameAdvanced
 type BubblesExpired = office.BubblesExpired
 

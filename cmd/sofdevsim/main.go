@@ -92,6 +92,7 @@ func main() {
 		app = tui.NewAppWithRegistry(*seed, registry.SimRegistry)
 	}
 
+	app.EnableOpeningAnimation()
 	p := tea.NewProgram(app, tea.WithAltScreen())
 
 	if _, err := p.Run(); err != nil {

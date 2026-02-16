@@ -28684,3 +28684,18 @@ Secondary: stale index in Engine.Tick after emit, Events panel blind to external
 [x] Test ran N=3 baseline, N=5 files/session (130 trials, 0 script errors)
 [x] Results saved (test-results/compliance-run-3.txt, 180 lines)
 [x] Results interpreted (NEW 100%/92%/96% vs OLD 80%/68%/64%; Fisher p=0.0106 significant)
+2026-02-16T02:00:00Z | Contract: Office layout consistency
+[ ] Planning view renders enhanced office layout
+[ ] Office layout identical between views
+[ ] computeOfficeWidth removed/simplified
+[ ] Tests pass
+2026-02-15T04:00:00Z | Contract: Opening animation
+[ ] Devs walk from cubicles to conference (staggered)
+[ ] Walking devs visible in hallway
+[ ] Input blocked during animation
+[ ] Tests pass
+2026-02-15T05:00:00Z | Completion: Opening animation
+[x] Devs walk from cubicles to conference (staggered)
+[x] Walking devs visible in hallway
+[x] Input blocked during animation
+[x] Tests pass

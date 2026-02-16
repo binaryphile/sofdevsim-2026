@@ -1897,23 +1897,23 @@ Animated visualization showing developers as emoji faces in ASCII cubicles with 
 Office floor plan with conference room, hallway, and cubicles. Supports developer movement animations between locations.
 
 ```
-Legend: F=face W=working X=frustrated C=chair D=door T=trash M=monitor c=coffee s=soda
+Legend: F=face W=working X=frustrated C=chair T=trash M=monitor c=coffee s=soda
 
 Initial state (developers in cubicles, conference empty):
 
 ┌──────────────────────────────────────────────────────────────────────────┐
 │ ┌─────────────────────┐    ┌────────────┐  ┌────────────┐  ┌────────────┐│
-│ │      [charts]       │    │ T    M     │  │ T    Mc    │  │ T    M     ││
-│ │      C   C   C      │    │    Mei     │  │    Amir    │  │    Suki    ││
-│ │    ══╦═══════╦══    │    │     F      │  │     F      │  │     F      ││
-│ │      ║       ║      │    └────┴D┴─────┘  └────┴D┴─────┘  └────┴D┴─────┘│
-│ │      C   C   C      D                                                  │
-│ │                     │                     HALLWAY                      │
+│ │      [charts]       │    │🗑   M      │  │    Mc      │  │    M      ││
+│ │                     │    │      F     │  │      F  🗑 │  │🗑   F    ││
+│ │      C   C   C      │    └────┤ ├ Mei─┘  └────┤ ├ Amir┘  └────┤ ├Suki┘│
+│ │    ══╦═══════╦══    │                                                  │
+│ │      ║       ║    ┤                                                  │
+│ │      C   C   C      │                                                  │
+│ │                     │                                                  │
 │ └─────────────────────┘                                                  │
-│                            ┌────┬D┬─────┐  ┌────┬D┬─────┐  ┌────┬D┬─────┐│
-│                            │     F      │  │     F      │  │     F      ││
-│                            │    Jay     │  │   Priya    │  │    Kofi    ││
-│                            │ T    Ms    │  │ T    M     │  │ T    M     ││
+│                            ┌────┤ ├ Jay─┐  ┌────┤ ├Priya┐  ┌────┤ ├ Kofi┐│
+│                            │      F  🗑 │  │🗑   F     │  │      F     ││
+│                            │    Ms      │  │    M      │  │      M  🗑 ││
 │                            └────────────┘  └────────────┘  └────────────┘│
 └──────────────────────────────────────────────────────────────────────────┘
 
@@ -1921,17 +1921,17 @@ During planning (developers gathered in conference room, 3×2 layout):
 
 ┌──────────────────────────────────────────────────────────────────────────┐
 │ ┌─────────────────────┐    ┌────────────┐  ┌────────────┐  ┌────────────┐│
-│ │      [charts]       │    │ T    M     │  │ T    M     │  │ T    M     ││
-│ │      F   Fc  F      │    │            │  │            │  │            ││
-│ │    ══╦═══════╦══    │    │            │  │            │  │            ││
-│ │      ║       ║      │    └────┴D┴─────┘  └────┴D┴─────┘  └────┴D┴─────┘│
-│ │     Fs  F    F      D                                                  │
-│ │                     │                     HALLWAY                      │
+│ │      [charts]       │    │🗑   M      │  │    M      │  │    M      ││
+│ │                     │    │            │  │         🗑 │  │🗑         ││
+│ │      F   Fc  F      │    └────┤ ├ Mei─┘  └────┤ ├ Amir┘  └────┤ ├Suki┘│
+│ │    ══╦═══════╦══    │                                                  │
+│ │      ║       ║    ┤                                                  │
+│ │     Fs  F    F      │                                                  │
+│ │                     │                                                  │
 │ └─────────────────────┘                                                  │
-│                            ┌────┬D┬─────┐  ┌────┬D┬─────┐  ┌────┬D┬─────┐│
-│                            │            │  │            │  │            ││
-│                            │            │  │            │  │            ││
-│                            │ T    M     │  │ T    M     │  │ T    M     ││
+│                            ┌────┤ ├ Jay─┐  ┌────┤ ├Priya┐  ┌────┤ ├ Kofi┐│
+│                            │         🗑 │  │🗑          │  │            ││
+│                            │    Ms      │  │    M      │  │      M  🗑 ││
 │                            └────────────┘  └────────────┘  └────────────┘│
 └──────────────────────────────────────────────────────────────────────────┘
 
@@ -1939,30 +1939,29 @@ During work (developers in cubicles, some frustrated):
 
 ┌──────────────────────────────────────────────────────────────────────────┐
 │ ┌─────────────────────┐    ┌────────────┐  ┌────────────┐  ┌────────────┐│
-│ │      [charts]       │    │ T    M     │  │ T    Mc    │  │ T    M     ││
-│ │      C   C   C      │    │    Mei     │  │    Amir    │  │    Suki    ││
-│ │    ══╦═══════╦══    │    │     W      │  │     W      │  │     W      ││
-│ │      ║       ║      │    └────┴D┴─────┘  └────┴D┴─────┘  └────┴D┴─────┘│
-│ │      C   C   C      D    ┌──────┐                                      │
-│ │                     │    │Late! │        HALLWAY                       │
-│ └─────────────────────┘    └──┬───┘                                      │
-│                            ┌────┬D┬─────┐  ┌────┬D┬─────┐  ┌────┬D┬─────┐│
-│                            │     X      │  │     W      │  │     F      ││
-│                            │    Jay     │  │   Priya    │  │    Kofi    ││
-│                            │ T    Ms    │  │ T    M     │  │ T    M     ││
+│ │      [charts]       │    │🗑   M      │  │    Mc      │  │    M      ││
+│ │                     │    │      W     │  │      W  🗑 │  │🗑   W    ││
+│ │      C   C   C      │    └────┤ ├ Mei─┘  └────┤ ├ Amir┘  └────┤ ├Suki┘│
+│ │    ══╦═══════╦══    │                                                  │
+│ │      ║       ║    ┤ ┌──────┐                                      │
+│ │      C   C   C      │    │Late! │                                      │
+│ │                     │    └──┬───┘                                      │
+│ └─────────────────────┘                                                  │
+│                            ┌────┤ ├ Jay─┐  ┌────┤ ├Priya┐  ┌────┤ ├ Kofi┐│
+│                            │      X  🗑 │  │🗑   W     │  │      F     ││
+│                            │    Ms      │  │    M      │  │      M  🗑 ││
 │                            └────────────┘  └────────────┘  └────────────┘│
 └──────────────────────────────────────────────────────────────────────────┘
 ```
 
 **Layout elements:**
-- **Conference room**: [charts], ══╦═══════╦══ table with overhanging top and 1-line legs (╦ joins tabletop to ║ legs), C chairs (3×2 seating), D door in right wall
-- **Cubicles**: M monitor/desk against back wall (opposite door), T trash in far corner (away from desk), D door facing hallway — arranged in 2 rows × 3 columns
-- **Cubicle layout**: Developer (F/W/X) sits near the door/hallway side; name between face and desk; desk and monitor against the wall opposite the door; trash in the far corner (away from desk); accessories (c/s) placed next to the monitor when developer is at their desk
+- **Conference room**: [charts], ══╦═══════╦══ table with overhanging top and 1-line legs (╦ joins tabletop to ║ legs), C chairs (3×2 seating), opening in right wall with ┤ posts
+- **Cubicles**: 4-line cells (border, 2 content lines, border) arranged in 2 rows × 3 columns; M monitor/desk against back wall (shifted slightly left per dev for visual variety), T trash in a pseudo-random corner (varies per dev), ┤ ├ entryway posts facing hallway
+- **Cubicle layout**: Developer (F/W/X) sits on the hallway side; name embedded in the door border next to ┤ ├ entryway; monitor against the back wall; trash in one of four cubicle corners (deterministic per developer); accessories (c/s) placed next to monitor when developer is at desk
 - **Hallway**: 3 lines of open space between cubicle rows, connecting to conference room
-- **Doors**: D for all doorways; wall lines adjacent to doors end in T-junctions (┴ for bottom walls, ┬ for top walls) showing the wall fully abutting the doorframe
 - **Room sizes are constant**: Conference room and cubicles never resize during simulation
 - **Accessories**: c (coffee) and s (soda) placed next to monitor on desk when in cubicle, carried beside developer face when in conference
-- **Speech bubbles**: Full bubble (┌──────┐│Late! │└──┬───┘) floats in hallway pointing to speaker; compact form (╭Late!) used inline when space is limited
+- **Speech bubbles**: Full bubble (┌──────┐│Late! │└──┬───┘) floats in hallway pointing to speaker; compact form (╭Late!) replaces face temporarily when space is limited
 
 **Fixed layout:** Room sizes are constant throughout simulation. Conference room always has 3×2 seating positions. Fewer developers use subset of positions (empty seats shown as C).
 
@@ -2522,6 +2521,21 @@ Animation events are triggered by domain events in `App.Update()`:
 | `SprintEnded` | `DevEnteredConference` | For all working devs |
 | `animationTickMsg` | `AnimationFrameAdvanced` | Always |
 | Movement complete | `DevArrivedAtCubicle` | Progress >= 1.0 |
+| TUI startup | `DevStartedMovingToConference` | Opening animation stagger |
+
+#### Opening Animation (TUI-only)
+
+On TUI startup, developers start in cubicles (StateIdle) and walk to the conference room one by one before user input is allowed.
+
+**Timing**: 300ms stagger between devs (3 animation ticks), 500ms movement duration. Dev 0 starts first, dev 5 starts at ~1500ms, all seated by ~2000ms.
+
+**Hallway rendering**: Walking devs (`StateMovingToConference`) appear on the middle line of the 3-line hallway between cubicle rows. Position interpolated from cubicle column toward conference room (x=0). Walking devs take priority over Late! bubbles.
+
+**Input blocking**: All keys except quit (q/ctrl+c) are blocked during the opening animation.
+
+**API path**: Registry keeps instant teleport via `DevEnteredConference`. The API always shows devs in conference. The animation is TUI-local only, enabled via `App.EnableOpeningAnimation()` called from `main.go`.
+
+**Safety invariant**: `paused: true` (constructor default) prevents `tickMsg` from firing engine ticks during the animation.
 
 #### API Endpoint: /office
 

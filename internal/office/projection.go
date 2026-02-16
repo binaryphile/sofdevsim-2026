@@ -100,6 +100,21 @@ func (p OfficeProjection) detectTransitions(evt OfficeEvent, newState OfficeStat
 				Reason:    "completed " + e.TicketID,
 			}
 		}
+	case DevStartedMovingToConference:
+		if before, ok := p.state.GetAnimationOption(e.DevID).Get(); ok {
+			if after, ok := newState.GetAnimationOption(e.DevID).Get(); ok {
+				if before.State != after.State {
+					newTrans = &StateTransition{
+						DevID:     e.DevID,
+						FromState: before.State.String(),
+						ToState:   after.State.String(),
+						Tick:      tick,
+						Timestamp: now,
+						Reason:    "opening animation",
+					}
+				}
+			}
+		}
 	case DevEnteredConference:
 		if before, ok := p.state.GetAnimationOption(e.DevID).Get(); ok {
 			newTrans = &StateTransition{
@@ -154,6 +169,8 @@ func applyOfficeEvent(state OfficeState, evt OfficeEvent, now time.Time) OfficeS
 		return state.SetDeveloperState(e.DevID, StateFrustrated)
 	case DevCompletedTicket:
 		return state.SetDeveloperState(e.DevID, StateIdle)
+	case DevStartedMovingToConference:
+		return state.StartDeveloperMovingToConference(e.DevID, e.Target, now)
 	case DevEnteredConference:
 		return state.SetDeveloperState(e.DevID, StateConference)
 	case AnimationFrameAdvanced:
