@@ -350,17 +350,17 @@ func TestRenderCubicleDetailed(t *testing.T) {
 func TestRenderCubicleDetailed_LineOrder(t *testing.T) {
 	anim := DeveloperAnimation{State: StateWorking, ColorIndex: 0}
 
-	t.Run("door on bottom: desk at back wall, face near door", func(t *testing.T) {
+	t.Run("door on bottom: desk at back wall, face in front of desk", func(t *testing.T) {
 		// ColorIndex=0, doorOnTop=false: trashCorner=0 (TL) → trash on back wall, left
-		// 6 lines: topBorder(0), backWall(1), empty(2), empty(3), face(4), doorBorder(5)
+		// 6 lines: topBorder(0), backWall(1), face(2), empty(3), empty(4), doorBorder(5)
 		result := renderCubicleDetailed(anim, "MsPac", 18, false)
 		plain := StripANSI(result)
 		lines := strings.Split(plain, "\n")
 		if !strings.Contains(lines[1], "🗑") || !strings.Contains(lines[1], "🖥") {
 			t.Errorf("line 1 (back wall) should have trash and monitor\ngot: %q", lines[1])
 		}
-		if !containsFaceEmoji(lines[4]) {
-			t.Errorf("line 4 should have face\ngot: %q", lines[4])
+		if !containsFaceEmoji(lines[2]) {
+			t.Errorf("line 2 should have face\ngot: %q", lines[2])
 		}
 		if !strings.Contains(lines[5], "MsPac") {
 			t.Errorf("door border should contain name\ngot: %q", lines[5])
@@ -370,9 +370,9 @@ func TestRenderCubicleDetailed_LineOrder(t *testing.T) {
 		}
 	})
 
-	t.Run("door on top: face near door, desk at back wall", func(t *testing.T) {
+	t.Run("door on top: face in front of desk, desk at back wall", func(t *testing.T) {
 		// ColorIndex=0, doorOnTop=true: trashCorner=0 (TL) → trash on face line, left
-		// 6 lines: doorBorder(0), face(1), empty(2), empty(3), backWall(4), bottomBorder(5)
+		// 6 lines: doorBorder(0), empty(1), empty(2), face(3), backWall(4), bottomBorder(5)
 		result := renderCubicleDetailed(anim, "Athena", 18, true)
 		plain := StripANSI(result)
 		lines := strings.Split(plain, "\n")
@@ -382,8 +382,8 @@ func TestRenderCubicleDetailed_LineOrder(t *testing.T) {
 		if !strings.Contains(lines[0], "┤") {
 			t.Errorf("door border should have ┤ ├ posts\ngot: %q", lines[0])
 		}
-		if !strings.Contains(lines[1], "🗑") {
-			t.Errorf("line 1 (face) should have trash in corner\ngot: %q", lines[1])
+		if !strings.Contains(lines[3], "🗑") {
+			t.Errorf("line 3 (face) should have trash in corner\ngot: %q", lines[3])
 		}
 		if !strings.Contains(lines[4], "🖥") {
 			t.Errorf("line 4 (back wall) should have monitor\ngot: %q", lines[4])

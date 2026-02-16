@@ -521,12 +521,14 @@ func renderCubicleDetailed(anim DeveloperAnimation, name string, width int, door
 		doorBorderTop = "┌" + strings.Repeat("─", leftDash) + "┤ ├" + strings.Repeat("─", rightDash) + "┐"
 	}
 
-	// Face line (face or LateBubble if dev is in cubicle)
+	// Face line: dev face when present, chair when away, LateBubble when frustrated
 	var faceContent string
 	if anim.LateBubbleFrames > 0 {
 		faceContent = style.Render(RenderLateBubbleInline())
 	} else if !anim.IsAway() {
 		faceContent = renderFaceOnly(anim)
+	} else {
+		faceContent = "🪑"
 	}
 
 	// Monitor content (always on back wall)
@@ -537,13 +539,20 @@ func renderCubicleDetailed(anim DeveloperAnimation, name string, width int, door
 		monitorContent = "🖥"
 	}
 
-	// Shift monitor left for visual variety (Kofi keeps centered)
+	// Shift monitor and face/chair left for visual variety (Pengo keeps centered).
+	// Same shift on both lines keeps the chair aligned in front of the monitor.
 	switch anim.ColorIndex {
-	case 0: // Mei: 2 spaces left
+	case 0: // MsPac: 2 spaces left
 		monitorContent = monitorContent + "    "
-	case 5: // Kofi: centered (no shift)
+		if anim.LateBubbleFrames == 0 {
+			faceContent = faceContent + "    "
+		}
+	case 5: // Pengo: centered (no shift)
 	default: // everyone else: 1 space left
 		monitorContent = monitorContent + "  "
+		if anim.LateBubbleFrames == 0 {
+			faceContent = faceContent + "  "
+		}
 	}
 
 	// Trash corner: pseudo-random placement among 4 cubicle corners
@@ -552,32 +561,37 @@ func renderCubicleDetailed(anim DeveloperAnimation, name string, width int, door
 	trashOnLeft := trashCorner%2 == 0
 	trashOnBackWall := (trashCorner <= 1) != doorOnTop
 
+	// Center both lines in full width, then overlay trash at edge.
+	// Keeps chair aligned with monitor regardless of trash placement.
+	centeredMonitor := centerText(monitorContent, innerWidth)
+	centeredFace := centerText(faceContent, innerWidth)
+
 	var backWallLine, faceLine string
 	if trashOnBackWall && trashOnLeft {
-		backWallLine = "│🗑" + centerText(monitorContent, innerWidth-1) + "│"
+		backWallLine = "│🗑" + centeredMonitor[1:] + "│"
 	} else if trashOnBackWall {
-		backWallLine = "│" + centerText(monitorContent, innerWidth-2) + "🗑 │"
+		backWallLine = "│" + centeredMonitor[:len(centeredMonitor)-2] + "🗑 │"
 	} else {
-		backWallLine = "│" + centerText(monitorContent, innerWidth) + "│"
+		backWallLine = "│" + centeredMonitor + "│"
 	}
 
 	if !trashOnBackWall && trashOnLeft {
-		faceLine = "│🗑" + centerText(faceContent, innerWidth-1) + "│"
+		faceLine = "│🗑" + centeredFace[1:] + "│"
 	} else if !trashOnBackWall {
-		faceLine = "│" + centerText(faceContent, innerWidth-2) + "🗑 │"
+		faceLine = "│" + centeredFace[:len(centeredFace)-2] + "🗑 │"
 	} else {
-		faceLine = "│" + centerText(faceContent, innerWidth) + "│"
+		faceLine = "│" + centeredFace + "│"
 	}
 
 	emptyLine := "│" + strings.Repeat(" ", innerWidth) + "│"
 
 	var lines []string
 	if doorOnTop {
-		// Row 1: door on top (name in top border) → face near door, desk against far wall
-		lines = []string{doorBorderTop, faceLine, emptyLine, emptyLine, backWallLine, bottomBorder}
+		// Row 1: door on top → desk against far wall, face in front of desk
+		lines = []string{doorBorderTop, emptyLine, emptyLine, faceLine, backWallLine, bottomBorder}
 	} else {
-		// Row 0: door on bottom (name in bottom border) → desk against far wall, face near door
-		lines = []string{topBorder, backWallLine, emptyLine, emptyLine, faceLine, doorBorder}
+		// Row 0: door on bottom → desk against far wall, face in front of desk
+		lines = []string{topBorder, backWallLine, faceLine, emptyLine, emptyLine, doorBorder}
 	}
 
 	return strings.Join(lines, "\n")
