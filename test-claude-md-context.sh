@@ -11,8 +11,8 @@ CLAUDE_MD_NEW="$PROJECT_DIR/CLAUDE.md"
 CLAUDE_MD_OLD="/tmp/claude-md-old-baseline.md"
 RESULTS="/tmp/claude-md-context-results.txt"
 OUTPUT_DIR="/tmp/claude-md-context-outputs"
-N_BASELINE=3
-N_MAIN=5
+N_BASELINE=${N_BASELINE:-3}
+N_MAIN=${N_MAIN:-5}
 
 # Extract old CLAUDE.md from before the FluentFP rewrite
 git -C "$PROJECT_DIR" show 3e7e89e^:CLAUDE.md > "$CLAUDE_MD_OLD"
@@ -40,7 +40,7 @@ score() {
 
     echo "$output" | grep -q 'binaryphile/fluentfp' && has_import=true
     echo "$output" | grep -qE 'samber/lo|go-functional|rprtr258|pkg/fluentfp' && has_wrong_import=true
-    echo "$output" | grep -qE 'slice\.From|\.KeepIf|\.ToString|\.ToFloat64|\.FindAs|slice\.MapTo' && has_api=true
+    echo "$output" | grep -qE 'slice\.From|\.KeepIf|\.ToString|\.ToFloat64|\.FindAs|slice\.MapTo|\.Any\(|\.Sum\(\)|\.Unique\(\)|\.Contains\(' && has_api=true
 
     # Count unjustified loops (for-loops without // justified: annotation)
     local unjustified_loops

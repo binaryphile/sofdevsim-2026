@@ -28673,3 +28673,14 @@ Secondary: stale index in Engine.Tick after emit, Events panel blind to external
 [x] .To() -> .Map(), Unzip in API block (line 51, lines 55-57)
 [x] Fold/Sum cross-reference (lines 472-473)
 [x] ToInt32/ToInt64 added (lines 46-47)
+2026-02-15T20:00:00Z | Contract: Phase 4 — Re-run compliance test
+[ ] Scorer API regex updated
+[ ] Test runs with N=3
+[ ] Results saved to test-results/compliance-run-3.txt
+[ ] Results interpreted
+2026-02-15T22:15:00Z | Interaction: improve -> fix N_BASELINE/N_MAIN hardcoding in test script
+2026-02-15T22:30:00Z | Completion: Phase 4
+[x] Scorer updated (added .Any(, .Sum(), .Unique(), .Contains( to has_api regex; fixed N_BASELINE/N_MAIN to use parameter expansion defaults)
+[x] Test ran N=3 baseline, N=5 files/session (130 trials, 0 script errors)
+[x] Results saved (test-results/compliance-run-3.txt, 180 lines)
+[x] Results interpreted (NEW 100%/92%/96% vs OLD 80%/68%/64%; Fisher p=0.0106 significant)
