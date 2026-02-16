@@ -345,8 +345,8 @@ func renderConferenceRoomDetailed(anims []DeveloperAnimation, width int) string 
 	bottomSeating := renderIcon(3) + "  " + renderIcon(4) + "  " + renderIcon(5)
 	bottomSeatingLine := "│" + centerText(bottomSeating, innerWidth) + " "
 
-	// Empty row with post below opening
-	emptyPostLine := "│" + strings.Repeat(" ", innerWidth) + "┤"
+	// Trash + post below opening (bottom-left corner, away from door and charts)
+	trashPostLine := "│🗑" + strings.Repeat(" ", innerWidth-1) + "┤"
 
 	lines := []string{
 		topBorder,
@@ -356,7 +356,7 @@ func renderConferenceRoomDetailed(anims []DeveloperAnimation, width int) string 
 		tableLine,
 		legsLine,
 		bottomSeatingLine,
-		emptyPostLine,
+		trashPostLine,
 		bottomBorder,
 	}
 
@@ -550,9 +550,11 @@ func renderCubicleDetailed(anim DeveloperAnimation, name string, width int, door
 		}
 	}
 
-	// Trash corner: pseudo-random placement among 4 cubicle corners
+	// Trash corner placement per developer.
 	// 0=top-left, 1=top-right, 2=bottom-left, 3=bottom-right
-	trashCorner := (anim.ColorIndex * 3) % 4
+	// Chosen to avoid right-then-left mirroring at shared cubicle walls.
+	trashCorners := []int{0, 2, 1, 3, 0, 1}
+	trashCorner := trashCorners[anim.ColorIndex%len(trashCorners)]
 	trashOnLeft := trashCorner%2 == 0
 	trashOnBackWall := (trashCorner <= 1) != doorOnTop
 
