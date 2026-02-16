@@ -4,81 +4,37 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/binaryphile/fluentfp/slice"
 	"github.com/charmbracelet/lipgloss"
 )
 
-func (a *App) planningView() string {
-	backlog := a.backlogTable()
-	names := a.getDeveloperNames()
-	office := RenderOffice(a.officeProjection.State(), names, a.width, a.height)
+// Calculation: PlanningVM → string
+func renderPlanning(vm PlanningVM) string {
+	backlog := renderBacklogTable(vm.Tickets)
+	office := RenderOffice(vm.OfficeState, vm.DevNames, vm.Width, vm.Height)
 
-	top := BoxStyle.Width(a.width - 2).Render(backlog)
+	top := BoxStyle.Width(vm.Width - 2).Render(backlog)
 	return lipgloss.JoinVertical(lipgloss.Left, top, office)
 }
 
-func (a *App) backlogTable() string {
+// Calculation: []BacklogTicketVM → string
+func renderBacklogTable(tickets []BacklogTicketVM) string {
 	header := HeaderStyle.Render(fmt.Sprintf("%-8s %-30s %6s %12s %10s",
 		"ID", "Title", "Est", "Understanding", "Phase"))
 
-	var rows []string
-	var backlogLen int
-
-	if _, isClient := a.mode.Get(); isClient {
-		// Client mode: use HTTP state
-		backlogLen = len(a.state.Backlog)
-		for i, ticket := range a.state.Backlog {
-			style := TableRowStyle
-			if i == a.selected {
-				style = TableSelectedStyle
-			}
-
-			ticketTitle := ticket.Title
-			if len(ticketTitle) > 28 {
-				ticketTitle = ticketTitle[:28] + ".."
-			}
-
-			row := style.Render(fmt.Sprintf("%-8s %-30s %5.1fd %-12s %-10s",
-				ticket.ID,
-				ticketTitle,
-				ticket.Size,
-				ticket.Understanding,
-				ticket.Phase,
-			))
-			rows = append(rows, row)
+	// formatTicketRow renders a backlog ticket with selection styling.
+	formatTicketRow := func(ticket BacklogTicketVM) string {
+		style := TableRowStyle
+		if ticket.Selected {
+			style = TableSelectedStyle
 		}
-	} else {
-		// Engine mode: use local simulation
-		eng, _ := a.mode.GetLeft()
-		sim := eng.Engine.Sim()
-		backlogLen = len(sim.Backlog)
-		for i, ticket := range sim.Backlog {
-			style := TableRowStyle
-			if i == a.selected {
-				style = TableSelectedStyle
-			}
-
-			ticketTitle := ticket.Title
-			if len(ticketTitle) > 28 {
-				ticketTitle = ticketTitle[:28] + ".."
-			}
-
-			row := style.Render(fmt.Sprintf("%-8s %-30s %5.1fd %-12s %-10s",
-				ticket.ID,
-				ticketTitle,
-				ticket.EstimatedDays,
-				ticket.UnderstandingLevel,
-				ticket.Phase,
-			))
-			rows = append(rows, row)
-		}
+		return style.Render(fmt.Sprintf("%-8s %-30s %5.1fd %-12s %-10s",
+			ticket.ID, truncate(ticket.Title, 28), ticket.EstimatedDays,
+			ticket.Understanding, ticket.Phase))
 	}
+	rows := slice.From(tickets).ToString(formatTicketRow)
 
-	// Clamp selected
-	if a.selected >= backlogLen && backlogLen > 0 {
-		a.selected = backlogLen - 1
-	}
-
-	title := TitleStyle.Render(fmt.Sprintf("Backlog (%d tickets)", backlogLen))
+	title := TitleStyle.Render(fmt.Sprintf("Backlog (%d tickets)", len(tickets)))
 	content := strings.Join(rows, "\n")
 	if len(rows) == 0 {
 		content = MutedStyle.Render("No tickets in backlog")
@@ -86,4 +42,3 @@ func (a *App) backlogTable() string {
 
 	return lipgloss.JoinVertical(lipgloss.Left, title, header, content)
 }
-

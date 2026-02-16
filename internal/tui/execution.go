@@ -4,269 +4,102 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/binaryphile/fluentfp/slice"
 	"github.com/charmbracelet/lipgloss"
 )
 
-func (a *App) executionView() string {
-	// Sprint progress
-	sprintBar := a.sprintProgress()
+// Calculation: ExecutionVM → string
+func renderExecution(vm ExecutionVM) string {
+	sprintBar := renderSprintProgress(vm.Sprint)
+	activeWork := renderActiveWork(vm.ActiveWork)
+	fever := renderFever(vm.Fever)
+	events := renderEvents(vm.Events)
+	office := RenderOffice(vm.OfficeState, vm.DevNames, vm.Width, vm.Height)
 
-	// Active work
-	activeWork := a.activeWorkPanel()
+	top := BoxStyle.Width(vm.Width - 2).Render(sprintBar)
+	middle := BoxStyle.Width(vm.Width - 2).Render(activeWork)
 
-	// Fever chart
-	fever := a.feverPanel()
-
-	// Events log
-	events := a.eventsPanel()
-
-	// Office visualization (computed from event-sourced projection)
-	names := a.getDeveloperNames()
-	office := RenderOffice(a.officeProjection.State(), names, a.width, a.height)
-
-	// Layout
-	top := BoxStyle.Width(a.width - 2).Render(sprintBar)
-	middle := BoxStyle.Width(a.width - 2).Render(activeWork)
-
-	bottomLeft := BoxStyle.Width(a.width/2 - 2).Render(fever)
-	bottomRight := BoxStyle.Width(a.width/2 - 2).Render(events)
+	bottomLeft := BoxStyle.Width(vm.Width/2 - 2).Render(fever)
+	bottomRight := BoxStyle.Width(vm.Width/2 - 2).Render(events)
 	bottom := lipgloss.JoinHorizontal(lipgloss.Top, bottomLeft, bottomRight)
 
 	return lipgloss.JoinVertical(lipgloss.Left, top, middle, bottom, office)
 }
 
-func (a *App) sprintProgress() string {
-	if _, isClient := a.mode.Get(); isClient {
-		// Client mode: use HTTP state
-		sprint, ok := a.state.SprintOption.Get()
-		if !ok {
-			return MutedStyle.Render("No active sprint")
-		}
-		daysElapsed := a.state.CurrentTick - sprint.StartDay
-		progress := 0.0
-		if sprint.DurationDays > 0 {
-			progress = float64(daysElapsed) / float64(sprint.DurationDays)
-			if progress > 1 {
-				progress = 1
-			}
-		}
-		bar := RenderProgressBar(progress, 50)
-
-		title := TitleStyle.Render(fmt.Sprintf("Sprint %d", sprint.Number))
-		info := fmt.Sprintf("Day %d/%d  %s  %.0f%%",
-			daysElapsed,
-			sprint.DurationDays,
-			bar,
-			progress*100,
-		)
-
-		return lipgloss.JoinVertical(lipgloss.Left, title, info)
-	}
-
-	// Engine mode: use local simulation
-	eng, _ := a.mode.GetLeft()
-	sim := eng.Engine.Sim()
-	sprint, ok := sim.CurrentSprintOption.Get()
-	if !ok {
+// Calculation: SprintProgressVM → string
+func renderSprintProgress(vm SprintProgressVM) string {
+	if !vm.HasSprint {
 		return MutedStyle.Render("No active sprint")
 	}
 
-	progress := sprint.ProgressPct(sim.CurrentTick)
-	bar := RenderProgressBar(progress, 50)
-
-	title := TitleStyle.Render(fmt.Sprintf("Sprint %d", sprint.Number))
+	bar := RenderProgressBar(vm.Progress, 50)
+	title := TitleStyle.Render(fmt.Sprintf("Sprint %d", vm.SprintNumber))
 	info := fmt.Sprintf("Day %d/%d  %s  %.0f%%",
-		sprint.DaysElapsed(sim.CurrentTick),
-		sprint.DurationDays,
+		vm.DaysElapsed,
+		vm.DurationDays,
 		bar,
-		progress*100,
+		vm.Progress*100,
 	)
 
 	return lipgloss.JoinVertical(lipgloss.Left, title, info)
 }
 
-func (a *App) activeWorkPanel() string {
+// Calculation: []ActiveWorkRowVM → string
+func renderActiveWork(rows []ActiveWorkRowVM) string {
 	title := TitleStyle.Render("Active Work")
 
-	var rows []string
-
-	if _, isClient := a.mode.Get(); isClient {
-		// Client mode: use HTTP state
-		for _, dev := range a.state.Developers {
-			if dev.IsIdle {
-				row := fmt.Sprintf("%-8s %s", dev.Name, MutedStyle.Render("[idle]"))
-				rows = append(rows, row)
-				continue
-			}
-
-			// Find the active ticket for this developer
-			var ticket *TicketState
-			for i := range a.state.ActiveTickets {
-				if a.state.ActiveTickets[i].AssignedTo == dev.ID {
-					ticket = &a.state.ActiveTickets[i]
-					break
-				}
-			}
-			if ticket == nil {
-				continue
-			}
-
-			// Use pre-calculated progress from server
-			progress := ticket.Progress / 100.0 // Convert percentage to 0-1
-			bar := RenderProgressBar(progress, 20)
-			row := fmt.Sprintf("%-8s → %-10s %s %.0f%% (%s)",
-				dev.Name,
-				ticket.ID,
-				bar,
-				ticket.Progress,
-				ticket.Phase,
-			)
-			rows = append(rows, row)
+	// formatWorkRow formats an active work row for display.
+	formatWorkRow := func(row ActiveWorkRowVM) string {
+		if row.IsIdle {
+			return fmt.Sprintf("%-8s %s", row.DevName, MutedStyle.Render("[idle]"))
 		}
-	} else {
-		// Engine mode: use local simulation
-		eng, _ := a.mode.GetLeft()
-		sim := eng.Engine.Sim()
-		for _, dev := range sim.Developers {
-			if dev.IsIdle() {
-				row := fmt.Sprintf("%-8s %s", dev.Name, MutedStyle.Render("[idle]"))
-				rows = append(rows, row)
-				continue
-			}
-
-			ticketIdx := sim.FindActiveTicketIndex(dev.CurrentTicket)
-			if ticketIdx == -1 {
-				continue
-			}
-			ticket := sim.ActiveTickets[ticketIdx]
-
-			// Calculate progress within current phase
-			phaseEffort := ticket.CalculatePhaseEffort(ticket.Phase)
-			spent := ticket.PhaseEffortSpent[ticket.Phase]
-			progress := 0.0
-			if phaseEffort > 0 {
-				progress = spent / phaseEffort
-				if progress > 1 {
-					progress = 1
-				}
-			}
-
-			bar := RenderProgressBar(progress, 20)
-			row := fmt.Sprintf("%-8s → %-10s %s %.0f%% (%s)",
-				dev.Name,
-				ticket.ID,
-				bar,
-				progress*100,
-				ticket.Phase,
-			)
-			rows = append(rows, row)
-		}
+		bar := RenderProgressBar(row.Progress, 20)
+		return fmt.Sprintf("%-8s → %-10s %s %.0f%% (%s)",
+			row.DevName, row.TicketID, bar, row.Progress*100, row.Phase)
 	}
+	lines := slice.From(rows).ToString(formatWorkRow)
 
-	content := strings.Join(rows, "\n")
-	if len(rows) == 0 {
+	content := strings.Join(lines, "\n")
+	if len(lines) == 0 {
 		content = MutedStyle.Render("No active work")
 	}
 
 	return lipgloss.JoinVertical(lipgloss.Left, title, content)
 }
 
-func (a *App) feverPanel() string {
+// Calculation: FeverVM → string
+func renderFever(vm FeverVM) string {
 	title := TitleStyle.Render("Fever Chart")
 
-	if _, isClient := a.mode.Get(); isClient {
-		// Client mode: use HTTP state
-		sprint, ok := a.state.SprintOption.Get()
-		if !ok {
-			return lipgloss.JoinVertical(lipgloss.Left, title, MutedStyle.Render("No active sprint"))
-		}
-
-		bufferPct := (sprint.BufferConsumed / sprint.BufferDays) * 100
-		progressPct := sprint.Progress * 100
-
-		// Ratio: buffer% / progress% (only meaningful when progress > 5%)
-		var ratioStr string
-		if sprint.Progress > 0.05 {
-			ratio := (sprint.BufferConsumed / sprint.BufferDays) / sprint.Progress
-			ratioStr = fmt.Sprintf("%.1f", ratio)
-		} else {
-			ratioStr = "-"
-		}
-
-		statusStyle := FeverColor(bufferPct)
-		zone := feverEmojiFromString(sprint.FeverStatus)
-
-		info := fmt.Sprintf("Work: %.0f%%  Buffer: %.0f%%  Ratio: %s %s",
-			progressPct,
-			bufferPct,
-			ratioStr,
-			statusStyle.Render(zone),
-		)
-
-		remaining := fmt.Sprintf("%.1f / %.1f days remaining",
-			sprint.BufferDays-sprint.BufferConsumed,
-			sprint.BufferDays,
-		)
-
-		return lipgloss.JoinVertical(lipgloss.Left, title, info, MutedStyle.Render(remaining))
-	}
-
-	// Engine mode: use local simulation
-	eng, _ := a.mode.GetLeft()
-	sim := eng.Engine.Sim()
-	sprint, ok := sim.CurrentSprintOption.Get()
-	if !ok {
+	if !vm.HasSprint {
 		return lipgloss.JoinVertical(lipgloss.Left, title, MutedStyle.Render("No active sprint"))
 	}
 
-	bufferPct := sprint.BufferPctUsed() * 100
-	progressPct := sprint.Progress * 100
-
-	// Ratio: buffer% / progress% (only meaningful when progress > 5%)
-	var ratioStr string
-	if sprint.Progress > 0.05 {
-		ratio := sprint.BufferPctUsed() / sprint.Progress
-		ratioStr = fmt.Sprintf("%.1f", ratio)
-	} else {
-		ratioStr = "-"
-	}
-
-	statusStyle := FeverColor(bufferPct)
-	zone := FeverEmoji(sprint.FeverStatus)
-
+	statusStyle := FeverColor(vm.BufferPct)
 	info := fmt.Sprintf("Work: %.0f%%  Buffer: %.0f%%  Ratio: %s %s",
-		progressPct,
-		bufferPct,
-		ratioStr,
-		statusStyle.Render(zone),
+		vm.WorkPct,
+		vm.BufferPct,
+		vm.RatioStr,
+		statusStyle.Render(feverEmojiFromString(vm.Zone)),
 	)
 
 	remaining := fmt.Sprintf("%.1f / %.1f days remaining",
-		sprint.BufferRemaining(),
-		sprint.BufferDays,
+		vm.Remaining,
+		vm.TotalBuffer,
 	)
 
 	return lipgloss.JoinVertical(lipgloss.Left, title, info, MutedStyle.Render(remaining))
 }
 
-func (a *App) eventsPanel() string {
+// Calculation: []EventVM → string
+func renderEvents(events []EventVM) string {
 	title := TitleStyle.Render("Events")
 
-	// Show last 8 events
-	start := 0
-	if len(a.modelEvents) > 8 {
-		start = len(a.modelEvents) - 8
+	// formatEvent formats and truncates an event for display.
+	formatEvent := func(evt EventVM) string {
+		return MutedStyle.Render(truncate(fmt.Sprintf("Day %d: %s", evt.Day, evt.Message), 40))
 	}
-
-	var rows []string
-	for i := len(a.modelEvents) - 1; i >= start; i-- {
-		evt := a.modelEvents[i]
-		row := fmt.Sprintf("Day %d: %s", evt.Day, evt.Message)
-		if len(row) > 40 {
-			row = row[:40] + "..."
-		}
-		rows = append(rows, MutedStyle.Render(row))
-	}
+	rows := slice.From(events).ToString(formatEvent)
 
 	content := strings.Join(rows, "\n")
 	if len(rows) == 0 {

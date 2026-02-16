@@ -213,29 +213,28 @@ func SelectLesson(view View, state LessonState, hasActiveSprint bool, hasCompari
 	return lessons.Select(toViewContext(view), state, hasActiveSprint, hasComparisonResult, triggers, comparison)
 }
 
-// lessonsPanel renders the lesson panel with current lesson content.
-func (a *App) lessonsPanel(lesson Lesson) string {
-	title := TitleStyle.Render("💡 " + lesson.Title)
-	progress := MutedStyle.Render(fmt.Sprintf("Progress: %d/%d concepts", a.lessonState.SeenCount(), TotalLessons))
+// Calculation: LessonVM → string
+func renderLesson(vm LessonVM) string {
+	title := TitleStyle.Render("💡 " + vm.Title)
+	progress := MutedStyle.Render(fmt.Sprintf("Progress: %d/%d concepts", vm.Progress, vm.Total))
 
-	// Build tips section
 	var tipsSection string
-	if len(lesson.Tips) > 0 {
+	if len(vm.Tips) > 0 {
 		// renderTip renders a tip with bullet and muted style.
 		renderTip := func(tip string) string { return MutedStyle.Render("• " + tip) }
-		tips := slice.From(lesson.Tips).ToString(renderTip)
+		tips := slice.From(vm.Tips).ToString(renderTip)
 		tipsSection = strings.Join(tips, "\n")
 	}
 
 	content := lipgloss.JoinVertical(lipgloss.Left,
 		title,
 		"",
-		lesson.Content,
+		vm.Content,
 		"",
 		tipsSection,
 		"",
 		progress,
 	)
 
-	return BoxStyle.Width(a.width/3 - 2).BorderForeground(ColorSecondary).Render(content)
+	return BoxStyle.Width(vm.Width/3 - 2).BorderForeground(ColorSecondary).Render(content)
 }

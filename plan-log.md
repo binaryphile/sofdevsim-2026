@@ -28730,3 +28730,21 @@ Secondary: stale index in Engine.Tick after emit, Events panel blind to external
 [x] UC9/UC10 technology variations (UC9 line ~514, UC10 line ~561 in use-cases.md)
 [x] Design doc deployment modes subsection (3-mode table before Hypermedia Logic in design.md)
 [x] All tests pass (15/15 packages green)
+2026-02-16T14:00:00Z | Contract: UC25/26 Phase 1 — ViewModel extraction + render refactor
+[ ] ViewModel types for all 4 views + header + help + lessons
+[ ] Build functions extract data from App into ViewModels
+[ ] Render functions take ViewModels → string (free functions)
+[ ] App.View() calls build then render (pure — no mutation)
+[ ] Lesson WithSeen mutation moved from View() to Update()
+[ ] execution_test.go migrated to new signatures
+[ ] All existing tests pass
+[ ] go build ./... succeeds
+2026-02-16T14:30:00Z | Completion: UC25/26 Phase 1 — ViewModel extraction + render refactor
+[x] ViewModel types for all 4 views + header + help + lessons (viewmodel.go)
+[x] Build functions extract data from App into ViewModels (viewmodel_build.go)
+[x] Render functions take ViewModels → string (free functions)
+[x] App.View() calls build then render — pure, no mutation (app.go)
+[x] Lesson WithSeen mutation moved from View() to Update() (app.go)
+[x] execution_test.go migrated to new signatures
+[x] All existing tests pass (go test ./... — 15/15 ok)
+[x] go build ./... succeeds

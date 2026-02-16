@@ -6,103 +6,58 @@ import (
 
 	"github.com/NimbleMarkets/ntcharts/sparkline"
 	"github.com/binaryphile/fluentfp/slice"
-	"github.com/binaryphile/sofdevsim-2026/internal/metrics"
 	"github.com/charmbracelet/lipgloss"
 )
 
-func (a *App) metricsView() string {
-	// DORA metrics
-	dora := a.doraPanel()
+// Calculation: MetricsVM → string
+func renderMetrics(vm MetricsVM) string {
+	dora := renderDORA(vm.DORA, vm.Width)
+	history := renderHistory(vm)
 
-	// Sprint history
-	history := a.historyPanel()
-
-	top := BoxStyle.Width(a.width - 2).Render(dora)
-	bottom := BoxStyle.Width(a.width - 2).Render(history)
+	top := BoxStyle.Width(vm.Width - 2).Render(dora)
+	bottom := BoxStyle.Width(vm.Width - 2).Render(history)
 
 	return lipgloss.JoinVertical(lipgloss.Left, top, bottom)
 }
 
-func (a *App) doraPanel() string {
+// Calculation: (DORAMetricsVM, int) → string
+func renderDORA(vm DORAMetricsVM, width int) string {
 	title := TitleStyle.Render("DORA Metrics")
 
-	var leadTimeAvg, deployFreq, mttrAvg, cfrPct float64
-	var leadTimeSparkline, deployFreqSparkline, mttrSparkline, cfrSparkline string
+	leadTimeSparkline := renderSparkline(vm.LeadTimeHistory)
+	deployFreqSparkline := renderSparkline(vm.DeployHistory)
+	mttrSparkline := renderSparkline(vm.MTTRHistory)
+	cfrSparkline := renderSparkline(vm.CFRHistory)
 
-	if _, isClient := a.mode.Get(); isClient {
-		// Client mode: use HTTP state with history for sparklines
-		leadTimeAvg = a.state.Metrics.LeadTimeAvgDays
-		deployFreq = a.state.Metrics.DeployFrequency
-		mttrAvg = a.state.Metrics.MTTRAvgDays
-		cfrPct = a.state.Metrics.ChangeFailRatePct
-
-		// Extract history for sparklines
-		leadTimes, deployFreqs, mttrs, cfrs := slice.Unzip4(
-			a.state.Metrics.History,
-			DORAHistoryPoint.GetLeadTimeAvg,
-			DORAHistoryPoint.GetDeployFrequency,
-			DORAHistoryPoint.GetMTTR,
-			DORAHistoryPoint.GetChangeFailRate,
-		)
-
-		leadTimeSparkline = a.sparkline(leadTimes)
-		deployFreqSparkline = a.sparkline(deployFreqs)
-		mttrSparkline = a.sparkline(mttrs)
-		cfrSparkline = a.sparkline(cfrs)
-	} else {
-		// Engine mode: use local tracker with sparklines
-		eng, _ := a.mode.GetLeft()
-		dora := eng.Tracker.DORA
-
-		leadTimeAvg = dora.LeadTimeAvgDays()
-		deployFreq = dora.DeployFrequency
-		mttrAvg = dora.MTTRAvgDays()
-		cfrPct = dora.ChangeFailRatePct()
-
-		// Extract values for sparklines using method expressions
-		leadTimes, deployFreqs, mttrs, cfrs := slice.Unzip4(dora.History,
-			metrics.DORASnapshot.GetLeadTimeAvg,
-			metrics.DORASnapshot.GetDeployFrequency,
-			metrics.DORASnapshot.GetMTTR,
-			metrics.DORASnapshot.GetChangeFailRate,
-		)
-
-		leadTimeSparkline = a.sparkline(leadTimes)
-		deployFreqSparkline = a.sparkline(deployFreqs)
-		mttrSparkline = a.sparkline(mttrs)
-		cfrSparkline = a.sparkline(cfrs)
-	}
-
-	// Format metrics
 	col1 := lipgloss.JoinVertical(lipgloss.Left,
 		HeaderStyle.Render("Lead Time"),
-		fmt.Sprintf("%.1f days", leadTimeAvg),
+		fmt.Sprintf("%.1f days", vm.LeadTimeAvg),
 		leadTimeSparkline,
 		MutedStyle.Render("↓ lower is better"),
 	)
 
 	col2 := lipgloss.JoinVertical(lipgloss.Left,
 		HeaderStyle.Render("Deploy Freq"),
-		fmt.Sprintf("%.2f/day", deployFreq),
+		fmt.Sprintf("%.2f/day", vm.DeployFrequency),
 		deployFreqSparkline,
 		MutedStyle.Render("↑ higher is better"),
 	)
 
 	col3 := lipgloss.JoinVertical(lipgloss.Left,
 		HeaderStyle.Render("MTTR"),
-		fmt.Sprintf("%.1f days", mttrAvg),
+		fmt.Sprintf("%.1f days", vm.MTTRAvg),
 		mttrSparkline,
 		MutedStyle.Render("↓ lower is better"),
 	)
 
 	col4 := lipgloss.JoinVertical(lipgloss.Left,
 		HeaderStyle.Render("Change Fail Rate"),
-		fmt.Sprintf("%.1f%%", cfrPct),
+		fmt.Sprintf("%.1f%%", vm.ChangeFailRate),
 		cfrSparkline,
 		MutedStyle.Render("↓ lower is better"),
 	)
 
-	colWidth := (a.width - 10) / 4
+	colWidth := (width - 10) / 4
 	row := lipgloss.JoinHorizontal(lipgloss.Top,
 		lipgloss.NewStyle().Width(colWidth).Render(col1),
 		lipgloss.NewStyle().Width(colWidth).Render(col2),
@@ -113,19 +68,17 @@ func (a *App) doraPanel() string {
 	return lipgloss.JoinVertical(lipgloss.Left, title, row)
 }
 
-// sparkline creates a sparkline using ntcharts
-func (a *App) sparkline(values []float64) string {
+// Calculation: []float64 → string
+func renderSparkline(values []float64) string {
 	if len(values) == 0 {
 		return MutedStyle.Render("─────────────")
 	}
 
-	// Take last 15 values
 	data := values
 	if len(values) > 15 {
 		data = values[len(values)-15:]
 	}
 
-	// Create ntcharts sparkline (width=15, height=1)
 	sl := sparkline.New(15, 1)
 	sl.PushAll(data)
 	sl.Draw()
@@ -133,75 +86,19 @@ func (a *App) sparkline(values []float64) string {
 	return sl.View()
 }
 
-func (a *App) historyPanel() string {
+// Calculation: MetricsVM → string
+func renderHistory(vm MetricsVM) string {
 	title := TitleStyle.Render("Completed Tickets")
 
 	header := HeaderStyle.Render(fmt.Sprintf("%-10s %-25s %8s %8s %12s",
 		"ID", "Title", "Est", "Actual", "Understanding"))
 
-	var rows []string
-	var completedCount, totalIncidents int
-	var policy string
-
-	if _, isClient := a.mode.Get(); isClient {
-		// Client mode: use HTTP state
-		completedCount = len(a.state.CompletedTickets)
-		totalIncidents = a.state.TotalIncidents
-		policy = a.state.SizingPolicy
-
-		// Show last 10 completed
-		start := 0
-		if completedCount > 10 {
-			start = completedCount - 10
-		}
-
-		for i := completedCount - 1; i >= start; i-- {
-			ticket := a.state.CompletedTickets[i]
-			ticketTitle := ticket.Title
-			if len(ticketTitle) > 23 {
-				ticketTitle = ticketTitle[:23] + ".."
-			}
-
-			row := fmt.Sprintf("%-10s %-25s %7.1fd %7.1fd %-12s",
-				ticket.ID,
-				ticketTitle,
-				ticket.Size,
-				ticket.ActualDays,
-				ticket.Understanding,
-			)
-			rows = append(rows, row)
-		}
-	} else {
-		// Engine mode: use local simulation
-		eng, _ := a.mode.GetLeft()
-		sim := eng.Engine.Sim()
-		completedCount = len(sim.CompletedTickets)
-		totalIncidents = sim.TotalIncidents()
-		policy = sim.SizingPolicy.String()
-
-		// Show last 10 completed
-		start := 0
-		if completedCount > 10 {
-			start = completedCount - 10
-		}
-
-		for i := completedCount - 1; i >= start; i-- {
-			ticket := sim.CompletedTickets[i]
-			ticketTitle := ticket.Title
-			if len(ticketTitle) > 23 {
-				ticketTitle = ticketTitle[:23] + ".."
-			}
-
-			row := fmt.Sprintf("%-10s %-25s %7.1fd %7.1fd %-12s",
-				ticket.ID,
-				ticketTitle,
-				ticket.EstimatedDays,
-				ticket.ActualDays,
-				ticket.UnderstandingLevel,
-			)
-			rows = append(rows, row)
-		}
+	// formatCompletedTicket formats a completed ticket as a table row.
+	formatCompletedTicket := func(t CompletedTicketVM) string {
+		return fmt.Sprintf("%-10s %-25s %7.1fd %7.1fd %-12s",
+			t.ID, truncate(t.Title, 23), t.EstimatedDays, t.ActualDays, t.Understanding)
 	}
+	rows := slice.From(vm.CompletedTickets).ToString(formatCompletedTicket)
 
 	content := strings.Join(rows, "\n")
 	if len(rows) == 0 {
@@ -209,9 +106,9 @@ func (a *App) historyPanel() string {
 	}
 
 	stats := fmt.Sprintf("Total: %d completed | %d incidents | Policy: %s",
-		completedCount,
-		totalIncidents,
-		policy,
+		vm.CompletedCount,
+		vm.TotalIncidents,
+		vm.Policy,
 	)
 
 	return lipgloss.JoinVertical(lipgloss.Left, title, header, content, "", MutedStyle.Render(stats))

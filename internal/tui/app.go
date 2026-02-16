@@ -81,7 +81,8 @@ type App struct {
 	comparisonSeed   int64
 
 	// Lessons panel
-	lessonState LessonState
+	lessonState   LessonState
+	currentLesson Lesson
 
 	// Dimensions
 	width, height int
@@ -355,6 +356,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "assign":
 				a.recordInputEvent(AssignmentAttempted{TicketID: a.selectedTicketID(), Outcome: Succeeded{}})
 			}
+			a.refreshLesson()
 		}
 		return a, nil
 
@@ -434,6 +436,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			Message: fmt.Sprintf("%s (via API)", events.Event(msg).EventType()),
 		})
 
+		a.refreshLesson()
 		return a, a.listenForEvents()
 
 	case animationTickMsg:
@@ -527,6 +530,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				a.statusMessage = "Sprint complete - press 's' for next sprint"
 				a.statusExpiry = time.Now().Add(5 * time.Second)
 			}
+			a.refreshLesson()
 		}
 		return a, a.tickCmd()
 	}
@@ -552,6 +556,7 @@ func (a *App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		a.currentView = nextView
 		a.syncOfficeToRegistry()
 		a.recordInputEvent(ViewSwitched{To: nextView})
+		a.refreshLesson()
 		return a, nil
 
 	case " ":
@@ -630,6 +635,7 @@ func (a *App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			a.paused = false
 			a.recordInputEvent(SprintStartAttempted{Outcome: Succeeded{}})
 			a.recordInputEvent(ViewSwitched{To: ViewExecution})
+			a.refreshLesson()
 			return a, a.tickCmd()
 		}
 		// Precondition failed: sprint already active or wrong view
@@ -737,6 +743,7 @@ func (a *App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		a.runComparison()
 		a.currentView = ViewComparison
+		a.refreshLesson()
 		return a, nil
 
 	case "e":
@@ -891,6 +898,7 @@ func (a *App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// Toggle lessons panel
 		a.lessonState = a.lessonState.WithVisible(!a.lessonState.Visible)
 		a.recordInputEvent(LessonPanelToggled{})
+		a.refreshLesson()
 		if a.lessonState.Visible {
 			a.statusMessage = "Lessons enabled"
 		} else {
@@ -1110,51 +1118,33 @@ func (a *App) View() string {
 		return "Loading..."
 	}
 
+	header := renderHeader(a.buildHeaderVM())
+
 	var content string
 	switch a.currentView {
 	case ViewPlanning:
-		content = a.planningView()
+		content = renderPlanning(a.buildPlanningVM())
 	case ViewExecution:
-		content = a.executionView()
+		content = renderExecution(a.buildExecutionVM())
 	case ViewMetrics:
-		content = a.metricsView()
+		content = renderMetrics(a.buildMetricsVM())
 	case ViewComparison:
-		content = a.comparisonView()
+		content = renderComparison(a.buildComparisonVM())
 	}
 
-	// Compose with lessons panel when visible
-	if a.lessonState.Visible {
-		var hasActiveSprint bool
-		var triggers TriggerState
-		// Trigger detection differs between client and engine modes:
-		// - Client mode uses primitives (strings) to avoid import cycles (lessons can't import tui)
-		// - Engine mode uses CQRS TriggerProjection for state-based triggers + event detection
-		if _, isClient := a.mode.Get(); isClient {
-			hasActiveSprint = a.state.SprintActive
-			triggers = BuildTriggersFromClientState(a.state)
-		} else {
-			eng, _ := a.mode.GetLeft()
-			sim := eng.Engine.Sim()
-			_, hasActiveSprint = sim.CurrentSprintOption.Get()
-			// Use CQRS projection for SprintCount + event detection for UC19/20/21
-			triggers = BuildTriggerStateFromEngine(sim, eng.Tracker.Fever.Status, sim.ActiveTickets, sim.CompletedTickets)
-		}
-		// Build comparison summary for UC23 dynamic lesson content
-		comparison := BuildComparisonSummary(a.comparisonResult)
-		lesson := SelectLesson(a.currentView, a.lessonState, hasActiveSprint, a.comparisonResult.IsOk(), triggers, comparison)
-		a.lessonState = a.lessonState.WithSeen(lesson.ID)
-		lessonPanel := a.lessonsPanel(lesson)
+	// Lesson composition uses a.width directly — this is structural layout
+	// (how panels are joined), not content rendering. Build functions extract
+	// content data; View() handles spatial composition of rendered panels.
+	if a.lessonState.Visible && a.currentLesson.ID != "" {
+		lessonPanel := renderLesson(a.buildLessonVM(a.currentLesson))
 		content = lipgloss.JoinHorizontal(lipgloss.Top,
 			lipgloss.NewStyle().Width(a.width*2/3-2).Render(content),
 			lessonPanel,
 		)
 	}
 
-	// Add header and help
-	header := a.headerView()
-	help := a.helpView()
+	help := renderHelp(HelpVM{CurrentView: a.currentView})
 
-	// Add status message if present and not expired
 	if a.statusMessage != "" && time.Now().Before(a.statusExpiry) {
 		status := lipgloss.NewStyle().Foreground(lipgloss.Color("10")).Render(a.statusMessage)
 		return lipgloss.JoinVertical(lipgloss.Left, header, content, status, help)
@@ -1163,63 +1153,31 @@ func (a *App) View() string {
 	return lipgloss.JoinVertical(lipgloss.Left, header, content, help)
 }
 
-// headerState holds values extracted from either mode for header rendering.
-type headerState struct {
-	policy         string
-	currentTick    int
-	backlogCount   int
-	completedCount int
-	seed           int64
-}
-
-func (a *App) headerView() string {
+func renderHeader(vm HeaderVM) string {
 	viewNames := []string{"Planning", "Execution", "Metrics", "Comparison"}
 	tabs := ""
 	for i, name := range viewNames { // justified:CF
 		style := MutedStyle
-		if View(i) == a.currentView {
+		if View(i) == vm.CurrentView {
 			style = TitleStyle
 		}
 		tabs += style.Render(fmt.Sprintf(" %s ", name))
 	}
 
-	// Extract header state using Fold for exhaustive pattern matching
-	h := either.Fold(a.mode,
-		func(eng EngineMode) headerState {
-			sim := eng.Engine.Sim()
-			return headerState{
-				policy:         sim.SizingPolicy.String(),
-				currentTick:    sim.CurrentTick,
-				backlogCount:   len(sim.Backlog),
-				completedCount: len(sim.CompletedTickets),
-				seed:           sim.Seed,
-			}
-		},
-		func(_ ClientMode) headerState {
-			return headerState{
-				policy:         a.state.SizingPolicy,
-				currentTick:    a.state.CurrentTick,
-				backlogCount:   a.state.BacklogCount,
-				completedCount: a.state.CompletedTicketCount,
-				seed:           a.state.Seed,
-			}
-		},
-	)
-
-	policyStr := fmt.Sprintf("Policy: %s", h.policy)
+	policyStr := fmt.Sprintf("Policy: %s", vm.Policy)
 	status := "PAUSED"
-	if !a.paused {
+	if !vm.Paused {
 		status = "RUNNING"
 	}
 
-	right := MutedStyle.Render(fmt.Sprintf("%s | %s | Day %d | Backlog: %d | Done: %d | Seed %d", policyStr, status, h.currentTick, h.backlogCount, h.completedCount, h.seed))
+	right := MutedStyle.Render(fmt.Sprintf("%s | %s | Day %d | Backlog: %d | Done: %d | Seed %d", policyStr, status, vm.CurrentTick, vm.BacklogCount, vm.CompletedCount, vm.Seed))
 
-	return BoxStyle.Width(a.width - 2).Render(
+	return BoxStyle.Width(vm.Width - 2).Render(
 		lipgloss.JoinHorizontal(lipgloss.Top, tabs, "  ", right),
 	)
 }
 
-func (a *App) helpView() string {
+func renderHelp(vm HelpVM) string {
 	keys := []struct{ key, desc string }{
 		{"Tab", "switch view"},
 		{"Space", "pause/resume"},
@@ -1232,7 +1190,7 @@ func (a *App) helpView() string {
 		{"q", "quit"},
 	}
 
-	if a.currentView == ViewPlanning {
+	if vm.CurrentView == ViewPlanning {
 		keys = append([]struct{ key, desc string }{
 			{"a", "assign"},
 			{"d", "decompose"},
@@ -1249,6 +1207,38 @@ func (a *App) helpView() string {
 	return MutedStyle.Render(help)
 }
 
+// refreshLesson re-selects the current lesson and marks it as seen.
+// Called from Update handlers when lesson-relevant state changes.
+func (a *App) refreshLesson() {
+	if !a.lessonState.Visible {
+		return
+	}
+	type lessonInputs struct {
+		hasActiveSprint bool
+		triggers        TriggerState
+	}
+	inputs := either.Fold(a.mode,
+		func(eng EngineMode) lessonInputs {
+			sim := eng.Engine.Sim()
+			_, hasActive := sim.CurrentSprintOption.Get()
+			return lessonInputs{
+				hasActiveSprint: hasActive,
+				triggers:        BuildTriggerStateFromEngine(sim, eng.Tracker.Fever.Status, sim.ActiveTickets, sim.CompletedTickets),
+			}
+		},
+		func(_ ClientMode) lessonInputs {
+			return lessonInputs{
+				hasActiveSprint: a.state.SprintActive,
+				triggers:        BuildTriggersFromClientState(a.state),
+			}
+		},
+	)
+	comparison := BuildComparisonSummary(a.comparisonResult)
+	lesson := SelectLesson(a.currentView, a.lessonState, inputs.hasActiveSprint, a.comparisonResult.IsOk(), inputs.triggers, comparison)
+	a.lessonState = a.lessonState.WithSeen(lesson.ID)
+	a.currentLesson = lesson
+}
+
 // Action: records input event, mutates App.uiProjection.
 // Used by key handlers to track user interactions for UI state projection.
 func (a *App) recordInputEvent(evt InputEvent) {
@@ -1258,19 +1248,21 @@ func (a *App) recordInputEvent(evt InputEvent) {
 // Calculation: App → string (selected ticket ID, empty if none).
 // Returns the ticket ID at the current selection index, or empty if out of bounds.
 func (a *App) selectedTicketID() string {
-	if _, isClient := a.mode.Get(); isClient {
-		if a.selected < len(a.state.Backlog) {
-			return a.state.Backlog[a.selected].ID
-		}
-		return ""
-	}
-	// Engine mode
-	eng, _ := a.mode.GetLeft()
-	sim := eng.Engine.Sim()
-	if a.selected < len(sim.Backlog) {
-		return sim.Backlog[a.selected].ID
-	}
-	return ""
+	return either.Fold(a.mode,
+		func(eng EngineMode) string {
+			sim := eng.Engine.Sim()
+			if a.selected < len(sim.Backlog) {
+				return sim.Backlog[a.selected].ID
+			}
+			return ""
+		},
+		func(_ ClientMode) string {
+			if a.selected < len(a.state.Backlog) {
+				return a.state.Backlog[a.selected].ID
+			}
+			return ""
+		},
+	)
 }
 
 // extractLeadTimeHistory extracts lead time values from DORA snapshots.

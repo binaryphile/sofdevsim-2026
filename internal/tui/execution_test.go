@@ -25,8 +25,8 @@ func TestFeverPanel_DisplaysMetrics(t *testing.T) {
 	// Start sprint to activate fever panel
 	send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("s")})
 
-	// Get fever panel output
-	output := stripansi.Strip(app.feverPanel())
+	// Get fever panel output via build + render split
+	output := stripansi.Strip(renderFever(app.buildExecutionVM().Fever))
 
 	// Verify expected elements present
 	checks := []struct {
@@ -55,7 +55,7 @@ func TestFeverPanel_NoSprint(t *testing.T) {
 	m, _ := app.Update(tea.WindowSizeMsg{Width: 100, Height: 35})
 	app = m.(*App)
 
-	output := stripansi.Strip(app.feverPanel())
+	output := stripansi.Strip(renderFever(app.buildExecutionVM().Fever))
 
 	if !strings.Contains(output, "No active sprint") {
 		t.Errorf("expected 'No active sprint' in output:\n%s", output)
@@ -74,7 +74,7 @@ func TestFeverPanel_ZoneEmoji(t *testing.T) {
 	send(tea.WindowSizeMsg{Width: 100, Height: 35})
 	send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("s")}) // Start sprint
 
-	output := app.feverPanel() // Keep ANSI to check emoji
+	output := renderFever(app.buildExecutionVM().Fever) // Keep ANSI to check emoji
 
 	// Should have one of the zone emojis
 	hasZone := strings.Contains(output, "🟢") ||

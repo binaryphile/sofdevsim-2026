@@ -85,6 +85,14 @@ var (
 			Foreground(ColorMuted)
 )
 
+// truncate shortens s to maxLen characters with ".." suffix if needed.
+func truncate(s string, maxLen int) string {
+	if len(s) > maxLen {
+		return s[:maxLen] + ".."
+	}
+	return s
+}
+
 // RenderProgressBar creates a simple progress bar
 func RenderProgressBar(percent float64, width int) string {
 	filled := int(percent * float64(width))

@@ -74,7 +74,7 @@ func TestView_InspectLessons(t *testing.T) {
 		lesson := SelectLesson(view, app.lessonState, true, comparison.HasResult, triggers, comparison)
 
 		// Render the lesson panel
-		panel := stripansi.Strip(app.lessonsPanel(lesson))
+		panel := stripansi.Strip(renderLesson(app.buildLessonVM(lesson)))
 
 		fmt.Printf("\n=== %s ===\n", label)
 		fmt.Printf("Lesson ID: %s\n", lesson.ID)
