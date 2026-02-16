@@ -28718,3 +28718,15 @@ Secondary: stale index in Engine.Tick after emit, Events panel blind to external
 [x] All tests pass (15/15 packages green)
 [x] SprintStarted pause fix (prevents TUI/API tick race)
 [x] Chair/monitor alignment (VS16 on 🗑🖥, trash overlay byte indices)
+2026-02-16T09:00:00Z | Contract: Headless server idle timeout + docs
+[ ] --idle-timeout flag with activity tracking
+[ ] Graceful shutdown on idle + signal handling
+[ ] UC9/UC10 technology variations
+[ ] Design doc deployment modes subsection
+[ ] All tests pass
+2026-02-16T13:20:00Z | Completion: Headless server idle timeout + docs
+[x] --idle-timeout flag with activity tracking (atomic.Int64 activity middleware in serveWithIdleTimeout)
+[x] Graceful shutdown on idle + signal handling (verified: 3s idle → shutdown; SIGTERM → clean exit)
+[x] UC9/UC10 technology variations (UC9 line ~514, UC10 line ~561 in use-cases.md)
+[x] Design doc deployment modes subsection (3-mode table before Hypermedia Logic in design.md)
+[x] All tests pass (15/15 packages green)

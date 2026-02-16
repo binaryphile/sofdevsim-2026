@@ -510,6 +510,10 @@ None (self-contained simulation, no external services)
 - 5b. *Ticket completes:* Event included in response
 - 7a. *Verification fails:* Agent reports test failure (external to system)
 
+**Technology & Data Variations:**
+
+- Deployment: Headless server (`sofdevsim-server [--idle-timeout 60s]`) for CI/automated testing; TUI with embedded server (`sofdevsim`) for interactive use
+
 ---
 
 ### UC10: Shared Simulation via Events
@@ -558,6 +562,8 @@ None (self-contained simulation, no external services)
 
 - API: GET /simulations returns list of active simulation IDs
 - API: GET /simulations/{id} returns full state with HATEOAS links
+- Deployment: TUI auto-discovers running server via GET /health; connects as client if found, starts embedded server otherwise
+- Headless: `sofdevsim-server [--idle-timeout 60s]` — standalone API for CI or remote testing
 
 **Technical Notes:**
 

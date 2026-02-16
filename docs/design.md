@@ -1090,6 +1090,18 @@ This makes deduplication, conflicts, and external updates debuggable (replay str
 
 **Registry role:** The registry holds `SimInstance` for API handler access (lookup by sim ID, office projection for `/office` endpoint). API handlers call `SetInstance` to update the registry copy after mutations — this serves API-to-API request continuity, not TUI/API synchronization. The event stream is the synchronization mechanism.
 
+### Deployment Modes
+
+Three modes share the same SimRegistry + HTTP router:
+
+| Mode | Binary | Startup | Use Case |
+|------|--------|---------|----------|
+| TUI + embedded server | `sofdevsim` | Auto-starts API in goroutine; auto-discovers existing server via `/health` | Interactive exploration, live observation |
+| Headless server | `sofdevsim-server` | API-only, no TUI; `--idle-timeout` for auto-shutdown | CI, automated tests, LLM laboratory |
+| TUI client | `sofdevsim --client` | Connects to running server; TUI is read-only projection | Observe API-driven simulation (UC10) |
+
+The headless server creates an empty registry — simulations are created via `POST /simulations`. With `--idle-timeout`, the server monitors request activity and shuts down gracefully after the specified inactivity period.
+
 ### Hypermedia Logic (Pure, Unit Testable)
 
 **Why HATEOAS, not API Composition (ES Guide §13):** Single-aggregate scope means no cross-instance queries. Each simulation is self-contained; clients discover available actions through hypermedia links, not by composing data from multiple services.
