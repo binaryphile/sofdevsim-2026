@@ -127,7 +127,7 @@ func TestRenderCubicleCompact_LateBubble(t *testing.T) {
 	// Use BecomeFrustrated to get the Late bubble
 	anim := NewDeveloperAnimation("dev-1", 0).BecomeFrustrated()
 
-	cubicle := RenderCubicleCompact(anim, "Mei", 10)
+	cubicle := RenderCubicleCompact(anim, "MsPac", 10)
 	plain := StripANSI(cubicle)
 
 	if !strings.Contains(plain, "Late!") {
@@ -138,7 +138,7 @@ func TestRenderCubicleCompact_LateBubble(t *testing.T) {
 	for i := 0; i < 10; i++ { // justified:IX
 		anim = anim.NextFrame()
 	}
-	cubicle = RenderCubicleCompact(anim, "Mei", 10)
+	cubicle = RenderCubicleCompact(anim, "MsPac", 10)
 	plain = StripANSI(cubicle)
 
 	if strings.Contains(plain, "Late!") {
@@ -152,7 +152,7 @@ func TestRenderConferenceRoom(t *testing.T) {
 		{DevID: "dev-2", State: StateConference, ColorIndex: 1},
 		{DevID: "dev-3", State: StateWorking, ColorIndex: 2}, // not in conference
 	}
-	names := []string{"Mei", "Amir", "Suki"}
+	names := []string{"MsPac", "Qbert", "Samus"}
 
 	room := RenderConferenceRoom(anims, names, 35)
 	plain := StripANSI(room)
@@ -169,7 +169,7 @@ func TestRenderConferenceRoom(t *testing.T) {
 
 func TestRenderOffice_NarrowTerminal(t *testing.T) {
 	state := NewOfficeState([]string{"dev-1"})
-	names := []string{"Mei"}
+	names := []string{"MsPac"}
 
 	result := RenderOffice(state, names, 30, 24)
 	plain := StripANSI(result)
@@ -237,13 +237,13 @@ func TestCubicleFaceVisibility(t *testing.T) {
 		render func(DeveloperAnimation) string
 	}{
 		{"RenderCubicle", func(a DeveloperAnimation) string {
-			return StripANSI(RenderCubicle(a, "Mei", 12))
+			return StripANSI(RenderCubicle(a, "MsPac", 12))
 		}},
 		{"RenderCubicleCompact", func(a DeveloperAnimation) string {
-			return StripANSI(RenderCubicleCompact(a, "Mei", 10))
+			return StripANSI(RenderCubicleCompact(a, "MsPac", 10))
 		}},
 		{"renderCubicleDetailed", func(a DeveloperAnimation) string {
-			return StripANSI(renderCubicleDetailed(a, "Mei", 9, false))
+			return StripANSI(renderCubicleDetailed(a, "MsPac", 9, false))
 		}},
 	}
 
@@ -266,7 +266,7 @@ func TestRenderCubicle_LateBubble(t *testing.T) {
 	// Use BecomeFrustrated to get the Late bubble
 	anim := NewDeveloperAnimation("dev-1", 0).BecomeFrustrated()
 
-	cubicle := RenderCubicle(anim, "Mei", 12)
+	cubicle := RenderCubicle(anim, "MsPac", 12)
 	plain := StripANSI(cubicle)
 
 	if !strings.Contains(plain, "Late!") {
@@ -277,7 +277,7 @@ func TestRenderCubicle_LateBubble(t *testing.T) {
 	for i := 0; i < 10; i++ { // justified:IX
 		anim = anim.NextFrame()
 	}
-	cubicle = RenderCubicle(anim, "Mei", 12)
+	cubicle = RenderCubicle(anim, "MsPac", 12)
 	plain = StripANSI(cubicle)
 
 	if strings.Contains(plain, "Late!") {
@@ -315,28 +315,28 @@ func TestRenderCubicleDetailed(t *testing.T) {
 		{
 			"working dev, door on bottom",
 			DeveloperAnimation{State: StateWorking, ColorIndex: 0},
-			"Mei",
+			"MsPac",
 			false,
-			[]string{"Mei", "🖥", "🗑", "┤"},
+			[]string{"MsPac", "🖥", "🗑", "┤"},
 		},
 		{
 			"working dev, door on top",
 			DeveloperAnimation{State: StateWorking, ColorIndex: 0},
-			"Jay",
+			"Athena",
 			true,
-			[]string{"Jay", "🖥", "🗑", "┤"},
+			[]string{"Athena", "🖥", "🗑", "┤"},
 		},
 		{
 			"in conference, cubicle empty",
 			DeveloperAnimation{State: StateConference, ColorIndex: 0},
-			"Mei",
+			"MsPac",
 			false,
-			[]string{"Mei", "🖥", "🗑", "┤"}, // Structure still present, just no face
+			[]string{"MsPac", "🖥", "🗑", "┤"}, // Structure still present, just no face
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := renderCubicleDetailed(tt.anim, tt.devName, 14, tt.doorOnTop)
+			result := renderCubicleDetailed(tt.anim, tt.devName, 18, tt.doorOnTop)
 			plain := StripANSI(result)
 			for _, want := range tt.wantIn { // justified:AS
 				if !strings.Contains(plain, want) {
@@ -353,7 +353,7 @@ func TestRenderCubicleDetailed_LineOrder(t *testing.T) {
 	t.Run("door on bottom: desk at back wall, face near door", func(t *testing.T) {
 		// ColorIndex=0, doorOnTop=false: trashCorner=0 (TL) → trash on back wall, left
 		// 6 lines: topBorder(0), backWall(1), empty(2), empty(3), face(4), doorBorder(5)
-		result := renderCubicleDetailed(anim, "Mei", 14, false)
+		result := renderCubicleDetailed(anim, "MsPac", 18, false)
 		plain := StripANSI(result)
 		lines := strings.Split(plain, "\n")
 		if !strings.Contains(lines[1], "🗑") || !strings.Contains(lines[1], "🖥") {
@@ -362,7 +362,7 @@ func TestRenderCubicleDetailed_LineOrder(t *testing.T) {
 		if !containsFaceEmoji(lines[4]) {
 			t.Errorf("line 4 should have face\ngot: %q", lines[4])
 		}
-		if !strings.Contains(lines[5], "Mei") {
+		if !strings.Contains(lines[5], "MsPac") {
 			t.Errorf("door border should contain name\ngot: %q", lines[5])
 		}
 		if !strings.Contains(lines[5], "┤") {
@@ -373,10 +373,10 @@ func TestRenderCubicleDetailed_LineOrder(t *testing.T) {
 	t.Run("door on top: face near door, desk at back wall", func(t *testing.T) {
 		// ColorIndex=0, doorOnTop=true: trashCorner=0 (TL) → trash on face line, left
 		// 6 lines: doorBorder(0), face(1), empty(2), empty(3), backWall(4), bottomBorder(5)
-		result := renderCubicleDetailed(anim, "Jay", 14, true)
+		result := renderCubicleDetailed(anim, "Athena", 18, true)
 		plain := StripANSI(result)
 		lines := strings.Split(plain, "\n")
-		if !strings.Contains(lines[0], "Jay") {
+		if !strings.Contains(lines[0], "Athena") {
 			t.Errorf("door border should contain name\ngot: %q", lines[0])
 		}
 		if !strings.Contains(lines[0], "┤") {
@@ -399,7 +399,7 @@ func TestRenderMovingDeveloper(t *testing.T) {
 	state.Animations[0].Progress = 0.5 // halfway
 	// d1 is in conference
 	state = state.SetDeveloperState("d1", StateConference)
-	names := []string{"Mei", "Amir"}
+	names := []string{"MsPac", "Qbert"}
 
 	result := renderOfficeEnhanced(state, names, 80, 12)
 	plain := StripANSI(result)
@@ -410,7 +410,7 @@ func TestRenderMovingDeveloper(t *testing.T) {
 	}
 
 	// d0's cubicle should show name but no face (away)
-	if !strings.Contains(plain, "Mei") {
+	if !strings.Contains(plain, "MsPac") {
 		t.Errorf("Moving dev's cubicle should still show name\ngot:\n%s", plain)
 	}
 
@@ -428,9 +428,9 @@ func TestRenderCubicleGridDetailed(t *testing.T) {
 	// Set some devs to working (in cubicles)
 	state = state.SetDeveloperState("d0", StateWorking)
 	state = state.SetDeveloperState("d1", StateWorking)
-	names := []string{"Mei", "Amir", "Suki", "Jay", "Priya", "Kofi"}
+	names := []string{"MsPac", "Qbert", "Samus", "Athena", "Mappy", "Pengo"}
 
-	result := renderCubicleGridDetailed(state, names, 48)
+	result := renderCubicleGridDetailed(state, names, 54)
 	plain := StripANSI(result)
 
 	// Should have entryway posts (┤ ├) between cubicle rows
@@ -472,14 +472,14 @@ func TestRenderCubicleGridDetailed(t *testing.T) {
 
 func TestRenderCubicleGridDetailed_LateBubble(t *testing.T) {
 	devIDs := []string{"d0", "d1", "d2", "d3", "d4", "d5"}
-	names := []string{"Mei", "Amir", "Suki", "Jay", "Priya", "Kofi"}
+	names := []string{"MsPac", "Qbert", "Samus", "Athena", "Mappy", "Pengo"}
 
 	t.Run("frustrated row-1 dev shows bubble in hallway", func(t *testing.T) {
 		state := NewOfficeState(devIDs)
-		// d3 (Jay) in row 1 becomes frustrated → Late! bubble in hallway
+		// d3 (Athena) in row 1 becomes frustrated → Late! bubble in hallway
 		state = state.SetDeveloperState("d3", StateFrustrated)
 
-		result := renderCubicleGridDetailed(state, names, 48)
+		result := renderCubicleGridDetailed(state, names, 54)
 		plain := StripANSI(result)
 
 		// Check for hallway bubble (full 3-line box), not just inline ╭Late!
@@ -505,7 +505,7 @@ func TestRenderCubicleGridDetailed_LateBubble(t *testing.T) {
 		state := NewOfficeState(devIDs)
 		state = state.SetDeveloperState("d3", StateWorking)
 
-		result := renderCubicleGridDetailed(state, names, 48)
+		result := renderCubicleGridDetailed(state, names, 54)
 		plain := StripANSI(result)
 
 		// Hallway should be present but no Late! bubble
@@ -516,10 +516,10 @@ func TestRenderCubicleGridDetailed_LateBubble(t *testing.T) {
 
 	t.Run("frustrated row-0 dev does not show bubble in hallway", func(t *testing.T) {
 		state := NewOfficeState(devIDs)
-		// d0 (Mei) in row 0 is frustrated — bubble should be inline in cubicle, not hallway
+		// d0 (MsPac) in row 0 is frustrated — bubble should be inline in cubicle, not hallway
 		state = state.SetDeveloperState("d0", StateFrustrated)
 
-		result := renderCubicleGridDetailed(state, names, 48)
+		result := renderCubicleGridDetailed(state, names, 54)
 		plain := StripANSI(result)
 
 		// Find hallway section (between ┴ door borders and ┬ door borders)
@@ -564,14 +564,14 @@ func findHallwaySection(plain string) string {
 func TestRenderCubicleGridDetailed_WalkingDevInHallway(t *testing.T) {
 	now := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
 	devIDs := []string{"d0", "d1", "d2", "d3", "d4", "d5"}
-	names := []string{"Mei", "Amir", "Suki", "Jay", "Priya", "Kofi"}
+	names := []string{"MsPac", "Qbert", "Samus", "Athena", "Mappy", "Pengo"}
 
 	t.Run("walking dev appears in hallway", func(t *testing.T) {
 		state := NewOfficeState(devIDs)
 		target := Position{X: 5, Y: 5}
 		state = state.StartDeveloperMovingToConference("d1", target, now)
 
-		result := renderCubicleGridDetailed(state, names, 48)
+		result := renderCubicleGridDetailed(state, names, 54)
 		plain := StripANSI(result)
 		hallway := findHallwaySection(plain)
 
@@ -601,7 +601,7 @@ func TestRenderCubicleGridDetailed_WalkingDevInHallway(t *testing.T) {
 		state.Animations[3].LateBubbleFrames = 10 // active Late! bubble
 		state = state.StartDeveloperMovingToConference("d1", target, now)
 
-		result := renderCubicleGridDetailed(state, names, 48)
+		result := renderCubicleGridDetailed(state, names, 54)
 		plain := StripANSI(result)
 		hallway := findHallwaySection(plain)
 
@@ -676,7 +676,7 @@ func TestCubicleAccessoryOnDesk(t *testing.T) {
 				ColorIndex: 1,
 				Accessory:  AccessoryCoffee,
 			}
-			result := renderCubicleDetailed(anim, "Amir", 14, false)
+			result := renderCubicleDetailed(anim, "Qbert", 18, false)
 			lines := strings.Split(result, "\n")
 			deskLine := StripANSI(lines[1]) // desk is line 1 (back wall, door on bottom)
 			hasAccessory := strings.Contains(deskLine, "☕")
@@ -723,7 +723,7 @@ func TestTruncateText(t *testing.T) {
 		maxWidth int
 		want     string
 	}{
-		{"short text", "Mei", 10, "Mei"},
+		{"short text", "MsPac", 10, "MsPac"},
 		{"exact width", "Hello", 5, "Hello"},
 		{"needs truncation", "Bartholomew", 8, "Barthol…"},
 		{"unicode", "田中太郎", 6, "田中…"},

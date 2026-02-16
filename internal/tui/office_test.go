@@ -457,7 +457,7 @@ func TestOfficeState_AdvanceFrames(t *testing.T) {
 func TestRenderOffice_MinWidth(t *testing.T) {
 	devIDs := []string{"dev-1"}
 	state := NewOfficeState(devIDs)
-	names := []string{"Mei"}
+	names := []string{"MsPac"}
 
 	output := RenderOffice(state, names, 30, 20) // too narrow (min is 40)
 
@@ -579,8 +579,8 @@ func TestApp_OfficeAnimation_Integration(t *testing.T) {
 	if !containsSubstring(output, "🖥") {
 		t.Error("Planning view should show enhanced office layout")
 	}
-	// Cubicle grid shows all dev names (Mei is first)
-	if !containsSubstring(output, "Mei") {
+	// Cubicle grid shows all dev names (MsPac is first)
+	if !containsSubstring(output, "MsPac") {
 		t.Error("Initial view should show developer names in cubicles")
 	}
 

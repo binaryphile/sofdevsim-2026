@@ -31,12 +31,12 @@ var DeveloperColorNames = []string{
 
 // Default developer names (diverse, inclusive)
 var DefaultDeveloperNames = []string{
-	"Mei",   // East Asian
-	"Amir",  // Middle Eastern
-	"Suki",  // Japanese
-	"Jay",   // Gender-neutral English
-	"Priya", // South Asian
-	"Kofi",  // West African
+	"MsPac",  // Ms. Pac-Man (1982, Midway)
+	"Qbert",  // Q*bert (1982, Gottlieb)
+	"Samus",  // Metroid (1986, Nintendo)
+	"Athena", // Athena (1986, SNK)
+	"Mappy",  // Mappy (1983, Namco)
+	"Pengo",  // Pengo (1982, Sega)
 }
 
 // MutedStyle for error/fallback messages

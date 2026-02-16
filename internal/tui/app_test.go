@@ -131,8 +131,8 @@ func TestNewAppWithRegistry_RegistryHasPopulatedState(t *testing.T) {
 	if len(sim.Backlog) != 12 {
 		t.Errorf("Engine should have 12 tickets, got %d", len(sim.Backlog))
 	}
-	if sim.Developers[0].Name != "Mei" {
-		t.Errorf("First developer should be Mei, got %s", sim.Developers[0].Name)
+	if sim.Developers[0].Name != "MsPac" {
+		t.Errorf("First developer should be MsPac, got %s", sim.Developers[0].Name)
 	}
 
 	// Check Tracker (metrics)
@@ -172,8 +172,8 @@ func TestNewAppWithRegistry_HTTPCanSeeTUISimulation(t *testing.T) {
 	if len(sim.Backlog) != 12 {
 		t.Errorf("HTTP should return 12 tickets, got %d", len(sim.Backlog))
 	}
-	if sim.Developers[0].Name != "Mei" {
-		t.Errorf("First developer should be Mei, got %s", sim.Developers[0].Name)
+	if sim.Developers[0].Name != "MsPac" {
+		t.Errorf("First developer should be MsPac, got %s", sim.Developers[0].Name)
 	}
 }
 
@@ -193,9 +193,9 @@ func TestNewAppWithSeed_ProjectionHasInitialState(t *testing.T) {
 		t.Errorf("Projection should have 12 tickets in backlog, got %d", len(sim.Backlog))
 	}
 
-	// First developer should be Mei (from DefaultDeveloperNames)
-	if sim.Developers[0].Name != "Mei" {
-		t.Errorf("First developer should be Mei, got %s", sim.Developers[0].Name)
+	// First developer should be MsPac (from DefaultDeveloperNames)
+	if sim.Developers[0].Name != "MsPac" {
+		t.Errorf("First developer should be MsPac, got %s", sim.Developers[0].Name)
 	}
 }
 

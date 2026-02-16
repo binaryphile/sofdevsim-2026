@@ -169,13 +169,13 @@ func NewAppWithRegistry(seed int64, reg *registry.SimRegistry) *App {
 	}))
 
 	// Add default team via engine (emits DeveloperAdded events)
-	// Names from DefaultDeveloperNames: diverse, inclusive
-	eng = must.Get(eng.AddDeveloper("dev-1", "Mei", 1.0))
-	eng = must.Get(eng.AddDeveloper("dev-2", "Amir", 0.8))
-	eng = must.Get(eng.AddDeveloper("dev-3", "Suki", 1.2))
-	eng = must.Get(eng.AddDeveloper("dev-4", "Jay", 1.0))
-	eng = must.Get(eng.AddDeveloper("dev-5", "Priya", 0.9))
-	eng = must.Get(eng.AddDeveloper("dev-6", "Kofi", 1.1))
+	// Names from DefaultDeveloperNames: classic '80s game characters
+	eng = must.Get(eng.AddDeveloper("dev-1", "MsPac", 1.0))
+	eng = must.Get(eng.AddDeveloper("dev-2", "Qbert", 0.8))
+	eng = must.Get(eng.AddDeveloper("dev-3", "Samus", 1.2))
+	eng = must.Get(eng.AddDeveloper("dev-4", "Athena", 1.0))
+	eng = must.Get(eng.AddDeveloper("dev-5", "Mappy", 0.9))
+	eng = must.Get(eng.AddDeveloper("dev-6", "Pengo", 1.1))
 
 	// Generate initial backlog via engine (emits TicketCreated events)
 	gen := engine.Scenarios["healthy"]
@@ -438,7 +438,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Opening animation: stagger devs walking from cubicles to conference
 		if a.openingAnimation {
 			a.openingStaggerTicks++
-			if a.openingNextDevIdx == 0 || a.openingStaggerTicks >= 3 {
+			if a.openingNextDevIdx == 0 || a.openingStaggerTicks >= 6 {
 				if a.openingNextDevIdx < devCount {
 					anims := a.officeProjection.State().Animations
 					devID := anims[a.openingNextDevIdx].DevID
@@ -925,12 +925,12 @@ func (a *App) createSimulationEngine(policy model.SizingPolicy, seed int64) engi
 	}))
 
 	// Same team (6 developers)
-	eng = must.Get(eng.AddDeveloper("dev-1", "Mei", 1.0))
-	eng = must.Get(eng.AddDeveloper("dev-2", "Amir", 0.8))
-	eng = must.Get(eng.AddDeveloper("dev-3", "Suki", 1.2))
-	eng = must.Get(eng.AddDeveloper("dev-4", "Jay", 1.0))
-	eng = must.Get(eng.AddDeveloper("dev-5", "Priya", 0.9))
-	eng = must.Get(eng.AddDeveloper("dev-6", "Kofi", 1.1))
+	eng = must.Get(eng.AddDeveloper("dev-1", "MsPac", 1.0))
+	eng = must.Get(eng.AddDeveloper("dev-2", "Qbert", 0.8))
+	eng = must.Get(eng.AddDeveloper("dev-3", "Samus", 1.2))
+	eng = must.Get(eng.AddDeveloper("dev-4", "Athena", 1.0))
+	eng = must.Get(eng.AddDeveloper("dev-5", "Mappy", 0.9))
+	eng = must.Get(eng.AddDeveloper("dev-6", "Pengo", 1.1))
 
 	// Same backlog (using same seed)
 	gen := engine.Scenarios["mixed"] // Use mixed for more interesting comparison
