@@ -32,3 +32,6 @@ result-*
 # Build
 /bin/
 /dist/
+
+# Exports
+/exports/
