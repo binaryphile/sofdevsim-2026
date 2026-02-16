@@ -301,14 +301,18 @@ func renderConferenceRoomDetailed(anims []DeveloperAnimation, width int) string 
 	// Filter to devs in conference
 	conferenceDevs := slice.From(anims).KeepIf(DeveloperAnimation.IsInConference)
 
-	// Render dev icons with colors
+	// Render dev icons with colors, padded to fixed seat width.
+	// Icons vary: 🪑 (width 2) vs 🙂☕ (width 4). Fixed width prevents
+	// accessory holders from pushing chairs rightward when they sit down.
+	const seatWidth = 4
 	renderIcon := func(idx int) string {
 		if idx >= len(conferenceDevs) {
-			return "🪑" // empty chair
+			return padRight("🪑", seatWidth)
 		}
 		a := conferenceDevs[idx]
 		color := developerColor(a.ColorIndex)
-		return lipgloss.NewStyle().Foreground(color).Render(RenderDeveloperIcon(a))
+		icon := lipgloss.NewStyle().Foreground(color).Render(RenderDeveloperIcon(a))
+		return padRight(icon, seatWidth)
 	}
 
 	// Build lines

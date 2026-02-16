@@ -28699,3 +28699,8 @@ Secondary: stale index in Engine.Tick after emit, Events panel blind to external
 [x] Walking devs visible in hallway
 [x] Input blocked during animation
 [x] Tests pass
+2026-02-16T06:00:00Z | Completion: Office layout consistency (retroactive)
+[x] Planning view renders enhanced office layout (919cbd9)
+[x] Office layout identical between views (919cbd9)
+[x] computeOfficeWidth removed/simplified (919cbd9)
+[x] Tests pass (all green)
