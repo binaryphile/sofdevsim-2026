@@ -28748,3 +28748,8 @@ Secondary: stale index in Engine.Tick after emit, Events panel blind to external
 [x] execution_test.go migrated to new signatures
 [x] All existing tests pass (go test ./... — 15/15 ok)
 [x] go build ./... succeeds
+2026-02-16T18:00:00Z | Completion: UC25/26 Phase 2 — closed without implementation
+[x] UC25 capability delivered in Phase 1 (pure render functions testable via ViewModel construction)
+[x] UC26 capability delivered via existing integration tests (TestApp_FullSessionWalkthrough et al.)
+[x] Khorikov analysis: render functions are Trivial (don't test), App is Controller (integration tests exist)
+[x] No additional test suites needed
