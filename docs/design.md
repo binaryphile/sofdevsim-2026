@@ -2557,7 +2557,7 @@ On TUI startup, developers start in cubicles (StateIdle) and walk to the confere
 
 #### API Endpoint: /office
 
-The `/simulations/{id}/office` endpoint exposes office animation state for Claude vision capabilities.
+The `/simulations/{id}/office` endpoint exposes structured office animation state for programmatic assertions.
 
 **Endpoint:** `GET /simulations/{id}/office`
 
@@ -2565,19 +2565,15 @@ The `/simulations/{id}/office` endpoint exposes office animation state for Claud
 
 ```json
 {
-  "renderedOutput": "┌─────────────────────────────────┐\n│         CONFERENCE ROOM         │\n...",
-  "renderedPlain": "┌─────────────────────────────────┐\n│         CONFERENCE ROOM         │\n...",
   "developers": [
     {"devId": "dev-1", "devName": "MsPac", "state": "working", "colorName": "blue", "ticketId": "TKT-001"},
     {"devId": "dev-2", "devName": "Qbert", "state": "conference", "colorName": "orange"}
   ],
-  "transitions": [
+  "recentTransitions": [
     {"devId": "dev-1", "fromState": "conference", "toState": "moving", "tick": 0, "timestamp": "2026-02-12T10:00:00Z", "reason": "assigned to TKT-001"},
     {"devId": "dev-1", "fromState": "moving", "toState": "working", "tick": 0, "timestamp": "2026-02-12T10:00:00Z"}
   ],
   "currentTick": 5,
-  "width": 80,
-  "height": 24,
   "_links": {
     "self": "/simulations/sim-42/office",
     "simulation": "/simulations/sim-42"
@@ -2606,74 +2602,26 @@ API handlers use `deriveOfficeEvents()` (handlers.go) to compare old/new simulat
 | `DevEnteredConference` | Yes |
 | `AnimationFrameAdvanced` | No (visual-only) |
 
-#### Terminal Dimension Sync
+#### TUI Visual Verification
 
-When TUI and API share a registry, the API renders at the TUI's office panel dimensions so Claude sees the same layout the operator sees (see UC37). Without a connected TUI, the API defaults to 80×24.
+Office visualization is verified through two complementary strategies:
 
-```mermaid
-flowchart LR
-    A["TUI WindowSizeMsg"] --> B["compute officeWidth"]
-    B --> C["Registry.UpdateOfficeSize(w, h)"]
-    C --> D["HandleGetOffice"]
-    D --> E["Registry.OfficeSize()"]
-    E --> F["RenderOffice(w, h)"]
-```
+| Strategy | What it verifies | Tool |
+|----------|-----------------|------|
+| **Structured API** (`/office`) | Developer states, transitions, tick progression | `sprint_walkthrough_test.go` |
+| **tmux smoke test** | Visual layout, view navigation, sprint lifecycle, keyboard input | `bin/tui-smoke-test.sh` |
 
-**Storage.** Office dimensions are global on `SimRegistry`, not per-simulation on `SimInstance`. Only one TUI connects at a time; per-simulation storage would require the API to know which simulation the TUI is viewing.
+The API endpoint provides semantic data (developer X is in state Y with ticket Z) for
+programmatic assertions that don't depend on rendering. The tmux test drives the actual
+binary end-to-end, verifying what the operator sees — layout, animation, view switching,
+and interactive controls.
 
-**Office panel width, not terminal width.** The TUI passes different widths to `RenderOffice` depending on the active view:
-
-- **Planning view** (`planning.go`): `officeWidth := a.width * 40 / 100` (40% of terminal, min 40). Office is side-by-side with the backlog panel.
-- **Execution view** (`execution.go`): `a.width` (full terminal width). Office is below the sprint/fever/events panels in a vertical stack.
-
-The API renders at the *office panel width* the TUI is currently using, not the raw terminal width. This ensures the width>=80 threshold in `RenderOffice` selects the same layout path for both consumers.
-
-| Office Width | `RenderOffice` Path | Layout |
-|--------------|---------------------|--------|
-| >= 80 | `renderOfficeEnhanced` | Side-by-side: conference left, cubicles right, outer frame |
-| 40-79 | `renderOfficeSimple` | Vertical: conference top, cubicles below |
-| < 40 | fallback | "Terminal too narrow" message |
-
-**TUI tick rates.** The TUI runs two independent tick loops:
-
-- **Simulation tick** at 2Hz (500ms `tickInterval`): advances game state — developer movements, task progress, sprint events. Each tick calls `syncOfficeToRegistry()`.
-- **Animation tick** at 10Hz (100ms): interpolates smooth developer movement between simulation positions. Movement animations last 500ms (one simulation tick), so 10Hz provides ~5 intermediate frames per movement for visual smoothness.
-
-The API renders live on each request: `HandleGetOffice` calls `RenderOffice` with the cached animation state (synced via `UpdateOffice` on each simulation tick) and the stored office dimensions. Between simulation ticks, the cached animation state reflects the last tick — animation interpolation is TUI-only and not visible to the API.
-
-**Sync frequency.** Dimensions are synced at the same call sites listed below (state-changing events, terminal resize, view switch) — not on animation frames. Stale dimensions during a view transition are acceptable; the API picks up the new value on the next simulation tick (≤500ms).
-
-```go
-// UpdateOfficeSize stores the office panel dimensions the TUI is currently rendering at.
-// Called by TUI on state-changing events with the width/height passed to RenderOffice.
-func (r *SimRegistry) UpdateOfficeSize(width, height int)
-
-// OfficeSize returns stored office panel dimensions, or 80×24 if no TUI has connected.
-func (r *SimRegistry) OfficeSize() (width, height int)
-```
-
-**TUI call sites:**
-
-| Call Site | Trigger | Notes |
-|-----------|---------|-------|
-| `syncOfficeToRegistry()` | State-changing events | Called *before* `UpdateOffice` for consistent width+content |
-| `WindowSizeMsg` handler | Terminal resize | Computes office width from current view |
-| `Tab` key handler | View switch | `currentView` updates before sync, so width reflects new view |
-
-Guard: only called when registry is non-nil (same pattern as `UpdateOffice`). Registry is nil in standalone TUI mode.
-
-**Thread safety:**
-
-| Method | Lock | Pattern |
-|--------|------|---------|
-| `UpdateOfficeSize` | `mu.Lock()` | Write: TUI state-changing events |
-| `OfficeSize` | `mu.RLock()` | Read: API `/office` request |
-
-**Height.** `height` is threaded through `RenderOffice` signatures but currently unused by any rendering path. Syncing it costs nothing and future-proofs the API for when height-dependent rendering is added.
-
-**TUI disconnect.** If the TUI exits while the API server continues, stored dimensions remain at their last-synced values. The 80×24 fallback applies only when no TUI has ever connected (zero values). A stale dimension from a disconnected TUI reflects the operator's last known terminal size, which is more useful than reverting to defaults.
-
-**Testability.** `OfficeSize()` is a pure read with default fallback — unit test verifies zero returns 80×24, non-zero returns stored values. Integration tested via existing `api_test.go` patterns.
+**tmux test patterns** (`bin/tui-smoke-test.sh`):
+- **Animation detection**: Poll-send Tab until view changes, then undo
+- **Content assertions**: `wait_for` polls pane text for expected strings (200ms intervals)
+- **View identification**: Unique markers — "Backlog (" (Planning), "Active Work" (Execution),
+  "DORA Metrics" (Metrics), "Policy Comparison" (Comparison)
+- **Launch**: Binary runs directly as tmux command (bypasses shell startup/file managers)
 
 #### Debug View (Future)
 

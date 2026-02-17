@@ -747,8 +747,7 @@ func findActiveTicket(tickets []model.Ticket, id string) option.Basic[model.Tick
 	return slice.From(tickets).Find(hasID)
 }
 
-// HandleGetOffice returns the office animation state for Claude vision.
-// Includes both rendered output and structured data.
+// HandleGetOffice returns the office animation state for programmatic assertions.
 func (r SimRegistry) HandleGetOffice(w http.ResponseWriter, req *http.Request) {
 	id := req.PathValue("id")
 
@@ -761,15 +760,8 @@ func (r SimRegistry) HandleGetOffice(w http.ResponseWriter, req *http.Request) {
 	sim := inst.Engine.Sim()
 	state := inst.Office.State()
 
-	// Use TUI-synced dimensions (defaults to 80×24 when no TUI connected)
-	width, height := r.OfficeSize()
-
 	// Get developer names
 	names := slice.From(sim.Developers).ToString(model.Developer.GetName)
-
-	// Render office view
-	rendered := office.RenderOffice(state, names, width, height)
-	plain := office.StripANSI(rendered)
 
 	// Build developer animation states
 	devStates := make([]DeveloperAnimationState, 0, len(state.Animations))
@@ -816,13 +808,9 @@ func (r SimRegistry) HandleGetOffice(w http.ResponseWriter, req *http.Request) {
 	}
 
 	response := OfficeResponse{
-		RenderedOutput: rendered,
-		RenderedPlain:  plain,
-		Developers:     devStates,
-		Transitions:    recentTransitions,
-		Width:          width,
-		Height:         height,
-		CurrentTick:    inst.Office.CurrentTick(),
+		Developers:  devStates,
+		Transitions: recentTransitions,
+		CurrentTick: inst.Office.CurrentTick(),
 		Links: map[string]string{
 			"self":       "/simulations/" + id + "/office",
 			"simulation": "/simulations/" + id,

@@ -28753,3 +28753,24 @@ Secondary: stale index in Engine.Tick after emit, Events panel blind to external
 [x] UC26 capability delivered via existing integration tests (TestApp_FullSessionWalkthrough et al.)
 [x] Khorikov analysis: render functions are Trivial (don't test), App is Controller (integration tests exist)
 [x] No additional test suites needed
+2026-02-16T21:00:00Z | Contract: Remove rendered text + dimension sync from /office
+[ ] RenderedOutput/RenderedPlain/Width/Height removed from OfficeResponse
+[ ] RenderOffice/StripANSI/OfficeSize calls removed from handler
+[ ] UpdateOfficeSize/OfficeSize methods + fields removed from registry
+[ ] UpdateOfficeSize call removed from syncOfficeToRegistry
+[ ] 6 dimension sync tests removed (2 registry, 4 app)
+[ ] UC35 updated (remove rendered language, remove UC37 ref)
+[ ] UC37 removed entirely
+[ ] design.md: dimension sync section removed, rendered fields removed, tmux section added
+[ ] go build ./... succeeds
+[ ] go test ./... passes
+2026-02-16T21:35:00Z | Completion: Remove rendered text + dimension sync from /office
+[x] RenderedOutput/RenderedPlain/Width/Height removed from OfficeResponse (resources.go struct)
+[x] RenderOffice/StripANSI/OfficeSize calls removed from handler (handlers.go:750)
+[x] UpdateOfficeSize/OfficeSize methods + fields removed from registry (registry.go)
+[x] UpdateOfficeSize call removed from syncOfficeToRegistry (app.go:1339)
+[x] 7 dimension sync tests removed (2 registry, 4 app, 1 api)
+[x] UC35 updated, UC37 removed (use-cases.md)
+[x] design.md updated + tmux section added (design.md)
+[x] go build ./... succeeds
+[x] go test ./... passes (15 packages)

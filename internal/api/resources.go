@@ -295,22 +295,10 @@ type StateTransitionResponse struct {
 }
 
 // OfficeResponse is returned by GET /simulations/{id}/office.
-// Provides both rendered output and structured data for Claude vision.
+// Provides structured animation data for programmatic assertions.
 type OfficeResponse struct {
-	// Rendered output (what TUI displays)
-	RenderedOutput string `json:"renderedOutput"`
-	RenderedPlain  string `json:"renderedPlain"` // ANSI stripped
-
-	// Structured data for semantic understanding
 	Developers  []DeveloperAnimationState `json:"developers"`
 	Transitions []StateTransitionResponse `json:"recentTransitions"`
-
-	// Layout info
-	Width  int `json:"width"`
-	Height int `json:"height"`
-
-	// Current state
-	CurrentTick int `json:"currentTick"`
-
-	Links map[string]string `json:"_links"`
+	CurrentTick int                       `json:"currentTick"`
+	Links       map[string]string         `json:"_links"`
 }

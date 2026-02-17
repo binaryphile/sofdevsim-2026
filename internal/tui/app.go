@@ -1336,7 +1336,6 @@ func (a *App) syncOfficeToRegistry() {
 	if !isEngine || eng.Registry == nil {
 		return // Client mode or no registry
 	}
-	eng.Registry.UpdateOfficeSize(a.width, a.height)
 	simID := fmt.Sprintf("sim-%d", eng.Engine.Sim().Seed)
 	eng.Registry.UpdateOffice(simID, a.officeProjection)
 }

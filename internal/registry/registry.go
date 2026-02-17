@@ -24,9 +24,7 @@ var ErrAlreadyExists = errors.New("already exists")
 type SimRegistry struct {
 	mu          sync.RWMutex
 	instances   map[string]SimInstance
-	store       events.Store // shared event store for all simulations
-	officeWidth int          // synced from TUI; 0 = use default
-	officeHeight int         // synced from TUI; 0 = use default
+	store events.Store // shared event store for all simulations
 }
 
 // NewSimRegistry creates an empty registry with an in-memory event store.
@@ -166,29 +164,6 @@ func (r *SimRegistry) UpdateOffice(simID string, proj office.OfficeProjection) {
 		inst.Office = proj
 		r.instances[simID] = inst
 	}
-}
-
-// UpdateOfficeSize stores the office rendering dimensions from TUI.
-func (r *SimRegistry) UpdateOfficeSize(width, height int) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.officeWidth = width
-	r.officeHeight = height
-}
-
-// OfficeSize returns the office rendering dimensions.
-// Returns 80×24 when no TUI has connected (zero values).
-func (r *SimRegistry) OfficeSize() (width, height int) {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	w, h := r.officeWidth, r.officeHeight
-	if w == 0 {
-		w = 80
-	}
-	if h == 0 {
-		h = 24
-	}
-	return w, h
 }
 
 // ListSimulations returns all active simulation IDs and their states.

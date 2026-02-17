@@ -761,26 +761,3 @@ func TestAPI_DecomposeEdgeCases(t *testing.T) {
 	})
 }
 
-func TestHandleGetOffice_DefaultDimensionsWithoutTUI(t *testing.T) {
-	reg := api.NewSimRegistry()
-	id, err := reg.CreateSimulation(42, 1) // 1 = PolicyDORAStrict
-	if err != nil {
-		t.Fatalf("CreateSimulation: %v", err)
-	}
-	srv := httptest.NewServer(api.NewRouter(reg))
-	defer srv.Close()
-
-	resp, err := http.Get(srv.URL + "/simulations/" + id + "/office")
-	if err != nil {
-		t.Fatalf("GET /office failed: %v", err)
-	}
-	defer resp.Body.Close()
-	var office struct {
-		Width  int `json:"width"`
-		Height int `json:"height"`
-	}
-	json.NewDecoder(resp.Body).Decode(&office)
-	if office.Width != 80 || office.Height != 24 {
-		t.Errorf("Default dimensions = (%d, %d), want (80, 24)", office.Width, office.Height)
-	}
-}

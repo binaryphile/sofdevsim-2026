@@ -1428,7 +1428,7 @@ This use case requires event sourcing architecture:
 
 **Postconditions (Guarantees):**
 
-- *Success:* Agent receives office state including rendered visualization and structured animation data
+- *Success:* Agent receives office state including structured animation data
 - *Failure:* Simulation not found
 
 **Trigger:** Agent requests office animation state
@@ -1436,15 +1436,14 @@ This use case requires event sourcing architecture:
 **Main Success Scenario:**
 
 1. Agent requests office visualization for a simulation
-2. System renders office and collects animation state
-3. System returns rendered output, developer states, and recent transitions
+2. System collects animation state
+3. System returns developer states and recent transitions
 4. Agent inspects developer states and animation data
 
 **Extensions:**
 
 - 1a. *Simulation not found:* System reports not found
 - 2a. *No office events recorded:* System returns initial state (all developers idle, no transitions)
-- 2b. *TUI connected:* System renders at operator's terminal dimensions (UC37)
 - 4a. *State mismatch detected:* Agent reports bug with specific discrepancy
 
 ---
@@ -1483,56 +1482,6 @@ This use case requires event sourcing architecture:
 
 - 3a. *Transition lacks explanation:* Agent notes which transitions are unexplained
 - 5a. *Timing bug found:* Agent reports discrepancy with tick evidence
-
----
-
-### UC37: See Same Office Rendering as TUI User
-
-**Primary Actor:** Automated Test Agent (Claude or script)
-
-**Goal in Context:** Retrieve office visualization rendered at the TUI user's actual terminal dimensions, so agent sees exactly what the operator sees. (See Story 7: The Collaborative Session)
-
-**Scope:** Software Development Simulation
-
-**Level:** User Goal (Blue)
-
-**Stakeholders and Interests:**
-
-- *Automated Agent:* Wants to discuss what the operator sees, not a different rendering
-- *Operator:* Wants Claude to debug what's actually on their screen
-
-**Preconditions:**
-
-- Simulation is active
-- TUI is displaying the simulation
-
-**Postconditions (Guarantees):**
-
-- *Success:* Agent receives office rendering at operator's terminal dimensions; layout matches what operator sees
-- *Failure (no TUI):* Agent receives office rendering at reasonable default dimensions
-
-**Minimal Guarantee:**
-
-- Office animation state is never corrupted by dimension retrieval
-- Agent always receives a valid rendering regardless of TUI availability
-
-**Trigger:** Agent requests office visualization
-
-**Main Success Scenario:**
-
-1. Agent requests office visualization
-2. System renders office at operator's terminal dimensions
-3. Agent receives rendering that matches operator's layout
-
-**Extensions:**
-
-- 1a. *No TUI connected:* System uses default dimensions; rendering reflects standard layout
-- 1b. *Operator resizes terminal:* Next request reflects new dimensions
-- 1c. *Operator's terminal is narrow (<80):* System renders simple layout, matching what operator sees
-
-**Technology & Data Variations:**
-
-- API: GET /simulations/{id}/office — rendering dimensions sourced from connected TUI when available
 
 ---
 
