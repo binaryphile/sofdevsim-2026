@@ -466,8 +466,11 @@ func (a *App) buildComparisonVM() ComparisonVM {
 		overallWinner = fmt.Sprintf("TIE (%d-%d)", result.WinsA, result.WinsB)
 	} else {
 		winner := result.OverallWinner.String()
-		margin := result.WinMargin()
-		overallWinner = fmt.Sprintf("%s (%d-%d)", winner, result.WinsA+margin, result.WinsA)
+		winsW, winsL := result.WinsA, result.WinsB
+		if result.OverallWinner == result.PolicyB {
+			winsW, winsL = result.WinsB, result.WinsA
+		}
+		overallWinner = fmt.Sprintf("%s (%d-%d)", winner, winsW, winsL)
 	}
 
 	var insight string
