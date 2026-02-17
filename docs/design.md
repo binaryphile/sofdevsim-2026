@@ -2602,26 +2602,15 @@ API handlers use `deriveOfficeEvents()` (handlers.go) to compare old/new simulat
 | `DevEnteredConference` | Yes |
 | `AnimationFrameAdvanced` | No (visual-only) |
 
-#### TUI Visual Verification
+#### TUI Testing Strategy
 
-Office visualization is verified through two complementary strategies:
+The TUI is a projection (Q1 domain logic), not Q4 UI. Bubble Tea's `Update()` is a pure
+function (msg → model+cmd), so all behavior — view navigation, keyboard input, sprint
+lifecycle — is tested as domain logic via Go unit tests on `app.Update()` and `app.View()`.
 
-| Strategy | What it verifies | Tool |
-|----------|-----------------|------|
-| **Structured API** (`/office`) | Developer states, transitions, tick progression | `sprint_walkthrough_test.go` |
-| **tmux smoke test** | Visual layout, view navigation, sprint lifecycle, keyboard input | `bin/tui-smoke-test.sh` |
-
-The API endpoint provides semantic data (developer X is in state Y with ticket Z) for
-programmatic assertions that don't depend on rendering. The tmux test drives the actual
-binary end-to-end, verifying what the operator sees — layout, animation, view switching,
-and interactive controls.
-
-**tmux test patterns** (`bin/tui-smoke-test.sh`):
-- **Animation detection**: Poll-send Tab until view changes, then undo
-- **Content assertions**: `wait_for` polls pane text for expected strings (200ms intervals)
-- **View identification**: Unique markers — "Backlog (" (Planning), "Active Work" (Execution),
-  "DORA Metrics" (Metrics), "Policy Comparison" (Comparison)
-- **Launch**: Binary runs directly as tmux command (bypasses shell startup/file managers)
+The tmux smoke test (`bin/tui-smoke-test.sh`) verifies only that the binary launches and
+the Bubble Tea runtime correctly wires key delivery and rendering — framework glue, not
+application logic.
 
 #### Debug View (Future)
 

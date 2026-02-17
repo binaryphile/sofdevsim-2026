@@ -10,7 +10,7 @@ This document describes the testing approach for sofdevsim-2026, following Khori
 |-------|-------|------------|-------|
 | **Unit** | Pure calculations, domain logic | Many | Fast (<1ms) |
 | **Integration** | API endpoints, database, HTTP | Few | Medium (<100ms) |
-| **Manual** | TUI interactions, visual verification | Rare | Slow |
+| **Smoke** | Binary launches and renders | 1 | Fast (~10s) |
 
 ## Khorikov Quadrant Classification
 
@@ -164,150 +164,16 @@ go test -v -run "TestView_PlanningInitial" ./internal/tui/... -update
 
 Golden files are stored in `testdata/` and capture exact terminal output for baseline comparison.
 
-### TUI Manual Testing (Visual Verification)
-
-For visual/rendering issues not covered by UIProjection:
-
+### Smoke Test
 ```bash
-# Local engine mode (default)
-go run ./cmd/sofdevsim
-
-# Client mode (requires server running)
-go run ./cmd/sofdevsim -client
-
-# With specific seed (reproducible)
-go run ./cmd/sofdevsim -seed 42
+go build -o /tmp/sofdevsim ./cmd/sofdevsim/
+bin/tui-smoke-test.sh [seed]
 ```
 
-**Walkthrough Script (Engine Mode):**
-
-```
-1. START
-   $ go run ./cmd/sofdevsim -seed 42
-   ✓ Planning view shows backlog with 12 tickets
-   ✓ 3 developers listed (Alice, Bob, Carol)
-   ✓ Status bar shows key hints
-
-2. NAVIGATION
-   Press: Tab → Tab → Tab → Tab
-   ✓ Cycles through: Planning → Execution → Metrics → Comparison → Planning
-
-   Press: j j j k k
-   ✓ Selection moves down 3, up 2 (highlights different ticket)
-
-3. LESSONS PANEL
-   Press: h
-   ✓ Lesson panel appears on right (Orientation lesson)
-   Press: h
-   ✓ Lesson panel hides
-
-4. ASSIGNMENT
-   Press: j (select second ticket)
-   Press: a
-   ✓ Ticket assigned to first idle developer
-   ✓ Developer shows as busy
-
-   Press: a (try again with no idle dev after assigning all 3)
-   ✓ Error shown: "no idle developer"
-
-5. START SPRINT
-   Press: s
-   ✓ View switches to Execution
-   ✓ Sprint timer starts, buffer shows
-   ✓ Tickets show progress
-
-   Press: s (try to start again)
-   ✓ Error shown: "sprint already active"
-
-6. EXECUTION CONTROLS
-   Press: Space
-   ✓ Simulation pauses
-   Press: Space
-   ✓ Simulation resumes
-
-   Press: + + + (3 times)
-   ✓ Speed increases (tick interval decreases)
-   Press: - -
-   ✓ Speed decreases
-
-7. WAIT FOR SPRINT END
-   (let it run or hold Space to pause/unpause through ticks)
-   ✓ Sprint ends after 10 days
-   ✓ Status shows "Sprint complete"
-   ✓ Auto-pauses
-
-8. METRICS VIEW
-   Press: Tab (to Metrics)
-   ✓ DORA metrics displayed
-   ✓ Fever chart shows buffer consumption
-
-9. COMPARISON MODE
-   Press: Tab (to Comparison)
-   Press: c
-   ✓ Runs DORA vs TameFlow comparison
-   ✓ Results show winner and metrics
-
-10. SAVE/LOAD (Engine mode only)
-    Press: Ctrl+s
-    ✓ Status shows "Saved to saves/..."
-
-    Press: Ctrl+o
-    ✓ Status shows "Loaded..."
-    ✓ State restored
-
-11. EXPORT
-    Press: e
-    ✓ Status shows export path
-    ✓ HTML file created in exports/
-
-12. QUIT
-    Press: q
-    ✓ Clean exit
-```
-
-**Walkthrough Script (Client Mode):**
-
-```
-# Terminal 1: Start server
-$ go run ./cmd/sofdevsim-server
-
-# Terminal 2: Start TUI client
-$ go run ./cmd/sofdevsim -client -seed 42
-
-1. VERIFY CLIENT MODE
-   ✓ Status bar shows "Client mode"
-   ✓ Planning view loads from server
-
-2. SPRINT START
-   Press: s
-   ✓ HTTP request sent, view switches to Execution
-
-3. TICK (manual in client mode)
-   Press: Space
-   ✓ Single tick sent to server
-   ✓ State updates from response
-
-   Press: Space Space Space (rapid)
-   ✓ Only one request at a time (in-flight blocking)
-
-4. ASSIGNMENT
-   Press: Tab (back to Planning if between sprints)
-   Press: j, then a
-   ✓ HTTP assign request sent
-   ✓ State updates on success
-
-5. ERROR HANDLING
-   (Try invalid operation)
-   ✓ Error message appears from HTTP response
-   ✓ Error clears on next successful action or navigation
-```
-
-**Quick Smoke Test (30 seconds):**
-```bash
-go run ./cmd/sofdevsim -seed 42
-# Press: h s (show lessons, start sprint)
-# Watch buffer, press q when satisfied
-```
+The tmux smoke test verifies the binary launches and renders. It does NOT test
+application behavior — all TUI behavior is tested as domain logic via Go unit
+tests on `app.Update()` and `app.View()`. The smoke test only confirms the
+Bubble Tea runtime correctly wires key delivery and rendering.
 
 ### Expected Error Responses
 
@@ -329,9 +195,14 @@ The TUI App is a **Controller** (low complexity, many collaborators). Per Khorik
 App (Bubble Tea Model) ← Controller: ONE integration test per workflow
 ├── State (SimulationState)
 ├── UIProjection (event-sourced UI state) ← Domain: unit test the projection logic
-├── Update(msg) → App, Cmd
-└── View() → string (with ANSI codes)
+├── Update(msg) → App, Cmd          ← pure function (no terminal needed)
+└── View() → string (with ANSI codes) ← observable behavior = returned string
 ```
+
+**Why Go tests, not tmux:** `Update()` is a pure function (msg → model+cmd).
+`View()` returns a string. Both are observable behavior testable without a
+terminal. tmux would test Bubble Tea's runtime (framework glue), not our code.
+The smoke test (`bin/tui-smoke-test.sh`) covers that.
 
 ### Workflow Tests (Integration)
 
