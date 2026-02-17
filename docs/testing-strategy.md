@@ -10,6 +10,7 @@ This document describes the testing approach for sofdevsim-2026, following Khori
 |-------|-------|------------|-------|
 | **Unit** | Pure calculations, domain logic | Many | Fast (<1ms) |
 | **Integration** | API endpoints, database, HTTP | Few | Medium (<100ms) |
+| **Integration (tmux)** | Full session walkthrough via binary | 1 | Medium (~30s) |
 | **Smoke** | Binary launches and renders | 1 | Fast (~10s) |
 
 ## Khorikov Quadrant Classification
@@ -174,6 +175,16 @@ The tmux smoke test verifies the binary launches and renders. It does NOT test
 application behavior — all TUI behavior is tested as domain logic via Go unit
 tests on `app.Update()` and `app.View()`. The smoke test only confirms the
 Bubble Tea runtime correctly wires key delivery and rendering.
+
+### Integration Test (tmux)
+```bash
+go build -o /tmp/sofdevsim ./cmd/sofdevsim/
+bin/tui-integration-test.sh [seed]
+```
+
+The tmux integration test exercises the full happy path through the actual binary:
+planning, navigation, assignment, sprint execution, metrics, comparison, and lessons.
+It complements the smoke test (launch verification) and Go unit tests (domain logic).
 
 ### Expected Error Responses
 

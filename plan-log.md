@@ -28774,3 +28774,13 @@ Secondary: stale index in Engine.Tick after emit, Events panel blind to external
 [x] design.md updated + tmux section added (design.md)
 [x] go build ./... succeeds
 [x] go test ./... passes (15 packages)
+2026-02-17T03:55:20Z | Contract: TUI integration test via tmux
+[ ] Script exercises 8 sections: planning, navigation, assignment, sprint, completion, metrics, comparison, lessons
+[ ] All assertions pass with seed 42
+[ ] Total runtime under 40 seconds
+[ ] testing-strategy.md updated with integration test reference
+2026-02-17T04:18:06Z | Completion: TUI integration test via tmux
+[x] Script exercises 8 sections (evidence: script has sections 01-08)
+[x] All assertions pass with seed 42 (evidence: 30/30 passed)
+[x] Total runtime under 40 seconds (evidence: ~25s)
+[x] testing-strategy.md updated with integration test reference (evidence: pyramid table + section)
