@@ -172,7 +172,7 @@ func applyOfficeEvent(state OfficeState, evt OfficeEvent, now time.Time) OfficeS
 	case DevStartedMovingToConference:
 		return state.StartDeveloperMovingToConference(e.DevID, e.Target, now)
 	case DevEnteredConference:
-		return state.SetDeveloperState(e.DevID, StateConference)
+		return state.SetDeveloperState(e.DevID, StateConference).seedSipTimer(e.DevID, now)
 	case AnimationFrameAdvanced:
 		return state.AdvanceFrames(now, e.DevIdxToAdvance)
 	case DevStartedSip:

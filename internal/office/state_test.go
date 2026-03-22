@@ -367,6 +367,27 @@ func TestAdvanceFrames_LateBubbleDecrementsForAll(t *testing.T) {
 	}
 }
 
+func TestAdvanceFrames_AdvancesSipForConferenceDev(t *testing.T) {
+	state := NewOfficeState([]string{"dev-0", "dev-1"})
+	// dev-1 (colorIndex 1) has coffee accessory
+	state = state.SetDeveloperState("dev-1", StateConference)
+
+	// Start a sip on dev-1
+	anim := state.Animations[1].StartSip(testTime)
+	state.Animations[1] = anim
+
+	if state.Animations[1].SipPhase != SipPreparing {
+		t.Fatalf("precondition: expected SipPreparing, got %v", state.Animations[1].SipPhase)
+	}
+
+	// Advance past SipPhaseDuration
+	state = state.AdvanceFrames(testTime.Add(SipPhaseDuration+time.Millisecond), -1)
+
+	if state.Animations[1].SipPhase != SipDrinking {
+		t.Errorf("SipPhase = %v, want SipDrinking (AdvanceFrames should advance sip for conference devs)", state.Animations[1].SipPhase)
+	}
+}
+
 func TestClearBubbles(t *testing.T) {
 	anim := NewDeveloperAnimation("dev-1", 0).BecomeFrustrated()
 	if anim.LateBubbleFrames != 10 {

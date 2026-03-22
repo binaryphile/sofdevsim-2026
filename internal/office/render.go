@@ -298,18 +298,14 @@ func renderOfficeEnhanced(state OfficeState, names []string, width, height int) 
 func renderConferenceRoomDetailed(anims []DeveloperAnimation, width int) string {
 	innerWidth := width - 2
 
-	// Filter to devs in conference
-	conferenceDevs := slice.From(anims).KeepIf(DeveloperAnimation.IsInConference)
-
-	// Render dev icons with colors, padded to fixed seat width.
-	// Icons vary: 🪑 (width 2) vs 🙂☕ (width 4). Fixed width prevents
-	// accessory holders from pushing chairs rightward when they sit down.
+	// Render dev icons at fixed seat positions. Devs keep their assigned seat;
+	// absent devs show a chair instead of shifting everyone down.
 	const seatWidth = 4
 	renderIcon := func(idx int) string {
-		if idx >= len(conferenceDevs) {
+		if idx >= len(anims) || !anims[idx].IsInConference() {
 			return padRight("🪑", seatWidth)
 		}
-		a := conferenceDevs[idx]
+		a := anims[idx]
 		color := developerColor(a.ColorIndex)
 		icon := lipgloss.NewStyle().Foreground(color).Render(RenderDeveloperIcon(a))
 		return padRight(icon, seatWidth)
@@ -405,6 +401,13 @@ func renderCubicleGridDetailed(state OfficeState, names []string, width int) str
 			col := i % 3
 			startX := col*cubicleWidth + cubicleWidth/2
 			currentX := startX - int(float64(startX)*anim.Progress)
+			color := developerColor(anim.ColorIndex)
+			icon := lipgloss.NewStyle().Foreground(color).Render(RenderDeveloperIcon(anim))
+			walkers = append(walkers, walker{pos: currentX, icon: icon})
+		} else if anim.State == StateMovingToCubicle {
+			col := i % 3
+			endX := col*cubicleWidth + cubicleWidth/2
+			currentX := int(float64(endX) * anim.Progress)
 			color := developerColor(anim.ColorIndex)
 			icon := lipgloss.NewStyle().Foreground(color).Render(RenderDeveloperIcon(anim))
 			walkers = append(walkers, walker{pos: currentX, icon: icon})
@@ -532,23 +535,20 @@ func renderCubicleDetailed(anim DeveloperAnimation, name string, width int, door
 	}
 
 	// Monitor content (always on back wall)
+	// No VS16 (\uFE0F) on monitor — causes duplicate glyph in some terminals.
+	// Pad to consistent width when dev is away so centering doesn't shift.
 	var monitorContent string
-	if !anim.IsAway() && anim.Accessory != AccessoryNone {
-		monitorContent = "🖥\uFE0F" + anim.Accessory.Emoji()
+	if anim.Accessory != AccessoryNone {
+		if !anim.IsAway() {
+			monitorContent = "🖥 " + anim.Accessory.Emoji()
+		} else {
+			monitorContent = "🖥   " // same width as "🖥 ☕"
+		}
 	} else {
-		monitorContent = "🖥\uFE0F"
+		monitorContent = "🖥"
 	}
 
-	// Shift monitor and face/chair left for visual variety (Pengo keeps centered).
-	// Same shift on both lines keeps the chair aligned in front of the monitor.
-	switch anim.ColorIndex {
-	case 5: // Pengo: centered (no shift)
-	default: // everyone else: 1 space left
-		monitorContent = monitorContent + "  "
-		if anim.LateBubbleFrames == 0 {
-			faceContent = faceContent + "  "
-		}
-	}
+	// All developers centered in their cubicles.
 
 	// Trash corner placement per developer.
 	// 0=top-left, 1=top-right, 2=bottom-left, 3=bottom-right

@@ -299,6 +299,9 @@ func (d DeveloperAnimation) AdvanceMovement(now time.Time) DeveloperAnimation {
 		d.Position = d.Target
 		if d.State == StateMovingToConference {
 			d.State = StateConference
+			if d.Accessory != AccessoryNone && d.SipStartTime.IsZero() {
+				d.SipStartTime = now
+			}
 		} else {
 			d.State = StateWorking
 		}
@@ -336,6 +339,18 @@ func (s OfficeState) GetAnimationOption(devID string) option.Basic[DeveloperAnim
 // Calculation: (OfficeState, string) → option.Basic[DeveloperAnimation]
 func (s OfficeState) GetActiveAnimationOption(devID string) option.Basic[DeveloperAnimation] {
 	return s.GetAnimationOption(devID).KeepOkIf(DeveloperAnimation.IsActive)
+}
+
+// seedSipTimer initializes SipStartTime for a developer so the sip trigger countdown begins.
+func (s OfficeState) seedSipTimer(devID string, now time.Time) OfficeState {
+	anims := make([]DeveloperAnimation, len(s.Animations))
+	for i, anim := range s.Animations { // justified:CF
+		if anim.DevID == devID && anim.Accessory != AccessoryNone && anim.SipStartTime.IsZero() {
+			anim.SipStartTime = now
+		}
+		anims[i] = anim
+	}
+	return OfficeState{Animations: anims}
 }
 
 // SetDeveloperState returns a new OfficeState with the developer's state changed.
@@ -388,16 +403,18 @@ func (s OfficeState) AdvanceFrames(now time.Time, devIdxToAdvance int) OfficeSta
 		switch anim.State {
 		case StateWorking, StateFrustrated:
 			if i == devIdxToAdvance {
-				anims[i] = anim.NextFrame()
+				anims[i] = anim.NextFrame().AdvanceSip(now)
 			} else {
 				// Still decrement LateBubbleFrames for non-staggered devs
 				if anim.LateBubbleFrames > 0 {
 					anim.LateBubbleFrames--
 				}
-				anims[i] = anim
+				anims[i] = anim.AdvanceSip(now)
 			}
 		case StateMovingToConference, StateMovingToCubicle:
 			anims[i] = anim.AdvanceMovement(now)
+		case StateConference:
+			anims[i] = anim.AdvanceSip(now)
 		default:
 			anims[i] = anim
 		}

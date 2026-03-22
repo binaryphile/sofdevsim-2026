@@ -460,6 +460,23 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
+		// Trigger sip animations for devs with accessories (3-8s random interval)
+		now := a.clock()
+		for _, anim := range a.officeProjection.State().Animations { // justified:CF
+			if anim.Accessory == AccessoryNone || anim.SipPhase != SipNone {
+				continue
+			}
+			if anim.SipStartTime.IsZero() {
+				continue // not yet initialized (pre-animation)
+			}
+			elapsed := now.Sub(anim.SipStartTime)
+			if elapsed >= 3*time.Second && a.randFloat() < 0.05 {
+				a.officeProjection = a.officeProjection.Record(
+					DevStartedSip{DevID: anim.DevID},
+					a.currentTick(), now)
+			}
+		}
+
 		// Opening animation: stagger devs walking from cubicles to conference
 		if a.openingAnimation {
 			a.openingStaggerTicks++

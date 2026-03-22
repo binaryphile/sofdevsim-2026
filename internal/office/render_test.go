@@ -614,6 +614,40 @@ func TestRenderCubicleGridDetailed_WalkingDevInHallway(t *testing.T) {
 	})
 }
 
+func TestRenderCubicleGridDetailed_WalkBackInHallway(t *testing.T) {
+	now := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	devIDs := []string{"d0", "d1", "d2", "d3", "d4", "d5"}
+	names := []string{"MsPac", "Qbert", "Samus", "Athena", "Mappy", "Pengo"}
+
+	t.Run("dev walking to cubicle appears in hallway", func(t *testing.T) {
+		state := NewOfficeState(devIDs)
+		// Put dev in conference first, then start walk back
+		state = state.SetDeveloperState("d1", StateConference)
+		target := Position{X: 50, Y: 2}
+		state = state.StartDeveloperMovingToCubicle("d1", target, now)
+
+		result := renderCubicleGridDetailed(state, names, 54)
+		plain := StripANSI(result)
+		hallway := findHallwaySection(plain)
+
+		if !strings.Contains(hallway, "🙂") {
+			t.Errorf("Dev walking to cubicle should appear in hallway\nhallway:\n%s\nfull:\n%s", hallway, plain)
+		}
+	})
+
+	t.Run("dev walking to cubicle not shown in cubicle", func(t *testing.T) {
+		state := NewOfficeState(devIDs)
+		state = state.SetDeveloperState("d0", StateConference)
+		target := Position{X: 50, Y: 2}
+		state = state.StartDeveloperMovingToCubicle("d0", target, now)
+
+		anim := state.Animations[0]
+		if !anim.IsAway() {
+			t.Fatal("StateMovingToCubicle dev should be IsAway()")
+		}
+	})
+}
+
 // Cycle 3: Conference room with charts, table, chairs, door
 func TestRenderConferenceRoomDetailed(t *testing.T) {
 	anims := []DeveloperAnimation{
@@ -654,8 +688,8 @@ func TestRenderConferenceRoomDetailed(t *testing.T) {
 	}
 }
 
-// TestCubicleAccessoryOnDesk verifies: accessory on desk iff !IsAway() && has accessory.
-// Only applies to renderCubicleDetailed (the only renderer with a desk line).
+// TestCubicleAccessoryOnDesk verifies: accessory on desk iff dev is present.
+// Centering stays stable because away state pads to the same width.
 func TestCubicleAccessoryOnDesk(t *testing.T) {
 	allStates := []struct {
 		state AnimationState

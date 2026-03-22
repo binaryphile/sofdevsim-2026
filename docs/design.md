@@ -1973,12 +1973,12 @@ During work (developers in cubicles, some frustrated):
 ```
 
 **Layout elements:**
-- **Conference room**: [charts], ══╦═══════╦══ table with overhanging top and 1-line legs (╦ joins tabletop to ║ legs), C chairs (3×2 seating), opening in right wall with ┤ posts
-- **Cubicles**: 6-line cells (border, 4 content lines, border) arranged in 2 rows × 3 columns; M monitor/desk against back wall (shifted slightly left per dev for visual variety), T trash in a pseudo-random corner (varies per dev), ┤ ├ entryway posts facing hallway
-- **Cubicle layout**: Developer (F/W/X) sits in front of the monitor; C chair shown when developer is away; name embedded in the door border next to ┤ ├ entryway; monitor against the back wall; face/chair aligned with monitor (same position shift); trash overlaid at cubicle corners without shifting centering (deterministic per developer); accessories (c/s) placed next to monitor when developer is at desk
+- **Conference room**: [charts], ══╦═══════╦══ table with overhanging top and 1-line legs (╦ joins tabletop to ║ legs), assigned seating (3×2, each dev keeps their index position), 🪑 shown for absent devs, opening in right wall with ┤ posts
+- **Cubicles**: 6-line cells (border, 4 content lines, border) arranged in 2 rows × 3 columns; M monitor/desk centered against back wall, T trash in a pseudo-random corner (varies per dev), ┤ ├ entryway posts facing hallway
+- **Cubicle layout**: Developer (F/W/X) sits in front of the monitor; C chair shown when developer is away; name embedded in the door border next to ┤ ├ entryway; monitor centered against the back wall; face/chair aligned with monitor; trash overlaid at cubicle corners without shifting centering (deterministic per developer)
 - **Hallway**: 3 lines of open space between cubicle rows, connecting to conference room
 - **Room sizes are constant**: Conference room and cubicles never resize during simulation
-- **Accessories**: c (coffee) and s (soda) placed next to monitor on desk when in cubicle, carried beside developer face when in conference
+- **Accessories**: c (coffee) and s (soda) only visible during sip animations (shown beside developer face via RenderDeveloperIcon); not placed on desk to avoid emoji variant selector rendering glitches in terminals
 - **Speech bubbles**: Full bubble (┌──────┐│Late! │└──┬───┘) floats in hallway pointing to speaker; compact form (╭Late!) replaces face temporarily when space is limited
 
 **Fixed layout:** Room sizes are constant throughout simulation. Conference room always has 3×2 seating positions. Fewer developers use subset of positions (empty seats shown as C).
@@ -2011,7 +2011,7 @@ Normal:     🙂☕     (returns to neutral)
 ```
 
 **Animation timing:**
-- Normal → Preparing: random interval (3-8 seconds between sips)
+- Normal → Preparing: 5% chance per animation tick after 3s elapsed (approximates 3-8s interval)
 - Preparing → Sipping: 200ms
 - Sipping → Refreshed: 300ms
 - Refreshed → Normal: 400ms
@@ -2547,7 +2547,7 @@ On TUI startup, developers start in cubicles (StateIdle) and walk to the confere
 
 **Timing**: 600ms stagger between devs (6 animation ticks), 500ms movement duration. Dev 0 starts first, dev 5 starts at ~3000ms, all seated by ~3500ms.
 
-**Hallway rendering**: Walking devs (`StateMovingToConference`) appear on the middle line of the 3-line hallway between cubicle rows. Position interpolated from cubicle column toward conference room (x=0). Walking devs take priority over Late! bubbles.
+**Hallway rendering**: Walking devs (`StateMovingToConference`, `StateMovingToCubicle`) appear on the middle line of the 3-line hallway between cubicle rows. Position interpolated between cubicle column and conference room (x=0). Walking devs take priority over Late! bubbles.
 
 **Input blocking**: All keys except quit (q/ctrl+c) are blocked during the opening animation.
 

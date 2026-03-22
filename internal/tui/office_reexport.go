@@ -23,6 +23,7 @@ type DevEnteredConference = office.DevEnteredConference
 type DevStartedMovingToConference = office.DevStartedMovingToConference
 type AnimationFrameAdvanced = office.AnimationFrameAdvanced
 type BubblesExpired = office.BubblesExpired
+type DevStartedSip = office.DevStartedSip
 
 // Type alias for projection
 type OfficeProjection = office.OfficeProjection
@@ -35,6 +36,12 @@ const (
 	StateMovingToCubicle    = office.StateMovingToCubicle
 	StateWorking            = office.StateWorking
 	StateFrustrated         = office.StateFrustrated
+)
+
+// Re-export accessory/sip constants
+const (
+	AccessoryNone = office.AccessoryNone
+	SipNone       = office.SipNone
 )
 
 // Re-export layout constants
