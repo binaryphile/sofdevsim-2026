@@ -100,12 +100,12 @@ See `docs/testing-strategy.md` for coverage baseline.
 
 Run on each build: `go test -bench=. -benchmem ./internal/engine/`
 
-### Baseline (2026-01-15)
+### Baseline (2026-03-23, post handoff+experience+intake+TOC)
 
 ```
-BenchmarkTick-8                       63327    18776 ns/op
-BenchmarkProjection_Apply-8        22574644       45 ns/op
-BenchmarkProjection_ReplayFull-8      29217    36419 ns/op
+BenchmarkTick-8                       60787    20337 ns/op
+BenchmarkRunSprint-8                 618132     2396 ns/op
+BenchmarkFindActiveTicketIndex-8    7302486      175 ns/op
 ```
 
 ## Persistence

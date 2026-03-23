@@ -95,18 +95,18 @@ classDiagram
         +float64 BufferPct
         +Developer[] Developers
         +Ticket[] Backlog
+        +Ticket[] CommittedTickets
         +Ticket[] ActiveTickets
         +Ticket[] CompletedTickets
         +Incident[] OpenIncidents
         +Incident[] ResolvedIncidents
-        +NewSimulation(policy, seed)$ *Simulation
-        +FindActiveTicketIndex(id) int
-        +FindBacklogTicketIndex(id) int
-        +FindDeveloperIndex(id) int
-        +IdleDevelopers() Developer[]
-        +TotalOpenIncidents() int
-        +TotalIncidents() int
-        +TotalDeploys() int
+        +Mentorship[] ActiveMentorships
+        +map~WorkflowPhase,string[]~ PhaseQueues
+        +int CICDSlots
+        +int CICDInUse
+        +IsMentoring(devID) bool
+        +IsDevAvailable(devID) bool
+        +MentorForTicket(ticketID, phase) string,bool
     }
 
     class Ticket {
@@ -115,9 +115,14 @@ classDiagram
         +string ParentID
         +WorkflowPhase Phase
         +UnderstandingLevel UnderstandingLevel
+        +Priority Priority
+        +IntakeStatus IntakeStatus
         +float64 EstimatedDays
         +float64 ActualDays
         +map PhaseEffortSpent
+        +string[] Contributors
+        +int PhaseEnteredTick
+        +int PhaseAssignedTick
         +int StartedTick
         +int CompletedTick
         +CalculatePhaseEffort(phase) float64
@@ -128,7 +133,15 @@ classDiagram
         +string Name
         +float64 Velocity
         +string CurrentTicket
+        +ExperienceLevel[8] PhaseExperience
         +IsIdle() bool
+    }
+
+    class Mentorship {
+        +string MentorID
+        +string MenteeID
+        +string TicketID
+        +WorkflowPhase Phase
     }
 
     class Sprint {
@@ -154,7 +167,11 @@ classDiagram
     Simulation "1" *-- "*" Ticket
     Simulation "1" *-- "0..1" Sprint
     Simulation "1" *-- "*" Incident
+    Simulation "1" *-- "*" Mentorship
     Ticket "*" -- "0..1" Ticket : parent
+    Mentorship --> Developer : mentor
+    Mentorship --> Developer : mentee
+    Mentorship --> Ticket
 ```
 
 > **Note:** Simulation is a pure Data type with query methods only. Mutation happens via Engine, which emits events that update state through Projection.
@@ -180,6 +197,39 @@ stateDiagram-v2
 **Understanding Levels:** Low | Medium | High
 
 **Sizing Policies:** None | DORA-Strict | TameFlow-Cognitive | Hybrid
+
+**Experience Levels:** Low (0.6x/0.9x mentored) | Medium (1.0x baseline) | High (1.1x, can mentor)
+
+**Priority:** Low | Normal | High | Critical (exogenous business input)
+
+**Intake Status:** Submitted | Triaged
+
+---
+
+## Phase Handoff Model
+
+Tickets queue at phase boundaries instead of one developer carrying a ticket through all phases. When a phase completes, the developer is released and the ticket enters the next phase's queue. An assignment pass each tick matches idle developers to queued tickets.
+
+**Assignment policy** (injectable via `AssignmentPolicy` interface, default `RoundRobinPolicy`):
+- Round-robin across developers with tick-based offset
+- FIFO within each phase queue (head-of-line blocking)
+- Review queue has priority over other phases
+- Self-review prohibition: contributors can't review their own ticket (fallback for small teams where all devs are contributors)
+- Low-experience devs can't take tickets above 5.0 estimated days
+
+**Mentor pairing**: when a Low-experience dev is assigned, an idle High-experience dev is locked as mentor for the full phase duration. Mentored Low devs work at 0.9x instead of 0.6x.
+
+**Sprint commitment**: `StartSprint()` triages untriaged tickets, then commits highest-priority triaged tickets up to capacity (`sprintLength * sumVelocity * 0.8 - carryover`). Only committed tickets are assignable.
+
+## TOC Flow Diagnostics
+
+Flow-based constraint detection via rolling window (default 10 ticks):
+- **Median dwell time** per phase (TameFlow: "flow time per work-state")
+- **In-flight age** per phase (current ticket age = `currentTick - PhaseEnteredTick`)
+- **Time-weighted queue depth** per phase
+- **Constraint identification**: phase with highest sustained median dwell time (10% dominance margin, 10-evaluation hysteresis)
+
+Honest for shared-pool model: no fabricated per-phase utilization. The `toc/core` analyzer is available in degraded mode but the primary signal is flow-based.
 
 ---
 
