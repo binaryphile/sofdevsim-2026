@@ -46,6 +46,10 @@ type Simulation struct {
 	CICDSlots   int                        // max concurrent CI/CD pipeline runs
 	CICDInUse   int                        // current pipeline runs
 
+	// Rope (DBR WIP admission control)
+	RopeQueue  []string   // ticket IDs waiting for admission past rope (Planning→Implement)
+	RopeConfig RopeConfig
+
 	// Assignment cursor (persistent round-robin state)
 	AssignCursor int // index of last assigned dev, advances on each assignment
 
@@ -159,6 +163,8 @@ func (s Simulation) Clone() Simulation {
 		s.PhaseQueues = cloned
 	}
 
+	s.RopeQueue = append([]string(nil), s.RopeQueue...)
+
 	return s
 }
 
@@ -248,4 +254,32 @@ func (s Simulation) TotalIncidents() int {
 // TotalDeploys returns count of completed tickets
 func (s Simulation) TotalDeploys() int {
 	return len(s.CompletedTickets)
+}
+
+// RopeConfig holds DBR rope parameters for WIP admission control.
+type RopeConfig struct {
+	Enabled bool
+	MaxWIP  int // max aggregate tickets in Implement..Review (0 = unlimited)
+}
+
+// IsRopeControlledPhase returns true if the phase is in the rope-controlled segment.
+func IsRopeControlledPhase(phase WorkflowPhase) bool {
+	return phase >= PhaseImplement && phase <= PhaseReview
+}
+
+// DownstreamWIP returns the count of tickets in the rope-controlled segment
+// (Implement through Review), excluding rope-held tickets that haven't truly entered.
+func (s Simulation) DownstreamWIP() int {
+	count := 0
+	for _, t := range s.ActiveTickets { // justified:SM
+		if IsRopeControlledPhase(t.Phase) {
+			count++
+		}
+	}
+	for phase := PhaseImplement; phase <= PhaseReview; phase++ {
+		count += len(s.PhaseQueues[phase])
+	}
+	// Exclude rope-held: in ActiveTickets with Phase=Implement but not truly admitted
+	count -= len(s.RopeQueue)
+	return count
 }

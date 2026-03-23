@@ -253,7 +253,22 @@ func (e Engine) Tick() (Engine, []model.Event, error) {
 		allEvents = append(allEvents, assignEvents...)
 	}
 
-	// 3. Generate random events (bugs, scope creep)
+	// 3. Rope release pass: admit from RopeQueue if downstream capacity opened
+	if e.state().RopeConfig.Enabled {
+		for { // justified:WL
+			state := e.state()
+			if len(state.RopeQueue) == 0 || state.DownstreamWIP() >= state.RopeConfig.MaxWIP {
+				break
+			}
+			ticketID := state.RopeQueue[0]
+			// TicketQueued projection adds to PhaseQueues[Implement] AND removes from RopeQueue
+			if e, err = e.emit(events.NewTicketQueued(state.ID, state.CurrentTick, ticketID, model.PhaseImplement, "")); err != nil {
+				return e, nil, err
+			}
+		}
+	}
+
+	// 4. Generate random events (bugs, scope creep) (bugs, scope creep)
 	// Generators return ES events; emit them and convert to UI events
 	for _, evt := range e.evtGen.GenerateRandomEvents(e.state()) { // justified:EP
 		if e, err = e.emit(evt); err != nil {
@@ -331,6 +346,21 @@ func (e Engine) advancePhaseEmitOnly(ticket model.Ticket, dev model.Developer) (
 		if e, err = e.emit(events.NewDeveloperReleased(e.state().ID, e.state().CurrentTick, dev.ID, ticket.ID)); err != nil {
 			return e, nil, err
 		}
+
+		// Rope check: if entering Implement and rope is at capacity, hold the ticket
+		state := e.state()
+		if newPhase == model.PhaseImplement && state.RopeConfig.Enabled && state.DownstreamWIP() >= state.RopeConfig.MaxWIP {
+			if e, err = e.emit(events.NewTicketRopeHeld(state.ID, state.CurrentTick, ticket.ID, state.DownstreamWIP(), state.RopeConfig.MaxWIP)); err != nil {
+				return e, nil, err
+			}
+			modelEvents = append(modelEvents, model.NewEvent(
+				model.EventPhaseAdvance,
+				fmt.Sprintf("%s: %s -> %s (rope held, WIP %d/%d)", ticket.ID, oldPhase, newPhase, state.DownstreamWIP(), state.RopeConfig.MaxWIP),
+				state.CurrentTick,
+			))
+			return e, modelEvents, nil
+		}
+
 		// TicketQueued adds to PhaseQueues, sets phase tracking fields
 		if e, err = e.emit(events.NewTicketQueued(e.state().ID, e.state().CurrentTick, ticket.ID, newPhase, dev.ID)); err != nil {
 			return e, nil, err

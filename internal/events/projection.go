@@ -254,6 +254,13 @@ func (p Projection) Apply(evt Event) Projection {
 			next.sim.PhaseQueues = make(map[model.WorkflowPhase][]string)
 		}
 		next.sim.PhaseQueues[e.Phase] = append(next.sim.PhaseQueues[e.Phase], e.TicketID)
+		// If ticket was in RopeQueue (released from rope), remove it
+		for i, id := range next.sim.RopeQueue { // justified:IX
+			if id == e.TicketID {
+				next.sim.RopeQueue = append(next.sim.RopeQueue[:i], next.sim.RopeQueue[i+1:]...)
+				break
+			}
+		}
 		for i, t := range next.sim.ActiveTickets {
 			if t.ID == e.TicketID {
 				next.sim.ActiveTickets[i].Phase = e.Phase
@@ -444,6 +451,19 @@ func (p Projection) Apply(evt Event) Projection {
 				break
 			}
 		}
+
+	case TicketRopeHeld:
+		// Ticket held at rope: set phase to Implement (destination), add to RopeQueue
+		for i, t := range next.sim.ActiveTickets {
+			if t.ID == e.TicketID {
+				next.sim.ActiveTickets[i].Phase = model.PhaseImplement
+				next.sim.ActiveTickets[i].PhaseEnteredTick = e.OccurrenceTime()
+				next.sim.ActiveTickets[i].PhaseAssignedTick = 0
+				next.sim.ActiveTickets[i].AssignedTo = ""
+				break
+			}
+		}
+		next.sim.RopeQueue = append(next.sim.RopeQueue, e.TicketID)
 
 	default:
 		// Unknown event type - silently ignore per event sourcing convention

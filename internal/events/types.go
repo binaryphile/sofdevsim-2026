@@ -1464,3 +1464,48 @@ func (e TicketCommitted) WithCausedBy(eventID string) TicketCommitted {
 	e.Header.CausedByID = eventID
 	return e
 }
+
+// TicketRopeHeld is emitted when a ticket completing Planning is held at the rope
+// because downstream WIP (Implement..Review) is at capacity.
+type TicketRopeHeld struct {
+	Header
+	TicketID      string
+	DownstreamWIP int
+	MaxWIP        int
+}
+
+// NewTicketRopeHeld creates a TicketRopeHeld event with proper header.
+func NewTicketRopeHeld(simID string, tick int, ticketID string, downstreamWIP, maxWIP int) TicketRopeHeld {
+	return TicketRopeHeld{
+		Header: Header{
+			ID:         nextEventID("TicketRopeHeld"),
+			SimID:      simID,
+			Type:       "TicketRopeHeld",
+			OccurredAt: tick,
+			DetectedAt: time.Now(),
+			Version:    1,
+		},
+		TicketID:      ticketID,
+		DownstreamWIP: downstreamWIP,
+		MaxWIP:        maxWIP,
+	}
+}
+
+// WithTrace returns a copy with tracing fields set for fluent chaining.
+func (e TicketRopeHeld) WithTrace(traceID, spanID, parentSpanID string) TicketRopeHeld {
+	e.Header.Trace = traceID
+	e.Header.Span = spanID
+	e.Header.ParentSpan = parentSpanID
+	return e
+}
+
+// withTrace implements Event interface for polymorphic tracing.
+func (e TicketRopeHeld) withTrace(traceID, spanID, parentSpanID string) Event {
+	return e.WithTrace(traceID, spanID, parentSpanID)
+}
+
+// WithCausedBy returns a copy with causation link to parent event.
+func (e TicketRopeHeld) WithCausedBy(eventID string) TicketRopeHeld {
+	e.Header.CausedByID = eventID
+	return e
+}
