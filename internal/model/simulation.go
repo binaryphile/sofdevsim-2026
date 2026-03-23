@@ -102,14 +102,14 @@ func (s Simulation) Clone() Simulation {
 	return s
 }
 
+// isMentor returns true if the mentorship's mentor matches the given devID.
+func isMentor(devID string) func(Mentorship) bool {
+	return func(m Mentorship) bool { return m.MentorID == devID }
+}
+
 // IsMentoring returns true if the developer is currently mentoring someone.
 func (s Simulation) IsMentoring(devID string) bool {
-	for _, m := range s.ActiveMentorships {
-		if m.MentorID == devID {
-			return true
-		}
-	}
-	return false
+	return slice.From(s.ActiveMentorships).Any(isMentor(devID))
 }
 
 // IsDevAvailable returns true if the developer is idle and not mentoring.
@@ -123,17 +123,17 @@ func (s Simulation) IsDevAvailable(devID string) bool {
 
 // MentorForTicket returns the mentor ID for a ticket in a specific phase, if any.
 func (s Simulation) MentorForTicket(ticketID string, phase WorkflowPhase) (string, bool) {
-	for _, m := range s.ActiveMentorships {
-		if m.TicketID == ticketID && m.Phase == phase {
-			return m.MentorID, true
-		}
+	// matchesTicketPhase returns true if the mentorship matches the given ticket and phase.
+	matchesTicketPhase := func(m Mentorship) bool { return m.TicketID == ticketID && m.Phase == phase }
+	if m, ok := slice.From(s.ActiveMentorships).Find(matchesTicketPhase).Get(); ok {
+		return m.MentorID, true
 	}
 	return "", false
 }
 
 // FindCommittedTicketIndex returns index of ticket in CommittedTickets, or -1 if not found
 func (s Simulation) FindCommittedTicketIndex(id string) int {
-	for i := range s.CommittedTickets {
+	for i := range s.CommittedTickets { // justified:IX
 		if s.CommittedTickets[i].ID == id {
 			return i
 		}
@@ -143,7 +143,7 @@ func (s Simulation) FindCommittedTicketIndex(id string) int {
 
 // FindActiveTicketIndex returns index of ticket in ActiveTickets, or -1 if not found
 func (s Simulation) FindActiveTicketIndex(id string) int {
-	for i := range s.ActiveTickets {
+	for i := range s.ActiveTickets { // justified:IX
 		if s.ActiveTickets[i].ID == id {
 			return i
 		}
@@ -153,7 +153,7 @@ func (s Simulation) FindActiveTicketIndex(id string) int {
 
 // FindBacklogTicketIndex returns index of ticket in Backlog, or -1 if not found
 func (s Simulation) FindBacklogTicketIndex(id string) int {
-	for i := range s.Backlog {
+	for i := range s.Backlog { // justified:IX
 		if s.Backlog[i].ID == id {
 			return i
 		}
@@ -163,7 +163,7 @@ func (s Simulation) FindBacklogTicketIndex(id string) int {
 
 // FindDeveloperIndex returns index of developer, or -1 if not found
 func (s Simulation) FindDeveloperIndex(id string) int {
-	for i := range s.Developers {
+	for i := range s.Developers { // justified:IX
 		if s.Developers[i].ID == id {
 			return i
 		}
