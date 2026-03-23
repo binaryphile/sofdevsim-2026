@@ -166,3 +166,40 @@ func TestTOCState_InFlightAge(t *testing.T) {
 		t.Errorf("max in-flight age = %d, want 7", toc.Flow.PhaseMaxAge[model.PhaseImplement])
 	}
 }
+
+func TestConstraintBuffer_Zones(t *testing.T) {
+	toc := NewTOCState(TOCFlow, 3)
+
+	// Manually set constraint and flow data to test buffer computation
+	toc.ConstraintPhase = model.PhaseReview
+	toc.Flow.PhaseDepartures = map[model.WorkflowPhase]int{
+		model.PhaseReview: 4, // 4 departures per window
+	}
+
+	// Case 1: well-fed constraint (queue depth > target)
+	sim := model.NewSimulation("test", model.PolicyNone, 42)
+	sim.CurrentTick = 10
+	sim.PhaseQueues = map[model.WorkflowPhase][]string{
+		model.PhaseReview: {"T-1", "T-2", "T-3", "T-4", "T-5", "T-6", "T-7", "T-8"},
+	}
+	toc.updateConstraintBuffer(sim)
+	if toc.Buffer.Status != model.FeverGreen {
+		t.Errorf("well-fed buffer: got %s, want Green", toc.Buffer.Status)
+	}
+
+	// Case 2: empty constraint (queue depth = 0)
+	sim.PhaseQueues = map[model.WorkflowPhase][]string{
+		model.PhaseReview: {},
+	}
+	toc.updateConstraintBuffer(sim)
+	if toc.Buffer.Status != model.FeverRed {
+		t.Errorf("empty buffer: got %s, want Red", toc.Buffer.Status)
+	}
+
+	// Case 3: no constraint → empty buffer
+	toc.ConstraintPhase = 0
+	toc.updateConstraintBuffer(sim)
+	if toc.Buffer.ConstraintPhase != 0 {
+		t.Errorf("no constraint: buffer phase should be 0, got %v", toc.Buffer.ConstraintPhase)
+	}
+}

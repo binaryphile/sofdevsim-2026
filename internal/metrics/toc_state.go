@@ -45,6 +45,30 @@ type TOCState struct {
 	Flow            FlowDiagnosis
 	ConstraintPhase model.WorkflowPhase // 0 = no constraint identified
 	Confidence      float64
+
+	// Constraint buffer visualization
+	Buffer ConstraintBuffer
+}
+
+// ConstraintBuffer measures the protective buffer in front of the identified constraint.
+// Green = constraint well-fed (buffer adequate). Red = constraint starving (buffer empty).
+// Distinct from sprint fever chart which measures schedule buffer consumption.
+type ConstraintBuffer struct {
+	ConstraintPhase model.WorkflowPhase // which phase this buffer protects
+	QueueDepth      int                 // tickets waiting in front of constraint
+	Throughput      float64             // constraint departures per window
+	TargetBuffer    int                 // desired queue depth (2× throughput per window)
+	Penetration     float64             // 1.0 - (QueueDepth / TargetBuffer), clamped [0,1]
+	Status          model.FeverStatus   // Green/Yellow/Red
+	History         []BufferSnapshot    // per-tick history for charting
+}
+
+// BufferSnapshot captures constraint buffer state at a point in time.
+type BufferSnapshot struct {
+	Tick        int
+	QueueDepth  int
+	Penetration float64
+	Status      model.FeverStatus
 }
 
 const (
@@ -102,6 +126,9 @@ func (s *TOCState) Update(sim model.Simulation) {
 
 	// Identify constraint
 	s.identifyConstraint()
+
+	// Update constraint buffer visualization
+	s.updateConstraintBuffer(sim)
 }
 
 // computeFlowDiagnosis aggregates the rolling window into flow metrics.
@@ -158,6 +185,66 @@ func (s *TOCState) computeFlowDiagnosis(sim model.Simulation) {
 		if age > s.Flow.PhaseMaxAge[t.Phase] {
 			s.Flow.PhaseMaxAge[t.Phase] = age
 		}
+	}
+}
+
+// updateConstraintBuffer computes the protective buffer in front of the identified constraint.
+func (s *TOCState) updateConstraintBuffer(sim model.Simulation) {
+	if s.ConstraintPhase == 0 {
+		s.Buffer = ConstraintBuffer{} // no constraint → no buffer
+		return
+	}
+
+	phase := s.ConstraintPhase
+
+	// Queue depth: tickets in PhaseQueues for the constraint phase
+	// (these are waiting to be assigned — the protective buffer)
+	queueDepth := len(sim.PhaseQueues[phase])
+
+	// Throughput: departures from constraint phase per window
+	throughput := float64(s.Flow.PhaseDepartures[phase])
+
+	// Target buffer: enough tickets to keep constraint fed for ~2 windows
+	// (Goldratt: buffer should protect against variability upstream)
+	targetBuffer := int(throughput * 2)
+	if targetBuffer < 2 {
+		targetBuffer = 2 // minimum meaningful buffer
+	}
+
+	// Penetration: how much of the buffer has been consumed
+	// 0.0 = buffer full (constraint protected), 1.0 = buffer empty (starving)
+	penetration := 1.0 - float64(queueDepth)/float64(targetBuffer)
+	if penetration < 0 {
+		penetration = 0 // more than target = fully protected
+	}
+	if penetration > 1 {
+		penetration = 1
+	}
+
+	// Status: Green < 0.33, Yellow 0.33-0.66, Red > 0.66
+	var status model.FeverStatus
+	switch {
+	case penetration > 0.66:
+		status = model.FeverRed // buffer nearly empty, constraint starving
+	case penetration > 0.33:
+		status = model.FeverYellow // buffer thinning
+	default:
+		status = model.FeverGreen // buffer adequate
+	}
+
+	s.Buffer = ConstraintBuffer{
+		ConstraintPhase: phase,
+		QueueDepth:      queueDepth,
+		Throughput:      throughput,
+		TargetBuffer:    targetBuffer,
+		Penetration:     penetration,
+		Status:          status,
+		History: append(s.Buffer.History, BufferSnapshot{
+			Tick:        sim.CurrentTick,
+			QueueDepth:  queueDepth,
+			Penetration: penetration,
+			Status:      status,
+		}),
 	}
 }
 
