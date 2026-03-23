@@ -9,6 +9,7 @@ import (
 type Tracker struct {
 	DORA  DORAMetrics
 	Fever FeverChart
+	TOC   *TOCState
 }
 
 // NewTracker creates an initialized metrics tracker
@@ -16,6 +17,7 @@ func NewTracker() Tracker {
 	return Tracker{
 		DORA:  NewDORAMetrics(),
 		Fever: NewFeverChart(),
+		TOC:   NewTOCState(TOCFlow, 10),
 	}
 }
 
@@ -24,6 +26,9 @@ func (t Tracker) Updated(sim model.Simulation) Tracker {
 	t.DORA = t.DORA.Updated(sim)
 	if sprint, ok := sim.CurrentSprintOption.Get(); ok {
 		t.Fever = t.Fever.Updated(sprint)
+	}
+	if t.TOC != nil {
+		t.TOC.Update(sim)
 	}
 	return t
 }
