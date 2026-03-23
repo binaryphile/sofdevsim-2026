@@ -398,6 +398,15 @@ func (p Projection) Apply(evt Event) Projection {
 			TicketID: e.TicketID,
 			Phase:    e.Phase,
 		})
+		// Maintain mentor indexes for O(1) lookup
+		if next.sim.MentorIndex == nil {
+			next.sim.MentorIndex = make(map[string]string)
+		}
+		if next.sim.TicketMentors == nil {
+			next.sim.TicketMentors = make(map[string]string)
+		}
+		next.sim.MentorIndex[e.MentorID] = e.TicketID
+		next.sim.TicketMentors[model.MentorKey(e.TicketID, e.Phase)] = e.MentorID
 		// Add mentor to ticket contributors for review disqualification
 		for i, t := range next.sim.ActiveTickets {
 			if t.ID == e.TicketID {
@@ -409,12 +418,15 @@ func (p Projection) Apply(evt Event) Projection {
 		}
 
 	case MentorReleased:
-		for i, m := range next.sim.ActiveMentorships {
+		for i, m := range next.sim.ActiveMentorships { // justified:IX
 			if m.MentorID == e.MentorID && m.TicketID == e.TicketID && m.Phase == e.Phase {
 				next.sim.ActiveMentorships = append(next.sim.ActiveMentorships[:i], next.sim.ActiveMentorships[i+1:]...)
 				break
 			}
 		}
+		// Remove from indexes
+		delete(next.sim.MentorIndex, e.MentorID)
+		delete(next.sim.TicketMentors, model.MentorKey(e.TicketID, e.Phase))
 
 	case TicketTriaged:
 		for i, t := range next.sim.Backlog {

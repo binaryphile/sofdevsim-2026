@@ -38,6 +38,8 @@ type Simulation struct {
 
 	// Mentoring
 	ActiveMentorships []Mentorship
+	MentorIndex       map[string]string         // mentorID → ticketID (O(1) IsMentoring)
+	TicketMentors     map[string]string          // "ticketID:phase" → mentorID (O(1) MentorForTicket)
 
 	// Phase queues (handoff model)
 	PhaseQueues map[WorkflowPhase][]string // ticket IDs waiting per phase
@@ -133,6 +135,20 @@ func (s Simulation) Clone() Simulation {
 	s.ResolvedIncidents = append([]Incident(nil), s.ResolvedIncidents...)
 
 	s.ActiveMentorships = append([]Mentorship(nil), s.ActiveMentorships...)
+	if s.MentorIndex != nil {
+		mi := make(map[string]string, len(s.MentorIndex))
+		for k, v := range s.MentorIndex { // justified:MB
+			mi[k] = v
+		}
+		s.MentorIndex = mi
+	}
+	if s.TicketMentors != nil {
+		tm := make(map[string]string, len(s.TicketMentors))
+		for k, v := range s.TicketMentors { // justified:MB
+			tm[k] = v
+		}
+		s.TicketMentors = tm
+	}
 
 	// Deep copy PhaseQueues map and its slice values
 	if s.PhaseQueues != nil {
@@ -146,14 +162,15 @@ func (s Simulation) Clone() Simulation {
 	return s
 }
 
-// isMentor returns true if the mentorship's mentor matches the given devID.
-func isMentor(devID string) func(Mentorship) bool {
-	return func(m Mentorship) bool { return m.MentorID == devID }
+// MentorKey returns the map key for TicketMentors lookup.
+func MentorKey(ticketID string, phase WorkflowPhase) string {
+	return ticketID + ":" + phase.String()
 }
 
-// IsMentoring returns true if the developer is currently mentoring someone.
+// IsMentoring returns true if the developer is currently mentoring someone. O(1).
 func (s Simulation) IsMentoring(devID string) bool {
-	return slice.From(s.ActiveMentorships).Any(isMentor(devID))
+	_, ok := s.MentorIndex[devID]
+	return ok
 }
 
 // IsDevAvailable returns true if the developer is idle and not mentoring.
@@ -165,14 +182,10 @@ func (s Simulation) IsDevAvailable(devID string) bool {
 	return s.Developers[devIdx].IsIdle() && !s.IsMentoring(devID)
 }
 
-// MentorForTicket returns the mentor ID for a ticket in a specific phase, if any.
+// MentorForTicket returns the mentor ID for a ticket in a specific phase, if any. O(1).
 func (s Simulation) MentorForTicket(ticketID string, phase WorkflowPhase) (string, bool) {
-	// matchesTicketPhase returns true if the mentorship matches the given ticket and phase.
-	matchesTicketPhase := func(m Mentorship) bool { return m.TicketID == ticketID && m.Phase == phase }
-	if m, ok := slice.From(s.ActiveMentorships).Find(matchesTicketPhase).Get(); ok {
-		return m.MentorID, true
-	}
-	return "", false
+	mentorID, ok := s.TicketMentors[MentorKey(ticketID, phase)]
+	return mentorID, ok
 }
 
 // FindCommittedTicketIndex returns index of ticket in CommittedTickets, or -1 if not found
