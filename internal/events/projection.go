@@ -172,6 +172,8 @@ func (p Projection) Apply(evt Event) Projection {
 				if fromBacklog || fromCommitted {
 					next.sim.Developers[i].WIPCount++
 				}
+				// Advance round-robin cursor to this dev's index
+				next.sim.AssignCursor = i
 				break
 			}
 		}

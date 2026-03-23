@@ -13,7 +13,7 @@ const defaultLowMaxEstimate = 5.0
 // Low-experience devs don't get tickets above LowExpMaxEstimate.
 // When a Low dev is assigned, an idle High dev is paired as mentor if available.
 // Self-review prohibition: contributors can't review their own ticket (solo-team exception).
-// Stateless: round-robin offset derived from current tick (deterministic, no mutable state).
+// Uses Simulation.AssignCursor for persistent round-robin (advances on each assignment).
 type RoundRobinPolicy struct{}
 
 // NewRoundRobinPolicy creates a round-robin assignment policy.
@@ -22,8 +22,8 @@ func NewRoundRobinPolicy() RoundRobinPolicy {
 }
 
 // SelectDev picks the next eligible developer in round-robin order.
-// The round-robin start offset is derived from state.CurrentTick for determinism
-// without requiring mutable state on the policy (compatible with immutable Engine).
+// Uses Simulation.AssignCursor for persistent round-robin — each assignment
+// advances the cursor, ensuring fair distribution across all assignments.
 func (p RoundRobinPolicy) SelectDev(state model.Simulation, ticketID string, phase model.WorkflowPhase) AssignmentResult {
 	n := len(state.Developers)
 	if n == 0 {
@@ -35,10 +35,10 @@ func (p RoundRobinPolicy) SelectDev(state model.Simulation, ticketID string, pha
 		return AssignmentResult{}
 	}
 	ticket := state.ActiveTickets[ticketIdx]
-	// Round-robin offset from tick ensures fair distribution across ticks.
+	// Persistent round-robin: start from cursor+1, wrapping around.
 	// Two-pass for Review: first try non-contributors, then fall back to contributors
 	// (small teams may have all devs as contributors due to handoffs).
-	startIdx := state.CurrentTick % n
+	startIdx := (state.AssignCursor + 1) % n
 	lowMax := option.NonZero(state.ExperienceConfig.LowMaxEstimate).Or(defaultLowMaxEstimate)
 	var devID string
 	var devExp model.ExperienceLevel

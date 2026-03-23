@@ -44,6 +44,9 @@ type Simulation struct {
 	CICDSlots   int                        // max concurrent CI/CD pipeline runs
 	CICDInUse   int                        // current pipeline runs
 
+	// Assignment cursor (persistent round-robin state)
+	AssignCursor int // index of last assigned dev, advances on each assignment
+
 	// Configuration
 	SizingPolicy     SizingPolicy
 	SprintLength     int     // days
