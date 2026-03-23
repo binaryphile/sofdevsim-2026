@@ -13,19 +13,13 @@ import (
 )
 
 // experienceMultiplier returns the velocity multiplier for a dev's experience at a phase.
-// High=1.1, Medium=1.0 (baseline), Low=0.6 (alone) or 0.9 (mentored).
+// Uses configurable multipliers from ExperienceConfig on Simulation.
 func experienceMultiplier(exp model.ExperienceLevel, ticketID string, phase model.WorkflowPhase, state model.Simulation) float64 {
-	switch exp {
-	case model.ExperienceHigh:
-		return 1.1
-	case model.ExperienceLow:
-		if _, ok := state.MentorForTicket(ticketID, phase); ok {
-			return 0.9
-		}
-		return 0.6
-	default: // Medium
-		return 1.0
+	mentored := false
+	if exp == model.ExperienceLow {
+		_, mentored = state.MentorForTicket(ticketID, phase)
 	}
+	return state.ExperienceConfig.ExperienceMultiplier(exp, mentored)
 }
 
 // NotDecomposable explains why decomposition didn't happen.
@@ -493,17 +487,13 @@ func (e Engine) StartSprint() (Engine, error) {
 	// Sprint commitment: commit highest-priority triaged tickets up to capacity
 	state = e.state()
 
-	// Calculate available capacity
-	totalCapacity := float64(state.SprintLength) * 0.8
-	for _, dev := range state.Developers {
-		totalCapacity += float64(state.SprintLength) * dev.Velocity * 0.8
-	}
-	totalCapacity = float64(state.SprintLength) * 0.8 // reset — formula is sprintLength * sum(velocity) * 0.8
+	// Calculate available capacity: sprintLength * sum(velocity) * capacityFactor
+	capFactor := option.NonZero(state.ExperienceConfig.SprintCapacityFactor).Or(0.8)
 	var sumVelocity float64
 	for _, dev := range state.Developers { // justified:SM
 		sumVelocity += dev.Velocity
 	}
-	totalCapacity = float64(state.SprintLength) * sumVelocity * 0.8
+	totalCapacity := float64(state.SprintLength) * sumVelocity * capFactor
 
 	// Subtract carryover: remaining effort of in-progress tickets
 	for _, t := range state.ActiveTickets { // justified:SM

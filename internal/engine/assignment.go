@@ -1,13 +1,13 @@
 package engine
 
 import (
+	"github.com/binaryphile/fluentfp/option"
 	"github.com/binaryphile/fluentfp/slice"
 	"github.com/binaryphile/sofdevsim-2026/internal/model"
 )
 
-// LowExpMaxEstimate is the maximum ticket size (estimated days) that a Low-experience
-// dev can be assigned. Larger tickets go to Medium/High devs.
-const LowExpMaxEstimate = 5.0
+// defaultLowMaxEstimate is the fallback for ExperienceConfig.LowMaxEstimate.
+const defaultLowMaxEstimate = 5.0
 
 // RoundRobinPolicy assigns devs in round-robin order with experience constraints.
 // Low-experience devs don't get tickets above LowExpMaxEstimate.
@@ -39,6 +39,7 @@ func (p RoundRobinPolicy) SelectDev(state model.Simulation, ticketID string, pha
 	// Two-pass for Review: first try non-contributors, then fall back to contributors
 	// (small teams may have all devs as contributors due to handoffs).
 	startIdx := state.CurrentTick % n
+	lowMax := option.NonZero(state.ExperienceConfig.LowMaxEstimate).Or(defaultLowMaxEstimate)
 	var devID string
 	var devExp model.ExperienceLevel
 	var fallbackDevID string
@@ -54,7 +55,7 @@ func (p RoundRobinPolicy) SelectDev(state model.Simulation, ticketID string, pha
 		exp := dev.PhaseExperience[phase]
 
 		// Low-experience devs can't take large tickets
-		if exp == model.ExperienceLow && ticket.EstimatedDays > LowExpMaxEstimate {
+		if exp == model.ExperienceLow && ticket.EstimatedDays > lowMax {
 			continue
 		}
 

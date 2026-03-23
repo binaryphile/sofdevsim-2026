@@ -45,12 +45,52 @@ type Simulation struct {
 	CICDInUse   int                        // current pipeline runs
 
 	// Configuration
-	SizingPolicy SizingPolicy
-	SprintLength int // days
-	BufferPct    float64
+	SizingPolicy     SizingPolicy
+	SprintLength     int     // days
+	BufferPct        float64
+	ExperienceConfig ExperienceConfig
 
 	// RNG seed for reproducibility
 	Seed int64
+}
+
+// ExperienceConfig holds tunable parameters for experience and sprint planning.
+// Zero value uses defaults via DefaultExperienceConfig().
+type ExperienceConfig struct {
+	HighMultiplier       float64 // velocity multiplier for High experience (default 1.1)
+	MediumMultiplier     float64 // velocity multiplier for Medium experience (default 1.0)
+	LowMultiplier        float64 // velocity multiplier for Low experience alone (default 0.6)
+	LowMentoredMultiplier float64 // velocity multiplier for Low with mentor (default 0.9)
+	LowMaxEstimate       float64 // max ticket size for Low-experience devs (default 5.0)
+	SprintCapacityFactor float64 // overhead factor for sprint commitment (default 0.8)
+}
+
+// DefaultExperienceConfig returns the standard configuration.
+func DefaultExperienceConfig() ExperienceConfig {
+	return ExperienceConfig{
+		HighMultiplier:        1.1,
+		MediumMultiplier:      1.0,
+		LowMultiplier:         0.6,
+		LowMentoredMultiplier: 0.9,
+		LowMaxEstimate:        5.0,
+		SprintCapacityFactor:  0.8,
+	}
+}
+
+// ExperienceMultiplier returns the velocity multiplier for an experience level.
+// Uses option.NonZero to fall back to defaults for zero-value configs.
+func (c ExperienceConfig) ExperienceMultiplier(level ExperienceLevel, mentored bool) float64 {
+	switch level {
+	case ExperienceHigh:
+		return option.NonZero(c.HighMultiplier).Or(1.1)
+	case ExperienceLow:
+		if mentored {
+			return option.NonZero(c.LowMentoredMultiplier).Or(0.9)
+		}
+		return option.NonZero(c.LowMultiplier).Or(0.6)
+	default:
+		return option.NonZero(c.MediumMultiplier).Or(1.0)
+	}
 }
 
 // NewSimulation creates a simulation with default configuration.
@@ -72,6 +112,7 @@ func NewSimulation(id string, policy SizingPolicy, seed int64) Simulation {
 		SizingPolicy:      policy,
 		SprintLength:      10, // 2-week sprints
 		BufferPct:         0.2,
+		ExperienceConfig:  DefaultExperienceConfig(),
 		Seed:              seed,
 	}
 }
