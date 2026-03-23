@@ -22,12 +22,12 @@ type (
 // SprintOption is a type alias for optional sprint state.
 // Per FP Guide §14: Option types for "value may not exist" semantics.
 // Sprint is absent between sprints or before first sprint starts.
-type SprintOption = option.Basic[SprintState]
+type SprintOption = option.Option[SprintState]
 
 // ComparisonOption is a type alias for optional comparison result.
 // Per FP Guide §14: Option types for "value may not exist" semantics.
 // Comparison result is absent until user runs comparison mode.
-type ComparisonOption = option.Basic[metrics.ComparisonResult]
+type ComparisonOption = option.Option[metrics.ComparisonResult]
 
 // ComparisonSummary re-exports lessons.ComparisonSummary for TUI use.
 type ComparisonSummary = lessons.ComparisonSummary
@@ -168,7 +168,7 @@ func HasHighChildVarianceFromTickets(completedTickets []TicketState) bool {
 	return false
 }
 
-// BuildComparisonSummary converts option.Basic[metrics.ComparisonResult] to lessons.ComparisonSummary.
+// BuildComparisonSummary converts option.Option[metrics.ComparisonResult] to lessons.ComparisonSummary.
 // Calculation: ComparisonOption → ComparisonSummary
 // Returns empty ComparisonSummary{} when option is not-ok (boundary defense).
 func BuildComparisonSummary(opt ComparisonOption) ComparisonSummary {

@@ -449,21 +449,26 @@ func TestEngine_EmitsTicketPhaseChangedEvent(t *testing.T) {
 
 	eng, _, _ = eng.Tick()
 
-	// Find TicketPhaseChanged event
+	// With handoff model, phase advance emits DeveloperReleased + TicketQueued (not TicketPhaseChanged)
 	evts := store.Replay(sim.ID)
-	found, ok := slice.FindAs[events.TicketPhaseChanged](evts).Get()
+	queued, ok := slice.FindAs[events.TicketQueued](evts).Get()
 	if !ok {
-		t.Fatal("Expected TicketPhaseChanged event not found")
+		t.Fatal("Expected TicketQueued event not found")
 	}
 
-	if found.TicketID != "TKT-001" {
-		t.Errorf("TicketPhaseChanged.TicketID = %s, want TKT-001", found.TicketID)
+	if queued.TicketID != "TKT-001" {
+		t.Errorf("TicketQueued.TicketID = %s, want TKT-001", queued.TicketID)
 	}
-	if found.OldPhase != model.PhaseResearch {
-		t.Errorf("TicketPhaseChanged.OldPhase = %v, want PhaseResearch", found.OldPhase)
+	if queued.Phase != model.PhaseSizing {
+		t.Errorf("TicketQueued.Phase = %v, want PhaseSizing", queued.Phase)
 	}
-	if found.NewPhase != model.PhaseSizing {
-		t.Errorf("TicketPhaseChanged.NewPhase = %v, want PhaseSizing", found.NewPhase)
+
+	released, ok := slice.FindAs[events.DeveloperReleased](evts).Get()
+	if !ok {
+		t.Fatal("Expected DeveloperReleased event not found")
+	}
+	if released.DeveloperID != "DEV-001" {
+		t.Errorf("DeveloperReleased.DeveloperID = %s, want DEV-001", released.DeveloperID)
 	}
 }
 

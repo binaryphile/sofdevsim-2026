@@ -10,7 +10,7 @@ import (
 func TestLinksFor(t *testing.T) {
 	tests := []struct {
 		name            string
-		sprintOption    option.Basic[model.Sprint]
+		sprintOption    option.Option[model.Sprint]
 		backlogCount    int
 		wantTick        bool
 		wantStartSprint bool
@@ -34,7 +34,7 @@ func TestLinksFor(t *testing.T) {
 		},
 		{
 			name:            "no sprint with backlog has start-sprint and assign links",
-			sprintOption:    option.Basic[model.Sprint]{},
+			sprintOption:    option.Option[model.Sprint]{},
 			backlogCount:    5,
 			wantTick:        false,
 			wantStartSprint: true,
@@ -42,7 +42,7 @@ func TestLinksFor(t *testing.T) {
 		},
 		{
 			name:            "no sprint with empty backlog has start-sprint only",
-			sprintOption:    option.Basic[model.Sprint]{},
+			sprintOption:    option.Option[model.Sprint]{},
 			backlogCount:    0,
 			wantTick:        false,
 			wantStartSprint: true,

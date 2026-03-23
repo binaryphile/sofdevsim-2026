@@ -107,7 +107,7 @@ type SimulationListResponse struct {
 // Per UC10: "API client lists active simulations to discover available IDs"
 func (r SimRegistry) HandleListSimulations(w http.ResponseWriter, req *http.Request) {
 	summaries := r.ListSimulations()
-	items := slice.MapTo[SimulationListItem](summaries).Map(toSimulationListItem)
+	items := slice.Map(summaries, toSimulationListItem)
 
 	response := SimulationListResponse{
 		Simulations: items,
@@ -395,11 +395,20 @@ func addStandardBacklog(eng engine.Engine) engine.Engine {
 func runSprintsWithTracking(eng engine.Engine, policy model.SizingPolicy, sprints int) metrics.SimulationResult {
 	tracker := metrics.NewTracker()
 	for i := 0; i < sprints; i++ {
+		// Decompose eligible tickets before sprint start (while still in backlog)
+		eng = decomposeEligibleTickets(eng)
+		// StartSprint triages + commits tickets
 		eng = must.Get(eng.StartSprint())
+		// Auto-assign committed tickets to idle developers
 		eng = autoAssignForComparison(eng)
-		eng, _ = must.Get2(eng.RunSprint())
-		state := eng.Sim()
-		tracker = tracker.Updated(state)
+		// Run sprint ticks
+		sprint := eng.Sim().CurrentSprintOption.MustGet()
+		for eng.Sim().CurrentTick < sprint.EndDay { // justified:CF
+			eng, _ = must.Get2(eng.Tick())
+			// Mid-sprint auto-assign for newly idle devs
+			eng = autoAssignForComparison(eng)
+		}
+		tracker = tracker.Updated(eng.Sim())
 	}
 	state := eng.Sim()
 	return tracker.GetResult(policy, state)
@@ -431,13 +440,22 @@ func autoAssignForComparison(eng engine.Engine) engine.Engine {
 	// First: decompose tickets that match policy criteria
 	eng = decomposeEligibleTickets(eng)
 
-	// Then: assign to idle developers
+	// Then: assign to idle developers from committed queue (or backlog for backward compat)
 	state := eng.Sim()
 	idleDevs := state.IdleDevelopers()
-	for i := 0; i < len(idleDevs) && len(state.Backlog) > 0; i++ {
+	for i := 0; i < len(idleDevs); i++ {
+		state = eng.Sim()
+		// Prefer committed tickets; fall back to backlog
+		var ticketID string
+		if len(state.CommittedTickets) > 0 {
+			ticketID = state.CommittedTickets[0].ID
+		} else if len(state.Backlog) > 0 {
+			ticketID = state.Backlog[0].ID
+		} else {
+			break
+		}
 		dev := idleDevs[i]
-		eng = must.Get(eng.AssignTicket(state.Backlog[0].ID, dev.ID))
-		state = eng.Sim() // Re-read after assignment - updates Backlog for next iteration
+		eng = must.Get(eng.AssignTicket(ticketID, dev.ID))
 	}
 	return eng
 }
@@ -605,7 +623,7 @@ func (r SimRegistry) HandleDecompose(w http.ResponseWriter, req *http.Request) {
 	// toTicketStates converts model.Ticket slice to TicketState slice.
 	// toTicketStates converts model.Ticket slice to TicketState slice.
 	toTicketStates := func(tickets []model.Ticket) []TicketState {
-		return slice.MapTo[TicketState](tickets).Map(ToTicketState)
+		return slice.Map(tickets, ToTicketState)
 	}
 
 	const maxRetries = 3
@@ -734,14 +752,14 @@ func deriveOfficeEvents(proj office.OfficeProjection, oldSim, newSim model.Simul
 }
 
 // findDeveloper finds a developer by ID in a slice.
-func findDeveloper(devs []model.Developer, id string) option.Basic[model.Developer] {
+func findDeveloper(devs []model.Developer, id string) option.Option[model.Developer] {
 	// hasID returns true if developer ID matches.
 	hasID := func(d model.Developer) bool { return d.ID == id }
 	return slice.From(devs).Find(hasID)
 }
 
 // findActiveTicket finds a ticket by ID in the active tickets slice.
-func findActiveTicket(tickets []model.Ticket, id string) option.Basic[model.Ticket] {
+func findActiveTicket(tickets []model.Ticket, id string) option.Option[model.Ticket] {
 	// hasID returns true if ticket ID matches.
 	hasID := func(t model.Ticket) bool { return t.ID == id }
 	return slice.From(tickets).Find(hasID)

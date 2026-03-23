@@ -77,7 +77,7 @@ type App struct {
 	modelEvents []model.Event
 
 	// Comparison mode
-	comparisonResult option.Basic[metrics.ComparisonResult]
+	comparisonResult option.Option[metrics.ComparisonResult]
 	comparisonSeed   int64
 
 	// Lessons panel
@@ -994,25 +994,32 @@ func (a *App) runSprintWithAutoAssign(eng engine.Engine, tracker metrics.Tracker
 	eng = must.Get(eng.StartSprint())
 
 	// Auto-assign tickets to idle developers at start
-	// Use index-based iteration so re-reads affect subsequent checks
+	// Pull from CommittedTickets first (sprint-committed), then Backlog (backward compat)
 	state := eng.Sim()
 	for i := 0; i < len(state.Developers); i++ { // justified:CF
+		state = eng.Sim()
 		dev := state.Developers[i]
-		if dev.IsIdle() && len(state.Backlog) > 0 {
-			ticket := state.Backlog[0]
-			// Try decomposition first based on policy
-			var result either.Either[engine.NotDecomposable, []model.Ticket]
-			eng, result = must.Get2(eng.TryDecompose(ticket.ID))
-			if children, decomposed := result.Get(); decomposed {
-				// Assign first child
-				if len(children) > 0 {
-					eng = must.Get(eng.AssignTicket(children[0].ID, dev.ID))
-				}
-			} else {
-				eng = must.Get(eng.AssignTicket(ticket.ID, dev.ID))
+		if !dev.IsIdle() {
+			continue
+		}
+		// Find assignable ticket: committed first, then backlog
+		var ticketID string
+		if len(state.CommittedTickets) > 0 {
+			ticketID = state.CommittedTickets[0].ID
+		} else if len(state.Backlog) > 0 {
+			ticketID = state.Backlog[0].ID
+		} else {
+			continue
+		}
+		// Try decomposition first based on policy
+		var result either.Either[engine.NotDecomposable, []model.Ticket]
+		eng, result = must.Get2(eng.TryDecompose(ticketID))
+		if children, decomposed := result.Get(); decomposed {
+			if len(children) > 0 {
+				eng = must.Get(eng.AssignTicket(children[0].ID, dev.ID))
 			}
-			// Re-read state after assignment - affects subsequent iterations
-			state = eng.Sim()
+		} else {
+			eng = must.Get(eng.AssignTicket(ticketID, dev.ID))
 		}
 	}
 
@@ -1023,22 +1030,29 @@ func (a *App) runSprintWithAutoAssign(eng engine.Engine, tracker metrics.Tracker
 		state = eng.Sim()
 		tracker = tracker.Updated(state)
 
-		// Re-assign idle developers mid-sprint
+		// Re-assign idle developers mid-sprint from committed queue
 		for i := 0; i < len(state.Developers); i++ { // justified:CF
+			state = eng.Sim()
 			dev := state.Developers[i]
-			if dev.IsIdle() && len(state.Backlog) > 0 {
-				ticket := state.Backlog[0]
-				var result either.Either[engine.NotDecomposable, []model.Ticket]
-				eng, result = must.Get2(eng.TryDecompose(ticket.ID))
-				if children, decomposed := result.Get(); decomposed {
-					if len(children) > 0 {
-						eng = must.Get(eng.AssignTicket(children[0].ID, dev.ID))
-					}
-				} else {
-					eng = must.Get(eng.AssignTicket(ticket.ID, dev.ID))
+			if !dev.IsIdle() {
+				continue
+			}
+			var ticketID string
+			if len(state.CommittedTickets) > 0 {
+				ticketID = state.CommittedTickets[0].ID
+			} else if len(state.Backlog) > 0 {
+				ticketID = state.Backlog[0].ID
+			} else {
+				continue
+			}
+			var result either.Either[engine.NotDecomposable, []model.Ticket]
+			eng, result = must.Get2(eng.TryDecompose(ticketID))
+			if children, decomposed := result.Get(); decomposed {
+				if len(children) > 0 {
+					eng = must.Get(eng.AssignTicket(children[0].ID, dev.ID))
 				}
-				// Re-read state after assignment - affects subsequent iterations
-				state = eng.Sim()
+			} else {
+				eng = must.Get(eng.AssignTicket(ticketID, dev.ID))
 			}
 		}
 	}

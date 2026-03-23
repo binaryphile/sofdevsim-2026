@@ -109,7 +109,7 @@ type SimulationState struct {
 	Seed                 int64            `json:"seed"`
 	CurrentTick          int              `json:"currentTick"`
 	SprintActive         bool                       `json:"sprintActive"`
-	SprintOption         option.Basic[SprintState]  `json:"sprint"`
+	SprintOption         option.Option[SprintState]  `json:"sprint"`
 	SprintNumber         int                        `json:"sprintNumber"`
 	SizingPolicy         string           `json:"sizingPolicy"`
 	BacklogCount         int              `json:"backlogCount"`

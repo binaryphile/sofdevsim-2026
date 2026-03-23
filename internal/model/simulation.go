@@ -5,14 +5,22 @@ import (
 	"github.com/binaryphile/fluentfp/slice"
 )
 
-// NoSprint is the zero value for option.Basic[Sprint], representing no active sprint.
-var NoSprint option.Basic[Sprint]
+// NoSprint is the zero value for option.Option[Sprint], representing no active sprint.
+var NoSprint option.Option[Sprint]
+
+// Mentorship represents an active mentor-mentee pairing on a ticket phase.
+type Mentorship struct {
+	MentorID string
+	MenteeID string
+	TicketID string
+	Phase    WorkflowPhase
+}
 
 // Simulation holds the complete state of a simulation run
 type Simulation struct {
 	ID                   string // Unique identifier for event sourcing
 	CurrentTick          int    // 1 tick = 1 day
-	CurrentSprintOption  option.Basic[Sprint]
+	CurrentSprintOption  option.Option[Sprint]
 	SprintNumber         int
 
 	// Team
@@ -22,10 +30,19 @@ type Simulation struct {
 	Backlog          []Ticket
 	ActiveTickets    []Ticket
 	CompletedTickets []Ticket
+	CommittedTickets []Ticket // tickets committed to current sprint, not yet in phase queues
 
 	// Incidents
 	OpenIncidents     []Incident
 	ResolvedIncidents []Incident
+
+	// Mentoring
+	ActiveMentorships []Mentorship
+
+	// Phase queues (handoff model)
+	PhaseQueues map[WorkflowPhase][]string // ticket IDs waiting per phase
+	CICDSlots   int                        // max concurrent CI/CD pipeline runs
+	CICDInUse   int                        // current pipeline runs
 
 	// Configuration
 	SizingPolicy SizingPolicy
@@ -47,8 +64,11 @@ func NewSimulation(id string, policy SizingPolicy, seed int64) Simulation {
 		Backlog:           make([]Ticket, 0),
 		ActiveTickets:     make([]Ticket, 0),
 		CompletedTickets:  make([]Ticket, 0),
+		CommittedTickets:  make([]Ticket, 0),
 		OpenIncidents:     make([]Incident, 0),
 		ResolvedIncidents: make([]Incident, 0),
+		PhaseQueues:       make(map[WorkflowPhase][]string),
+		CICDSlots:         2, // default 2 CI/CD pipeline slots
 		SizingPolicy:      policy,
 		SprintLength:      10, // 2-week sprints
 		BufferPct:         0.2,
@@ -64,9 +84,61 @@ func (s Simulation) Clone() Simulation {
 	s.Backlog = append([]Ticket(nil), s.Backlog...)
 	s.ActiveTickets = append([]Ticket(nil), s.ActiveTickets...)
 	s.CompletedTickets = append([]Ticket(nil), s.CompletedTickets...)
+	s.CommittedTickets = append([]Ticket(nil), s.CommittedTickets...)
 	s.OpenIncidents = append([]Incident(nil), s.OpenIncidents...)
 	s.ResolvedIncidents = append([]Incident(nil), s.ResolvedIncidents...)
+
+	s.ActiveMentorships = append([]Mentorship(nil), s.ActiveMentorships...)
+
+	// Deep copy PhaseQueues map and its slice values
+	if s.PhaseQueues != nil {
+		cloned := make(map[WorkflowPhase][]string, len(s.PhaseQueues))
+		for k, v := range s.PhaseQueues {
+			cloned[k] = append([]string(nil), v...)
+		}
+		s.PhaseQueues = cloned
+	}
+
 	return s
+}
+
+// IsMentoring returns true if the developer is currently mentoring someone.
+func (s Simulation) IsMentoring(devID string) bool {
+	for _, m := range s.ActiveMentorships {
+		if m.MentorID == devID {
+			return true
+		}
+	}
+	return false
+}
+
+// IsDevAvailable returns true if the developer is idle and not mentoring.
+func (s Simulation) IsDevAvailable(devID string) bool {
+	devIdx := s.FindDeveloperIndex(devID)
+	if devIdx == -1 {
+		return false
+	}
+	return s.Developers[devIdx].IsIdle() && !s.IsMentoring(devID)
+}
+
+// MentorForTicket returns the mentor ID for a ticket in a specific phase, if any.
+func (s Simulation) MentorForTicket(ticketID string, phase WorkflowPhase) (string, bool) {
+	for _, m := range s.ActiveMentorships {
+		if m.TicketID == ticketID && m.Phase == phase {
+			return m.MentorID, true
+		}
+	}
+	return "", false
+}
+
+// FindCommittedTicketIndex returns index of ticket in CommittedTickets, or -1 if not found
+func (s Simulation) FindCommittedTicketIndex(id string) int {
+	for i := range s.CommittedTickets {
+		if s.CommittedTickets[i].ID == id {
+			return i
+		}
+	}
+	return -1
 }
 
 // FindActiveTicketIndex returns index of ticket in ActiveTickets, or -1 if not found

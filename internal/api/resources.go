@@ -67,12 +67,12 @@ func ToDeveloperState(d model.Developer) DeveloperState {
 }
 
 // SimulationState is the JSON-friendly representation of a simulation.
-// Uses option.Basic for optional Sprint (value semantics).
+// Uses option.Option for optional Sprint (value semantics).
 type SimulationState struct {
 	ID                   string                     `json:"id"`
 	Seed                 int64                      `json:"seed"`
 	CurrentTick          int                        `json:"currentTick"`
-	CurrentSprintOption  option.Basic[model.Sprint] `json:"-"` // Custom marshaling
+	CurrentSprintOption  option.Option[model.Sprint] `json:"-"` // Custom marshaling
 	SprintNumber         int                        `json:"sprintNumber"`
 	SizingPolicy         string                     `json:"sizingPolicy"`
 	BacklogCount         int                        `json:"backlogCount"`
@@ -87,7 +87,7 @@ type SimulationState struct {
 }
 
 // MarshalJSON implements custom JSON marshaling for SimulationState.
-// Converts option.Basic[Sprint] to sprintActive bool + sprint object.
+// Converts option.Option[Sprint] to sprintActive bool + sprint object.
 func (s SimulationState) MarshalJSON() ([]byte, error) {
 	type jsonState struct {
 		ID                   string           `json:"id"`
@@ -143,10 +143,10 @@ type HALResponse struct {
 // Tracker may be nil for simulations without metrics tracking.
 func ToState(sim model.Simulation, tracker metrics.Tracker) SimulationState {
 	// Convert backlog tickets
-	backlog := slice.MapTo[TicketState](sim.Backlog).Map(ToTicketState)
+	backlog := slice.Map(sim.Backlog, ToTicketState)
 
 	// Convert developers
-	developers := slice.MapTo[DeveloperState](sim.Developers).Map(ToDeveloperState)
+	developers := slice.Map(sim.Developers, ToDeveloperState)
 
 	// Convert active tickets with assigned developer info
 	activeTickets := make([]TicketState, len(sim.ActiveTickets))
@@ -163,13 +163,13 @@ func ToState(sim model.Simulation, tracker metrics.Tracker) SimulationState {
 	}
 
 	// Convert completed tickets
-	completedTickets := slice.MapTo[TicketState](sim.CompletedTickets).Map(ToTicketState)
+	completedTickets := slice.Map(sim.CompletedTickets, ToTicketState)
 
 	// Compute metrics from tracker (safe even for zero tracker - returns zero metrics)
 	result := tracker.GetResult(sim.SizingPolicy, sim)
 
 	// Convert DORA history for sparklines
-	history := slice.MapTo[DORAHistoryPoint](tracker.DORA.History).Map(toDORAHistoryPoint)
+	history := slice.Map(tracker.DORA.History, toDORAHistoryPoint)
 
 	metricsState := DORAResponse{
 		LeadTimeAvgDays:   result.FinalMetrics.LeadTimeAvgDays(),

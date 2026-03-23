@@ -37,18 +37,18 @@ type SaveFile struct {
 }
 
 // SimulationState captures everything needed to restore a simulation.
-// Note: Uses PersistableSimulation for gob compatibility (option.Basic can't be serialized).
+// Note: Uses PersistableSimulation for gob compatibility (option.Option can't be serialized).
 type SimulationState struct {
 	Simulation PersistableSimulation // Core simulation state (gob-safe)
 	DORA       metrics.DORAMetrics   // DORA calculator with history
 	Fever      metrics.FeverChart    // Fever calculator with history
 }
 
-// PersistableSimulation mirrors model.Simulation but uses *Sprint instead of option.Basic[Sprint]
+// PersistableSimulation mirrors model.Simulation but uses *Sprint instead of option.Option[Sprint]
 // for gob serialization compatibility.
 type PersistableSimulation struct {
 	CurrentTick   int
-	CurrentSprint *model.Sprint // Uses pointer for gob (option.Basic has unexported fields)
+	CurrentSprint *model.Sprint // Uses pointer for gob (option.Option has unexported fields)
 	SprintNumber  int
 
 	Developers []model.Developer
@@ -93,7 +93,7 @@ func ToPersistable(sim model.Simulation) PersistableSimulation {
 
 // FromPersistable converts a PersistableSimulation back to a model.Simulation.
 func FromPersistable(ps PersistableSimulation) model.Simulation {
-	var sprintOption option.Basic[model.Sprint]
+	var sprintOption option.Option[model.Sprint]
 	if ps.CurrentSprint != nil {
 		sprintOption = option.Of(*ps.CurrentSprint)
 	}

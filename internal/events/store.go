@@ -86,7 +86,7 @@ func (m *MemoryStore) Replay(simID string) []Event {
 	}
 
 	// Apply upcasts and return copy (per Go Dev Guide §9)
-	return slice.From(original).Convert(m.upcaster.Apply)
+	return slice.From(original).Transform(m.upcaster.Apply)
 }
 
 // Subscribe returns a channel that receives new events for a simulation.

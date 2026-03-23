@@ -4,8 +4,8 @@ import (
 	"sort"
 	"time"
 
+	"github.com/binaryphile/fluentfp/option"
 	"github.com/binaryphile/fluentfp/slice"
-	"github.com/binaryphile/fluentfp/value"
 	"github.com/binaryphile/sofdevsim-2026/internal/model"
 )
 
@@ -117,7 +117,7 @@ func (m DORAMetrics) updatedDeployFrequency(sim model.Simulation) DORAMetrics {
 
 	// Frequency per day
 	if sim.CurrentTick > 0 {
-		days := value.Of(sim.CurrentTick).When(sim.CurrentTick < 7).Or(7)
+		days := option.When(sim.CurrentTick < 7, sim.CurrentTick).Or(7)
 		m.DeployFrequency = float64(m.DeploysLast7Days) / float64(days)
 	}
 	return m

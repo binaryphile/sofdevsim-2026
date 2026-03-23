@@ -15,7 +15,7 @@ const MaxSequenceEvents = 32
 // detectionState tracks crisis detection progress during fold.
 type detectionState struct {
 	inCrisis    bool
-	crisisStart option.Basic[int]       // Tick when crisis started
+	crisisStart option.Option[int]       // Tick when crisis started
 	crisisEvts  []events.Event          // Events accumulated during crisis
 	completed   []BufferCrisisSequence  // Completed sequences
 }
@@ -63,7 +63,7 @@ func accumulate(state detectionState, e events.Event) detectionState {
 
 		// Reset for next potential crisis
 		state.inCrisis = false
-		state.crisisStart = option.Basic[int]{}
+		state.crisisStart = option.Option[int]{}
 		state.crisisEvts = nil
 		return state
 	}

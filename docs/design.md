@@ -88,7 +88,7 @@ classDiagram
         +string ID
         +int CurrentTick
         +int SprintNumber
-        +option.Basic~Sprint~ CurrentSprintOption
+        +option.Option~Sprint~ CurrentSprintOption
         +SizingPolicy SizingPolicy
         +int64 Seed
         +int SprintLength

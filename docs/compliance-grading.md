@@ -204,9 +204,9 @@
   slice.From(f.History).ToFloat64(FeverSnapshot.GetPercentUsed)
   slice.From(sim.CompletedTickets).KeepIf(completedAfterCutoff).Len()
   ```
-- **option.Basic** for optional values instead of nil pointers:
+- **option.Option** for optional values instead of nil pointers:
   ```go
-  CurrentSprintOption option.Basic[Sprint]
+  CurrentSprintOption option.Option[Sprint]
   ```
 
 #### Compliance Issues

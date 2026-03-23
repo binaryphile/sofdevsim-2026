@@ -34,7 +34,14 @@ type Ticket struct {
 	ChildIDs []string
 
 	// Assignment
-	AssignedTo string
+	AssignedTo   string
+	Priority     Priority     // business urgency (exogenous input)
+	IntakeStatus IntakeStatus // intake pipeline progress
+
+	// Phase visit tracking (for handoff model)
+	PhaseEnteredTick  int    // tick when current phase was entered (queued)
+	PhaseAssignedTick int    // tick when dev was assigned for current phase
+	Contributors []string // dev IDs who contributed to this ticket (for review disqualification)
 
 	// Failure tracking (for CFR/MTTR)
 	CausedIncident bool
@@ -51,6 +58,23 @@ func NewTicket(id, title string, estimatedDays float64, understanding Understand
 		Phase:              PhaseBacklog,
 		PhaseEffortSpent:   make(map[WorkflowPhase]float64),
 		CreatedAt:          time.Now(),
+		Priority:           PriorityNormal,
+		IntakeStatus:       IntakeTriaged,
+	}
+}
+
+// NewSubmittedTicket creates a ticket that needs triage before sprint commitment.
+func NewSubmittedTicket(id, title string, estimatedDays float64, understanding UnderstandingLevel, priority Priority) Ticket {
+	return Ticket{
+		ID:                 id,
+		Title:              title,
+		EstimatedDays:      estimatedDays,
+		UnderstandingLevel: understanding,
+		Phase:              PhaseBacklog,
+		PhaseEffortSpent:   make(map[WorkflowPhase]float64),
+		CreatedAt:          time.Now(),
+		Priority:           priority,
+		IntakeStatus:       IntakeSubmitted,
 	}
 }
 

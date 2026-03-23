@@ -1,6 +1,6 @@
 module github.com/binaryphile/sofdevsim-2026
 
-go 1.25.5
+go 1.26
 
 require (
 	github.com/NimbleMarkets/ntcharts v0.3.1

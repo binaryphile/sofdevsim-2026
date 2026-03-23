@@ -505,7 +505,7 @@ func (l BufferCrisisLesson) generateProof(d Display, simID, proverPath string, z
 	toBufferZoneEvent := func(zc zoneChange) events.Event {
 		return events.NewBufferZoneChanged(simID, zc.tick, zc.oldZone, zc.newZone, 0.5)
 	}
-	proofEvents := slice.MapTo[events.Event](zoneChanges).Map(toBufferZoneEvent)
+	proofEvents := slice.Map(zoneChanges, toBufferZoneEvent)
 
 	// Detect crisis sequences
 	sequences := zkproof.DetectBufferCrisis(proofEvents)

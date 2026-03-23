@@ -117,3 +117,29 @@ func (e EventType) String() string {
 		"IncidentResolved",
 	}[e]
 }
+
+// IntakeStatus tracks a ticket's progress through the intake pipeline.
+type IntakeStatus int
+
+const (
+	IntakeSubmitted IntakeStatus = iota // created, awaiting triage
+	IntakeTriaged                       // triaged, sprint-eligible
+)
+
+func (s IntakeStatus) String() string {
+	return [...]string{"Submitted", "Triaged"}[s]
+}
+
+// Priority represents business urgency/value (exogenous input, not derived from engineering).
+type Priority int
+
+const (
+	PriorityLow      Priority = iota // backlog, when prioritized
+	PriorityNormal                   // next 1-3 sprints
+	PriorityHigh                     // this sprint
+	PriorityCritical                 // same day, top priority
+)
+
+func (p Priority) String() string {
+	return [...]string{"Low", "Normal", "High", "Critical"}[p]
+}

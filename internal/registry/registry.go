@@ -140,11 +140,10 @@ func (r *SimRegistry) CreateSimulation(seed int64, policy model.SizingPolicy) (s
 
 // GetInstanceOption returns simulation instance as an option.
 // State should be read via engine.Sim() (projection), not inst.Sim.
-func (r *SimRegistry) GetInstanceOption(id string) option.Basic[SimInstance] {
+func (r *SimRegistry) GetInstanceOption(id string) option.Option[SimInstance] {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	inst, ok := r.instances[id]
-	return option.New(inst, ok)
+	return option.Lookup(r.instances, id)
 }
 
 // SetInstance stores a simulation instance in the registry.

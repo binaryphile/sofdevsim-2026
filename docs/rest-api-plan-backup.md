@@ -324,7 +324,7 @@ func TestLinksFor_SprintActive_HasTickLink(t *testing.T) {
 func TestLinksFor_NoSprint_HasStartSprintLink(t *testing.T) {
     state := SimulationState{
         ID:                  "sim-42",
-        CurrentSprintOption: option.Basic[Sprint]{}, // Empty = no sprint
+        CurrentSprintOption: option.Option[Sprint]{}, // Empty = no sprint
     }
 
     links := LinksFor(state)
@@ -394,16 +394,16 @@ func TestAPI_SprintLifecycle(t *testing.T) {
 
 ---
 
-## option.Basic JSON Serialization
+## option.Option JSON Serialization
 
-`option.Basic[T]` needs custom JSON marshaling for HAL responses:
+`option.Option[T]` needs custom JSON marshaling for HAL responses:
 
 ```go
-// SimulationState uses option.Basic for nullable sprint
+// SimulationState uses option.Option for nullable sprint
 type SimulationState struct {
     ID                  string              `json:"id"`
     CurrentTick         int                 `json:"currentTick"`
-    CurrentSprintOption option.Basic[Sprint] `json:"-"` // Custom handling
+    CurrentSprintOption option.Option[Sprint] `json:"-"` // Custom handling
 
     // Computed for JSON
     SprintActive bool    `json:"sprintActive"`

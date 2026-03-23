@@ -62,7 +62,7 @@ func feverStatusString(fs model.FeverStatus) string {
 
 // ExportProofRequest creates a JSON-serialized ProofRequest from a BufferCrisisSequence.
 func ExportProofRequest(simID string, seq BufferCrisisSequence) ([]byte, error) {
-	evts := slice.MapTo[ProofRequestEvent](seq.Events).Map(toProofRequestEvent)
+	evts := slice.Map(seq.Events, toProofRequestEvent)
 
 	request := ProofRequest{
 		Version:      1,

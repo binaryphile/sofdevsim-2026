@@ -328,17 +328,17 @@ func NewOfficeState(devIDs []string) OfficeState {
 }
 
 // GetAnimationOption returns the animation for a specific developer.
-// Calculation: (OfficeState, string) → option.Basic[DeveloperAnimation]
-func (s OfficeState) GetAnimationOption(devID string) option.Basic[DeveloperAnimation] {
+// Calculation: (OfficeState, string) → option.Option[DeveloperAnimation]
+func (s OfficeState) GetAnimationOption(devID string) option.Option[DeveloperAnimation] {
 	// hasDevID returns true if the animation belongs to the specified developer.
 	hasDevID := func(a DeveloperAnimation) bool { return a.DevID == devID }
 	return slice.From(s.Animations).Find(hasDevID)
 }
 
 // GetActiveAnimationOption returns the animation only if it's active.
-// Calculation: (OfficeState, string) → option.Basic[DeveloperAnimation]
-func (s OfficeState) GetActiveAnimationOption(devID string) option.Basic[DeveloperAnimation] {
-	return s.GetAnimationOption(devID).KeepOkIf(DeveloperAnimation.IsActive)
+// Calculation: (OfficeState, string) → option.Option[DeveloperAnimation]
+func (s OfficeState) GetActiveAnimationOption(devID string) option.Option[DeveloperAnimation] {
+	return s.GetAnimationOption(devID).KeepIf(DeveloperAnimation.IsActive)
 }
 
 // seedSipTimer initializes SipStartTime for a developer so the sip trigger countdown begins.
@@ -366,7 +366,7 @@ func (s OfficeState) SetDeveloperState(devID string, state AnimationState) Offic
 		}
 		return anim.WithState(state)
 	}
-	return OfficeState{Animations: slice.From(s.Animations).Convert(applyState)}
+	return OfficeState{Animations: slice.From(s.Animations).Transform(applyState)}
 }
 
 // StartDeveloperMovingToCubicle returns a new OfficeState with the developer moving to cubicle.
@@ -378,7 +378,7 @@ func (s OfficeState) StartDeveloperMovingToCubicle(devID string, target Position
 		}
 		return anim.StartMovingToCubicle(target, now)
 	}
-	return OfficeState{Animations: slice.From(s.Animations).Convert(startMoving)}
+	return OfficeState{Animations: slice.From(s.Animations).Transform(startMoving)}
 }
 
 // StartDeveloperMovingToConference returns a new OfficeState with the developer moving to conference.
@@ -390,7 +390,7 @@ func (s OfficeState) StartDeveloperMovingToConference(devID string, target Posit
 		}
 		return anim.StartMovingToConference(target, now)
 	}
-	return OfficeState{Animations: slice.From(s.Animations).Convert(startMoving)}
+	return OfficeState{Animations: slice.From(s.Animations).Transform(startMoving)}
 }
 
 // AdvanceFrames advances animation for developers.
@@ -441,5 +441,5 @@ func (s OfficeState) startDevSip(devID string, now time.Time) OfficeState {
 		}
 		return anim.StartSip(now)
 	}
-	return OfficeState{Animations: slice.From(s.Animations).Convert(apply)}
+	return OfficeState{Animations: slice.From(s.Animations).Transform(apply)}
 }

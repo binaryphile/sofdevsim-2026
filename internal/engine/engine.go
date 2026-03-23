@@ -2,6 +2,7 @@ package engine
 
 import (
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/binaryphile/fluentfp/either"
@@ -10,6 +11,22 @@ import (
 	"github.com/binaryphile/sofdevsim-2026/internal/events"
 	"github.com/binaryphile/sofdevsim-2026/internal/model"
 )
+
+// experienceMultiplier returns the velocity multiplier for a dev's experience at a phase.
+// High=1.1, Medium=1.0 (baseline), Low=0.6 (alone) or 0.9 (mentored).
+func experienceMultiplier(exp model.ExperienceLevel, ticketID string, phase model.WorkflowPhase, state model.Simulation) float64 {
+	switch exp {
+	case model.ExperienceHigh:
+		return 1.1
+	case model.ExperienceLow:
+		if _, ok := state.MentorForTicket(ticketID, phase); ok {
+			return 0.9
+		}
+		return 0.6
+	default: // Medium
+		return 1.0
+	}
+}
 
 // NotDecomposable explains why decomposition didn't happen.
 // Value type: no pointers, use value semantics.
@@ -27,6 +44,20 @@ func toChildTicket(t model.Ticket) events.ChildTicket {
 	}
 }
 
+// AssignmentResult is the output of an assignment policy decision.
+type AssignmentResult struct {
+	DevID    string // developer to assign
+	MentorID string // mentor to pair (empty if none)
+}
+
+// AssignmentPolicy selects a developer for a queued ticket.
+// Pure function: reads state, returns a decision. Does not emit events.
+type AssignmentPolicy interface {
+	// SelectDev picks a developer for the ticket at the head of the phase queue.
+	// Returns empty DevID if no eligible dev is available.
+	SelectDev(state model.Simulation, ticketID string, phase model.WorkflowPhase) AssignmentResult
+}
+
 // Engine orchestrates pure and impure operations for simulation execution.
 //
 // Architecture (per FP Guide ACD pattern):
@@ -36,22 +67,24 @@ func toChildTicket(t model.Ticket) events.ChildTicket {
 //
 // Value receiver: all methods return new Engine (immutable pattern per FP Guide §7).
 type Engine struct {
-	proj     events.Projection              // Data: immutable state derived from events
-	variance VarianceModel                  // Calculation: pure, deterministic variance
-	evtGen   EventGenerator                 // Calculation: seeded RNG, deterministic per tick
-	policies PolicyEngine                   // Calculation: pure policy decisions
-	storeOption option.Basic[events.Store]  // Action: I/O to event store (optional)
-	trace    events.TraceContext            // Data: correlation context for events
+	proj       events.Projection              // Data: immutable state derived from events
+	variance   VarianceModel                  // Calculation: pure, deterministic variance
+	evtGen     EventGenerator                 // Calculation: seeded RNG, deterministic per tick
+	policies   PolicyEngine                   // Calculation: pure policy decisions
+	assignPol  AssignmentPolicy               // Calculation: dev selection for queue assignment
+	storeOption option.Option[events.Store]   // Action: I/O to event store (optional)
+	trace      events.TraceContext            // Data: correlation context for events
 }
 
 // NewEngine creates a simulation engine without event sourcing.
 // Use EmitCreated() or EmitLoadedState() to initialize projection state.
 func NewEngine(seed int64) Engine {
 	return Engine{
-		proj:     events.NewProjection(),
-		variance: NewVarianceModel(seed),
-		evtGen:   NewEventGenerator(seed),
-		policies: NewPolicyEngine(seed),
+		proj:      events.NewProjection(),
+		variance:  NewVarianceModel(seed),
+		evtGen:    NewEventGenerator(seed),
+		policies:  NewPolicyEngine(seed),
+		assignPol: NewRoundRobinPolicy(),
 	}
 }
 
@@ -59,10 +92,11 @@ func NewEngine(seed int64) Engine {
 // Use EmitCreated() or EmitLoadedState() to initialize projection state.
 func NewEngineWithStore(seed int64, store events.Store) Engine {
 	return Engine{
-		proj:     events.NewProjection(),
-		variance: NewVarianceModel(seed),
-		evtGen:   NewEventGenerator(seed),
-		policies: NewPolicyEngine(seed),
+		proj:        events.NewProjection(),
+		variance:    NewVarianceModel(seed),
+		evtGen:      NewEventGenerator(seed),
+		policies:    NewPolicyEngine(seed),
+		assignPol:   NewRoundRobinPolicy(),
 		storeOption: option.Of(store),
 	}
 }
@@ -135,16 +169,11 @@ func (e Engine) emit(evt events.Event) (Engine, error) {
 }
 
 // withProj returns a new Engine with the given projection, preserving all other fields.
-// Pure construction helper for immutable pattern.
+// Value receiver means e is already a copy — set proj and return.
+// No manual field enumeration needed (prevents missing-field bugs when adding fields).
 func (e Engine) withProj(proj events.Projection) Engine {
-	return Engine{
-		proj:     proj,
-		variance: e.variance,
-		evtGen:   e.evtGen,
-		policies: e.policies,
-		storeOption: e.storeOption,
-		trace:    e.trace,
-	}
+	e.proj = proj
+	return e
 }
 
 // ApplyEvent applies an external event to the projection without writing to store.
@@ -193,9 +222,10 @@ func (e Engine) Tick() (Engine, []model.Event, error) {
 
 		ticket := state.ActiveTickets[ticketIdx]
 
-		// Calculate work done with variance
+		// Calculate work done with variance and experience multiplier
 		variance := e.variance.Calculate(ticket, e.state().CurrentTick)
-		workDone := dev.Velocity * variance
+		expMultiplier := experienceMultiplier(dev.PhaseExperience[ticket.Phase], ticket.ID, ticket.Phase, e.state())
+		workDone := dev.Velocity * variance * expMultiplier
 
 		// Emit WorkProgressed event FIRST - projection handler updates:
 		// - ticket.RemainingEffort -= workDone
@@ -220,7 +250,16 @@ func (e Engine) Tick() (Engine, []model.Event, error) {
 		}
 	}
 
-	// 2. Generate random events (bugs, scope creep)
+	// 2. Assignment pass: match idle devs to queued tickets
+	{
+		var assignEvents []model.Event
+		if e, assignEvents, err = e.assignFromQueues(); err != nil {
+			return e, nil, err
+		}
+		allEvents = append(allEvents, assignEvents...)
+	}
+
+	// 3. Generate random events (bugs, scope creep)
 	// Generators return ES events; emit them and convert to UI events
 	for _, evt := range e.evtGen.GenerateRandomEvents(e.state()) { // justified:EP
 		if e, err = e.emit(evt); err != nil {
@@ -229,7 +268,7 @@ func (e Engine) Tick() (Engine, []model.Event, error) {
 		allEvents = append(allEvents, e.toUIEvent(evt))
 	}
 
-	// 3. Check for incidents on recently deployed tickets
+	// 4. Check for incidents on recently deployed tickets
 	for _, evt := range e.evtGen.CheckForIncidents(e.state()) { // justified:EP
 		if e, err = e.emit(evt); err != nil {
 			return e, nil, err
@@ -237,12 +276,12 @@ func (e Engine) Tick() (Engine, []model.Event, error) {
 		allEvents = append(allEvents, e.toUIEvent(evt))
 	}
 
-	// 4. Track WIP for export
+	// 5. Track WIP for export
 	if e, err = e.trackWIP(); err != nil {
 		return e, nil, err
 	}
 
-	// 6. Check sprint end (read from projection - updated by earlier emits)
+	// 6. Check sprint end
 	if sprint, ok := e.state().CurrentSprintOption.Get(); ok && e.state().CurrentTick >= sprint.EndDay {
 		var endEvents []model.Event
 		if e, endEvents, err = e.endSprint(); err != nil {
@@ -254,7 +293,8 @@ func (e Engine) Tick() (Engine, []model.Event, error) {
 	return e, allEvents, nil
 }
 
-// advancePhaseEmitOnly emits phase change events - projection handlers update state.
+// advancePhaseEmitOnly emits handoff events when a ticket's phase effort is complete.
+// The developer is released and the ticket enters the next phase's queue.
 // Returns new Engine, UI events, and error (immutable pattern).
 func (e Engine) advancePhaseEmitOnly(ticket model.Ticket, dev model.Developer) (Engine, []model.Event, error) {
 	var err error
@@ -262,6 +302,13 @@ func (e Engine) advancePhaseEmitOnly(ticket model.Ticket, dev model.Developer) (
 
 	oldPhase := ticket.Phase
 	newPhase := oldPhase + 1
+
+	// Release mentor if one is paired for this phase
+	if mentorID, ok := e.state().MentorForTicket(ticket.ID, oldPhase); ok {
+		if e, err = e.emit(events.NewMentorReleased(e.state().ID, e.state().CurrentTick, mentorID, dev.ID, ticket.ID, oldPhase)); err != nil {
+			return e, nil, err
+		}
+	}
 
 	if newPhase == model.PhaseDone {
 		// Emit TicketCompleted - projection handler:
@@ -272,8 +319,6 @@ func (e Engine) advancePhaseEmitOnly(ticket model.Ticket, dev model.Developer) (
 		}
 
 		// CCPM: Adjust buffer based on variance from estimate
-		// Positive variance (over estimate) consumes buffer
-		// Negative variance (under estimate) reclaims buffer
 		variance := ticket.ActualDays - ticket.EstimatedDays
 		if variance != 0 {
 			if e, err = e.emit(events.NewBufferConsumed(e.state().ID, e.state().CurrentTick, variance)); err != nil {
@@ -287,18 +332,92 @@ func (e Engine) advancePhaseEmitOnly(ticket model.Ticket, dev model.Developer) (
 			e.state().CurrentTick,
 		))
 	} else {
-		// Emit TicketPhaseChanged - projection handler:
-		// - Updates ticket.Phase
-		// - Sets ticket.RemainingEffort for new phase
-		if e, err = e.emit(events.NewTicketPhaseChanged(e.state().ID, e.state().CurrentTick, ticket.ID, oldPhase, newPhase)); err != nil {
+		// Handoff: release developer and enqueue ticket in next phase
+		// DeveloperReleased clears dev.CurrentTicket
+		if e, err = e.emit(events.NewDeveloperReleased(e.state().ID, e.state().CurrentTick, dev.ID, ticket.ID)); err != nil {
+			return e, nil, err
+		}
+		// TicketQueued adds to PhaseQueues, sets phase tracking fields
+		if e, err = e.emit(events.NewTicketQueued(e.state().ID, e.state().CurrentTick, ticket.ID, newPhase, dev.ID)); err != nil {
 			return e, nil, err
 		}
 
 		modelEvents = append(modelEvents, model.NewEvent(
 			model.EventPhaseAdvance,
-			fmt.Sprintf("%s: %s -> %s", ticket.ID, oldPhase, newPhase),
+			fmt.Sprintf("%s: %s -> %s (queued)", ticket.ID, oldPhase, newPhase),
 			e.state().CurrentTick,
 		))
+	}
+
+	return e, modelEvents, nil
+}
+
+// assignFromQueues matches idle developers to tickets waiting in phase queues.
+// FIFO within each phase: head-of-queue ticket is attempted first; if ineligible
+// (e.g. self-review), it blocks — later tickets do NOT skip ahead.
+// Priority across phases: Review first (per rubric), then other phases.
+// Self-review prohibition: prefer non-author; solo dev falls back to self-review.
+// Re-reads state after each assignment to avoid stale dev/queue references.
+func (e Engine) assignFromQueues() (Engine, []model.Event, error) {
+	var err error
+	modelEvents := make([]model.Event, 0)
+
+	// Phase priority order: Review first, then others
+	// Note: CI/CD as pipeline slots deferred to Stage 2; currently uses dev like other phases
+	phaseOrder := []model.WorkflowPhase{
+		model.PhaseReview,
+		model.PhaseCICD,
+		model.PhaseResearch,
+		model.PhaseSizing,
+		model.PhasePlanning,
+		model.PhaseImplement,
+		model.PhaseVerify,
+	}
+
+	for _, phase := range phaseOrder {
+		// One assignment per iteration, re-read state each time
+		for { // justified:WL
+			state := e.state()
+			queue := state.PhaseQueues[phase]
+			if len(queue) == 0 {
+				break
+			}
+
+			// FIFO: only attempt head of queue
+			ticketID := queue[0]
+			ticketIdx := state.FindActiveTicketIndex(ticketID)
+			if ticketIdx == -1 {
+				// Orphaned queue entry: projection corruption. Remove and retry.
+				if e, err = e.emit(events.NewTicketQueueRepaired(state.ID, state.CurrentTick, ticketID, phase)); err != nil {
+					return e, nil, err
+				}
+				continue // retry with repaired queue
+			}
+			// Delegate dev selection to injected assignment policy
+			result := e.assignPol.SelectDev(state, ticketID, phase)
+			if result.DevID == "" {
+				break // no eligible dev, stop processing this phase
+			}
+
+			// Assign developer to ticket (projection removes from queue + updates state)
+			tick := state.CurrentTick
+			if e, err = e.emit(events.NewTicketAssigned(state.ID, tick, ticketID, result.DevID, phase, time.Time{})); err != nil {
+				return e, nil, err
+			}
+
+			// Mentor pairing if policy selected one
+			if result.MentorID != "" {
+				if e, err = e.emit(events.NewMentorPaired(state.ID, tick, result.MentorID, result.DevID, ticketID, phase)); err != nil {
+					return e, nil, err
+				}
+			}
+
+			modelEvents = append(modelEvents, model.NewEvent(
+				model.EventPhaseAdvance,
+				fmt.Sprintf("%s assigned to %s for %s", result.DevID, ticketID, phase),
+				tick,
+			))
+		}
 	}
 
 	return e, modelEvents, nil
@@ -348,13 +467,81 @@ func (e Engine) endSprint() (Engine, []model.Event, error) {
 // StartSprint begins a new sprint and emits SprintStarted event.
 // Returns new Engine and error (immutable pattern).
 func (e Engine) StartSprint() (Engine, error) {
-	// Calculate sprint data (what sim.StartSprint would do)
-	sprintNumber := e.state().SprintNumber + 1
-	startDay := e.state().CurrentTick
-	bufferDays := float64(e.state().SprintLength) * e.state().BufferPct
+	var err error
+	state := e.state()
 
-	// Emit first - projection handler creates the sprint
-	return e.emit(events.NewSprintStarted(e.state().ID, startDay, sprintNumber, bufferDays))
+	// Calculate sprint data
+	sprintNumber := state.SprintNumber + 1
+	startDay := state.CurrentTick
+	bufferDays := float64(state.SprintLength) * state.BufferPct
+
+	// Emit SprintStarted first - projection handler creates the sprint
+	if e, err = e.emit(events.NewSprintStarted(state.ID, startDay, sprintNumber, bufferDays)); err != nil {
+		return e, err
+	}
+
+	// Triage: all untriaged backlog tickets become triaged
+	state = e.state()
+	for _, t := range state.Backlog { // justified:EP
+		if t.IntakeStatus == model.IntakeSubmitted {
+			if e, err = e.emit(events.NewTicketTriaged(state.ID, state.CurrentTick, t.ID)); err != nil {
+				return e, err
+			}
+		}
+	}
+
+	// Sprint commitment: commit highest-priority triaged tickets up to capacity
+	state = e.state()
+
+	// Calculate available capacity
+	totalCapacity := float64(state.SprintLength) * 0.8
+	for _, dev := range state.Developers {
+		totalCapacity += float64(state.SprintLength) * dev.Velocity * 0.8
+	}
+	totalCapacity = float64(state.SprintLength) * 0.8 // reset — formula is sprintLength * sum(velocity) * 0.8
+	var sumVelocity float64
+	for _, dev := range state.Developers { // justified:SM
+		sumVelocity += dev.Velocity
+	}
+	totalCapacity = float64(state.SprintLength) * sumVelocity * 0.8
+
+	// Subtract carryover: remaining effort of in-progress tickets
+	for _, t := range state.ActiveTickets { // justified:SM
+		totalCapacity -= t.RemainingEffort
+	}
+	if totalCapacity < 0 {
+		totalCapacity = 0
+	}
+
+	// Sort triaged backlog by priority (highest first), stable within same priority
+	type candidate struct {
+		ticket model.Ticket
+		idx    int
+	}
+	var candidates []candidate
+	for i, t := range state.Backlog { // justified:CF
+		if t.IntakeStatus == model.IntakeTriaged {
+			candidates = append(candidates, candidate{t, i})
+		}
+	}
+	// Sort by priority descending (Critical=3 > High=2 > Normal=1 > Low=0)
+	sort.SliceStable(candidates, func(i, j int) bool {
+		return candidates[i].ticket.Priority > candidates[j].ticket.Priority
+	})
+
+	// Commit tickets until capacity is reached
+	var committed float64
+	for _, c := range candidates { // justified:CF
+		if committed+c.ticket.EstimatedDays > totalCapacity {
+			continue // skip this ticket, try smaller ones
+		}
+		if e, err = e.emit(events.NewTicketCommitted(state.ID, state.CurrentTick, c.ticket.ID, sprintNumber)); err != nil {
+			return e, err
+		}
+		committed += c.ticket.EstimatedDays
+	}
+
+	return e, nil
 }
 
 // RunSprint executes a complete sprint.
@@ -384,9 +571,11 @@ func (e Engine) RunSprint() (Engine, []model.Event, error) {
 // Returns new Engine and error (immutable pattern).
 // Error may be validation error or store conflict (caller should retry on conflict).
 func (e Engine) AssignTicket(ticketID, devID string) (Engine, error) {
-	// Validate ticket exists in backlog
-	if e.state().FindBacklogTicketIndex(ticketID) == -1 {
-		return e, fmt.Errorf("ticket %s not found in backlog", ticketID)
+	// Validate ticket exists in backlog or committed queue
+	inBacklog := e.state().FindBacklogTicketIndex(ticketID) != -1
+	inCommitted := e.state().FindCommittedTicketIndex(ticketID) != -1
+	if !inBacklog && !inCommitted {
+		return e, fmt.Errorf("ticket %s not found in backlog or committed queue", ticketID)
 	}
 
 	// Validate developer exists and is idle
@@ -404,7 +593,7 @@ func (e Engine) AssignTicket(ticketID, devID string) (Engine, error) {
 	// - Updates developer CurrentTicket, WIPCount
 	// - Adds ticket to sprint
 	startedAt := time.Now()
-	return e.emit(events.NewTicketAssigned(e.state().ID, e.state().CurrentTick, ticketID, devID, startedAt))
+	return e.emit(events.NewTicketAssigned(e.state().ID, e.state().CurrentTick, ticketID, devID, model.PhaseResearch, startedAt))
 }
 
 // TryDecompose applies sizing policy and decomposes if needed.
@@ -425,7 +614,7 @@ func (e Engine) TryDecompose(ticketID string) (Engine, either.Either[NotDecompos
 	children := e.policies.Decompose(ticket)
 
 	// Build ChildTicket slice for event
-	childTickets := slice.MapTo[events.ChildTicket](children).Map(toChildTicket)
+	childTickets := slice.Map(children, toChildTicket)
 
 	// Emit TicketDecomposed - projection handler removes parent, adds children
 	var err error
@@ -454,10 +643,16 @@ func (e Engine) AddDeveloper(id, name string, velocity float64) (Engine, error) 
 	return e.emit(events.NewDeveloperAdded(e.state().ID, e.state().CurrentTick, id, name, velocity))
 }
 
+// AddDeveloperWithExperience adds a developer with explicit experience levels.
+// Returns new Engine and error (immutable pattern).
+func (e Engine) AddDeveloperWithExperience(id, name string, velocity float64, exp [8]model.ExperienceLevel) (Engine, error) {
+	return e.emit(events.NewDeveloperAddedWithExperience(e.state().ID, e.state().CurrentTick, id, name, velocity, exp))
+}
+
 // AddTicket adds a ticket to the backlog and emits TicketCreated event.
 // Returns new Engine and error (immutable pattern).
 func (e Engine) AddTicket(t model.Ticket) (Engine, error) {
-	return e.emit(events.NewTicketCreated(e.state().ID, e.state().CurrentTick, t.ID, t.Title, t.EstimatedDays, t.UnderstandingLevel))
+	return e.emit(events.NewTicketCreated(e.state().ID, e.state().CurrentTick, t.ID, t.Title, t.EstimatedDays, t.UnderstandingLevel, t.Priority, t.IntakeStatus))
 }
 
 // SetPolicy changes the sizing policy and emits PolicyChanged event.
@@ -516,7 +711,7 @@ func (e Engine) emitLoadedTeam(sim model.Simulation) (Engine, error) {
 func (e Engine) emitLoadedBacklog(sim model.Simulation) (Engine, error) {
 	var err error
 	for _, t := range sim.Backlog { // justified:EP
-		if e, err = e.emit(events.NewTicketCreated(e.state().ID, 0, t.ID, t.Title, t.EstimatedDays, t.UnderstandingLevel)); err != nil {
+		if e, err = e.emit(events.NewTicketCreated(e.state().ID, 0, t.ID, t.Title, t.EstimatedDays, t.UnderstandingLevel, t.Priority, t.IntakeStatus)); err != nil {
 			return e, err
 		}
 	}
@@ -528,7 +723,7 @@ func (e Engine) emitLoadedBacklog(sim model.Simulation) (Engine, error) {
 func (e Engine) emitLoadedActiveTickets(sim model.Simulation) (Engine, error) {
 	var err error
 	for _, t := range sim.ActiveTickets { // justified:EP
-		if e, err = e.emit(events.NewTicketCreated(e.state().ID, 0, t.ID, t.Title, t.EstimatedDays, t.UnderstandingLevel)); err != nil {
+		if e, err = e.emit(events.NewTicketCreated(e.state().ID, 0, t.ID, t.Title, t.EstimatedDays, t.UnderstandingLevel, t.Priority, t.IntakeStatus)); err != nil {
 			return e, err
 		}
 		if e, err = e.emit(events.NewTicketStateRestored(e.state().ID, t.StartedTick, t.ID, t.AssignedTo, t.Phase, t.RemainingEffort, t.ActualDays, t.StartedAt)); err != nil {
@@ -541,10 +736,10 @@ func (e Engine) emitLoadedActiveTickets(sim model.Simulation) (Engine, error) {
 func (e Engine) emitLoadedCompletedTickets(sim model.Simulation) (Engine, error) {
 	var err error
 	for _, t := range sim.CompletedTickets { // justified:EP
-		if e, err = e.emit(events.NewTicketCreated(e.state().ID, 0, t.ID, t.Title, t.EstimatedDays, t.UnderstandingLevel)); err != nil {
+		if e, err = e.emit(events.NewTicketCreated(e.state().ID, 0, t.ID, t.Title, t.EstimatedDays, t.UnderstandingLevel, t.Priority, t.IntakeStatus)); err != nil {
 			return e, err
 		}
-		if e, err = e.emit(events.NewTicketAssigned(e.state().ID, t.StartedTick, t.ID, t.AssignedTo, t.StartedAt)); err != nil {
+		if e, err = e.emit(events.NewTicketAssigned(e.state().ID, t.StartedTick, t.ID, t.AssignedTo, model.PhaseResearch, t.StartedAt)); err != nil {
 			return e, err
 		}
 		if e, err = e.emit(events.NewTicketCompleted(e.state().ID, t.CompletedTick, t.ID, t.AssignedTo, t.ActualDays)); err != nil {

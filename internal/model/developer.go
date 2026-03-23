@@ -1,12 +1,26 @@
 package model
 
+// ExperienceLevel represents a developer's proficiency at a workflow phase.
+type ExperienceLevel int
+
+const (
+	ExperienceLow    ExperienceLevel = iota // 0.6x alone, 0.9x mentored
+	ExperienceMedium                        // 1.0x baseline
+	ExperienceHigh                          // 1.1x, can mentor
+)
+
+func (e ExperienceLevel) String() string {
+	return [...]string{"Low", "Medium", "High"}[e]
+}
+
 // Developer represents a team member who works on tickets
 type Developer struct {
 	ID            string
 	Name          string
 	Velocity      float64 // Base throughput (effort/day)
-	CurrentTicket string  // Currently assigned ticket ID
-	WIPCount      int
+	CurrentTicket   string              // Currently assigned ticket ID
+	WIPCount        int
+	PhaseExperience [8]ExperienceLevel // indexed by WorkflowPhase; 0=Backlog unused
 
 	// Stats
 	TicketsCompleted int
@@ -15,10 +29,24 @@ type Developer struct {
 
 // NewDeveloper creates a developer with sensible defaults
 func NewDeveloper(id, name string, velocity float64) Developer {
-	return Developer{
+	d := Developer{
 		ID:       id,
 		Name:     name,
 		Velocity: velocity,
+	}
+	for i := range d.PhaseExperience {
+		d.PhaseExperience[i] = ExperienceMedium
+	}
+	return d
+}
+
+// NewDeveloperWithExperience creates a developer with explicit experience levels.
+func NewDeveloperWithExperience(id, name string, velocity float64, exp [8]ExperienceLevel) Developer {
+	return Developer{
+		ID:              id,
+		Name:            name,
+		Velocity:        velocity,
+		PhaseExperience: exp,
 	}
 }
 

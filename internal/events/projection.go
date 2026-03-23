@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/binaryphile/fluentfp/option"
+	"github.com/binaryphile/fluentfp/slice"
 	"github.com/binaryphile/sofdevsim-2026/internal/model"
 )
 
@@ -59,6 +60,7 @@ func (p Projection) Apply(evt Event) Projection {
 			Backlog:            make([]model.Ticket, 0),
 			ActiveTickets:      make([]model.Ticket, 0),
 			CompletedTickets:   make([]model.Ticket, 0),
+			CommittedTickets:   make([]model.Ticket, 0),
 			OpenIncidents:      make([]model.Incident, 0),
 			ResolvedIncidents:  make([]model.Incident, 0),
 			CurrentSprintOption: model.NoSprint,
@@ -83,9 +85,10 @@ func (p Projection) Apply(evt Event) Projection {
 
 	case DeveloperAdded:
 		next.sim.Developers = append(next.sim.Developers, model.Developer{
-			ID:       e.DeveloperID,
-			Name:     e.Name,
-			Velocity: e.Velocity,
+			ID:              e.DeveloperID,
+			Name:            e.Name,
+			Velocity:        e.Velocity,
+			PhaseExperience: e.PhaseExperience,
 		})
 
 	case TicketCreated:
@@ -96,35 +99,88 @@ func (p Projection) Apply(evt Event) Projection {
 			UnderstandingLevel: e.Understanding,
 			Phase:              model.PhaseBacklog,
 			PhaseEffortSpent:   make(map[model.WorkflowPhase]float64),
+			Priority:           e.Priority,
+			IntakeStatus:       e.IntakeStatus,
 		})
 
 	case TicketAssigned:
-		// Find and move ticket from Backlog to ActiveTickets
+		// Three cases: (1) from Backlog, (2) from CommittedTickets, or (3) from PhaseQueue (handoff)
+		fromBacklog := false
 		for i, t := range next.sim.Backlog {
 			if t.ID == e.TicketID {
-				// Start the ticket
+				// Initial assignment: move from Backlog to ActiveTickets
 				t.AssignedTo = e.DeveloperID
 				t.StartedTick = e.OccurrenceTime()
 				t.StartedAt = e.StartedAt
-				t.Phase = model.PhaseResearch
-				t.RemainingEffort = t.CalculatePhaseEffort(model.PhaseResearch)
+				t.Phase = e.Phase
+				t.RemainingEffort = t.CalculatePhaseEffort(e.Phase)
+				t.PhaseAssignedTick = e.OccurrenceTime()
+				t.PhaseEnteredTick = e.OccurrenceTime()
 				next.sim.ActiveTickets = append(next.sim.ActiveTickets, t)
 				next.sim.Backlog = append(next.sim.Backlog[:i], next.sim.Backlog[i+1:]...)
+				fromBacklog = true
 				break
 			}
 		}
-		// Update developer state
+
+		fromCommitted := false
+		if !fromBacklog {
+			// Try CommittedTickets
+			for i, t := range next.sim.CommittedTickets {
+				if t.ID == e.TicketID {
+					t.AssignedTo = e.DeveloperID
+					t.StartedTick = e.OccurrenceTime()
+					t.StartedAt = e.StartedAt
+					t.Phase = e.Phase
+					t.RemainingEffort = t.CalculatePhaseEffort(e.Phase)
+					t.PhaseAssignedTick = e.OccurrenceTime()
+					t.PhaseEnteredTick = e.OccurrenceTime()
+					next.sim.ActiveTickets = append(next.sim.ActiveTickets, t)
+					next.sim.CommittedTickets = append(next.sim.CommittedTickets[:i], next.sim.CommittedTickets[i+1:]...)
+					fromCommitted = true
+					break
+				}
+			}
+		}
+
+		if !fromBacklog && !fromCommitted {
+			// Handoff assignment: ticket already in ActiveTickets, assign dev + set effort
+			for i, t := range next.sim.ActiveTickets {
+				if t.ID == e.TicketID {
+					next.sim.ActiveTickets[i].AssignedTo = e.DeveloperID
+					next.sim.ActiveTickets[i].PhaseAssignedTick = e.OccurrenceTime()
+					// Use e.Phase for effort — authoritative source from assignment event
+					next.sim.ActiveTickets[i].RemainingEffort = t.CalculatePhaseEffort(e.Phase)
+					break
+				}
+			}
+			// Remove from phase queue
+			if queue, ok := next.sim.PhaseQueues[e.Phase]; ok {
+				for i, id := range queue { // justified:IX
+					if id == e.TicketID {
+						next.sim.PhaseQueues[e.Phase] = append(queue[:i], queue[i+1:]...)
+						break
+					}
+				}
+			}
+		}
+		// Update developer state (WIPCount only incremented on initial assignment from
+		// backlog or committed, not on handoff reassignments — ticket is already counted in WIP)
 		for i, d := range next.sim.Developers {
 			if d.ID == e.DeveloperID {
 				next.sim.Developers[i].CurrentTicket = e.TicketID
-				next.sim.Developers[i].WIPCount++
+				if fromBacklog || fromCommitted {
+					next.sim.Developers[i].WIPCount++
+				}
 				break
 			}
 		}
-		// Add ticket to current sprint if one exists
-		if sprint, ok := next.sim.CurrentSprintOption.Get(); ok {
-			sprint = sprint.WithTicket(e.TicketID)
-			next.sim.CurrentSprintOption = option.Of(sprint)
+		// Add ticket to current sprint if one exists (only for initial assignment)
+		if fromBacklog || fromCommitted {
+			if sprint, ok := next.sim.CurrentSprintOption.Get(); ok {
+				sprint = sprint.WithTicket(e.TicketID)
+				next.sim.CurrentSprintOption = option.Of(sprint)
+			}
 		}
 
 	case TicketStateRestored:
@@ -187,6 +243,53 @@ func (p Projection) Apply(evt Event) Projection {
 				next.sim.ActiveTickets[i].ActualDays += e.EffortApplied
 				next.sim.ActiveTickets[i].PhaseEffortSpent[e.Phase] += e.EffortApplied
 				break
+			}
+		}
+
+	case TicketQueued:
+		// Add ticket to phase queue and update ticket tracking fields
+		if next.sim.PhaseQueues == nil {
+			next.sim.PhaseQueues = make(map[model.WorkflowPhase][]string)
+		}
+		next.sim.PhaseQueues[e.Phase] = append(next.sim.PhaseQueues[e.Phase], e.TicketID)
+		for i, t := range next.sim.ActiveTickets {
+			if t.ID == e.TicketID {
+				next.sim.ActiveTickets[i].Phase = e.Phase
+				next.sim.ActiveTickets[i].PhaseEnteredTick = e.OccurrenceTime()
+				next.sim.ActiveTickets[i].PhaseAssignedTick = 0 // not yet assigned
+				if e.PreviousDevID != "" && !slice.Contains(next.sim.ActiveTickets[i].Contributors, e.PreviousDevID) {
+					next.sim.ActiveTickets[i].Contributors = append(next.sim.ActiveTickets[i].Contributors, e.PreviousDevID)
+				}
+				next.sim.ActiveTickets[i].AssignedTo = "" // no dev yet
+				break
+			}
+		}
+
+	case DeveloperReleased:
+		// Clear developer's current ticket
+		for i, d := range next.sim.Developers {
+			if d.ID == e.DeveloperID {
+				next.sim.Developers[i].CurrentTicket = ""
+				break
+			}
+		}
+
+	case CICDSlotConsumed:
+		next.sim.CICDInUse++
+
+	case CICDSlotReleased:
+		if next.sim.CICDInUse > 0 {
+			next.sim.CICDInUse--
+		}
+
+	case TicketQueueRepaired:
+		// Remove orphaned ticket ID from phase queue (self-healing)
+		if queue, ok := next.sim.PhaseQueues[e.Phase]; ok {
+			for i, id := range queue { // justified:IX
+				if id == e.TicketID {
+					next.sim.PhaseQueues[e.Phase] = append(queue[:i], queue[i+1:]...)
+					break
+				}
 			}
 		}
 
@@ -282,6 +385,48 @@ func (p Projection) Apply(evt Event) Projection {
 			if t.ID == e.TicketID {
 				next.sim.ActiveTickets[i].RemainingEffort += e.EffortAdded
 				next.sim.ActiveTickets[i].EstimatedDays += e.EstimateAdded
+				break
+			}
+		}
+
+	case MentorPaired:
+		next.sim.ActiveMentorships = append(next.sim.ActiveMentorships, model.Mentorship{
+			MentorID: e.MentorID,
+			MenteeID: e.MenteeID,
+			TicketID: e.TicketID,
+			Phase:    e.Phase,
+		})
+		// Add mentor to ticket contributors for review disqualification
+		for i, t := range next.sim.ActiveTickets {
+			if t.ID == e.TicketID {
+				if !slice.Contains(next.sim.ActiveTickets[i].Contributors, e.MentorID) {
+					next.sim.ActiveTickets[i].Contributors = append(next.sim.ActiveTickets[i].Contributors, e.MentorID)
+				}
+				break
+			}
+		}
+
+	case MentorReleased:
+		for i, m := range next.sim.ActiveMentorships {
+			if m.MentorID == e.MentorID && m.TicketID == e.TicketID && m.Phase == e.Phase {
+				next.sim.ActiveMentorships = append(next.sim.ActiveMentorships[:i], next.sim.ActiveMentorships[i+1:]...)
+				break
+			}
+		}
+
+	case TicketTriaged:
+		for i, t := range next.sim.Backlog {
+			if t.ID == e.TicketID {
+				next.sim.Backlog[i].IntakeStatus = model.IntakeTriaged
+				break
+			}
+		}
+
+	case TicketCommitted:
+		for i, t := range next.sim.Backlog {
+			if t.ID == e.TicketID {
+				next.sim.CommittedTickets = append(next.sim.CommittedTickets, t)
+				next.sim.Backlog = append(next.sim.Backlog[:i], next.sim.Backlog[i+1:]...)
 				break
 			}
 		}

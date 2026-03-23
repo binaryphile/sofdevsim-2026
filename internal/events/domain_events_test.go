@@ -78,7 +78,7 @@ func TestTickedEvent_IncrementsCurrentTick(t *testing.T) {
 }
 
 func TestTicketAssignedEvent_LinksDeveloperToTicket(t *testing.T) {
-	e := NewTicketAssigned("sim-1", 10, "TKT-001", "DEV-001", time.Now())
+	e := NewTicketAssigned("sim-1", 10, "TKT-001", "DEV-001", model.PhaseResearch, time.Now())
 
 	if e.SimulationID() != "sim-1" {
 		t.Errorf("SimulationID() = %s, want sim-1", e.SimulationID())
@@ -165,7 +165,7 @@ func TestEventInterfaceCompliance(t *testing.T) {
 		NewSimulationCreated("s", 0, SimConfig{}),
 		NewSprintStarted("s", 0, 1, 2.0),
 		NewTicked("s", 0),
-		NewTicketAssigned("s", 0, "t", "d", time.Time{}),
+		NewTicketAssigned("s", 0, "t", "d", model.PhaseResearch, time.Time{}),
 		NewTicketCompleted("s", 0, "t", "d", 5.0),
 		NewIncidentStarted("s", 0, "i", "d", "", model.SeverityLow),
 		NewIncidentResolved("s", 0, "i", "d"),
@@ -190,7 +190,7 @@ func TestEventInterfaceCompliance(t *testing.T) {
 }
 
 func TestWithTrace_SetsTraceSpanAndParent(t *testing.T) {
-	e := NewTicketAssigned("sim-1", 10, "TKT-001", "DEV-001", time.Now()).
+	e := NewTicketAssigned("sim-1", 10, "TKT-001", "DEV-001", model.PhaseResearch, time.Now()).
 		WithTrace("trace-123", "span-456", "span-parent")
 
 	if e.TraceID() != "trace-123" {
@@ -247,7 +247,7 @@ func TestEvents_TraceContextWorksOnAllTypes(t *testing.T) {
 		{"SprintStarted", NewSprintStarted("s", 0, 1, 2.0).WithTrace("t", "s", "p")},
 		{"SprintEnded", NewSprintEnded("s", 0, 1).WithTrace("t", "s", "p")},
 		{"Ticked", NewTicked("s", 0).WithTrace("t", "s", "p")},
-		{"TicketAssigned", NewTicketAssigned("s", 0, "t", "d", time.Time{}).WithTrace("t", "s", "p")},
+		{"TicketAssigned", NewTicketAssigned("s", 0, "t", "d", model.PhaseResearch, time.Time{}).WithTrace("t", "s", "p")},
 		{"TicketCompleted", NewTicketCompleted("s", 0, "t", "d", 5.0).WithTrace("t", "s", "p")},
 		{"IncidentStarted", NewIncidentStarted("s", 0, "i", "d", "", model.SeverityLow).WithTrace("t", "s", "p")},
 		{"IncidentResolved", NewIncidentResolved("s", 0, "i", "d").WithTrace("t", "s", "p")},
@@ -327,7 +327,7 @@ func TestEvents_CausedByWorksOnAllTypes(t *testing.T) {
 		{"SprintStarted", NewSprintStarted("s", 0, 1, 2.0).WithCausedBy("cause-1")},
 		{"SprintEnded", NewSprintEnded("s", 0, 1).WithCausedBy("cause-1")},
 		{"Ticked", NewTicked("s", 0).WithCausedBy("cause-1")},
-		{"TicketAssigned", NewTicketAssigned("s", 0, "t", "d", time.Time{}).WithCausedBy("cause-1")},
+		{"TicketAssigned", NewTicketAssigned("s", 0, "t", "d", model.PhaseResearch, time.Time{}).WithCausedBy("cause-1")},
 		{"TicketCompleted", NewTicketCompleted("s", 0, "t", "d", 5.0).WithCausedBy("cause-1")},
 		{"IncidentStarted", NewIncidentStarted("s", 0, "i", "d", "", model.SeverityLow).WithCausedBy("cause-1")},
 		{"IncidentResolved", NewIncidentResolved("s", 0, "i", "d").WithCausedBy("cause-1")},
@@ -343,34 +343,40 @@ func TestEvents_CausedByWorksOnAllTypes(t *testing.T) {
 	}
 }
 
-func TestAllConstructors_ReturnVersionOne(t *testing.T) {
-	// TDD: All 20 event constructors must set Version: 1
-	events := []Event{
-		NewSimulationCreated("s", 0, SimConfig{}),
-		NewSprintStarted("s", 0, 1, 2.0),
-		NewSprintEnded("s", 0, 1),
-		NewTicked("s", 0),
-		NewTicketAssigned("s", 0, "t", "d", time.Time{}),
-		NewTicketStateRestored("s", 0, "t", "d", model.PhaseImplement, 1.0, 1.0, time.Time{}),
-		NewTicketCompleted("s", 0, "t", "d", 5.0),
-		NewIncidentStarted("s", 0, "i", "d", "t", model.SeverityLow),
-		NewIncidentResolved("s", 0, "i", "d"),
-		NewDeveloperAdded("s", 0, "d", "name", 1.0),
-		NewTicketCreated("s", 0, "t", "title", 5.0, model.HighUnderstanding),
-		NewWorkProgressed("s", 0, "t", model.PhaseImplement, 1.0),
-		NewTicketPhaseChanged("s", 0, "t", model.PhaseImplement, model.PhaseVerify),
-		NewBufferConsumed("s", 0, 1.0),
-		NewBufferZoneChanged("s", 0, model.FeverGreen, model.FeverRed, 0.7),
-		NewPolicyChanged("s", 0, model.PolicyNone, model.PolicyDORAStrict),
-		NewTicketDecomposed("s", 0, "p", nil),
-		NewSprintWIPUpdated("s", 0, 5),
-		NewBugDiscovered("s", 0, "t", 1.0),
-		NewScopeCreepOccurred("s", 0, "t", 1.0, 1.0),
+func TestAllConstructors_ReturnExpectedVersion(t *testing.T) {
+	type versionedEvent struct {
+		event   Event
+		version int
+	}
+	events := []versionedEvent{
+		{NewSimulationCreated("s", 0, SimConfig{}), 1},
+		{NewSprintStarted("s", 0, 1, 2.0), 1},
+		{NewSprintEnded("s", 0, 1), 1},
+		{NewTicked("s", 0), 1},
+		{NewTicketAssigned("s", 0, "t", "d", model.PhaseResearch, time.Time{}), 1},
+		{NewTicketStateRestored("s", 0, "t", "d", model.PhaseImplement, 1.0, 1.0, time.Time{}), 1},
+		{NewTicketCompleted("s", 0, "t", "d", 5.0), 1},
+		{NewIncidentStarted("s", 0, "i", "d", "t", model.SeverityLow), 1},
+		{NewIncidentResolved("s", 0, "i", "d"), 1},
+		{NewDeveloperAdded("s", 0, "d", "name", 1.0), 2},
+		{NewDeveloperAddedWithExperience("s", 0, "d", "name", 1.0, [8]model.ExperienceLevel{}), 2},
+		{NewTicketCreated("s", 0, "t", "title", 5.0, model.HighUnderstanding, model.PriorityNormal, model.IntakeTriaged), 1},
+		{NewWorkProgressed("s", 0, "t", model.PhaseImplement, 1.0), 1},
+		{NewTicketPhaseChanged("s", 0, "t", model.PhaseImplement, model.PhaseVerify), 1},
+		{NewBufferConsumed("s", 0, 1.0), 1},
+		{NewBufferZoneChanged("s", 0, model.FeverGreen, model.FeverRed, 0.7), 1},
+		{NewPolicyChanged("s", 0, model.PolicyNone, model.PolicyDORAStrict), 1},
+		{NewTicketDecomposed("s", 0, "p", nil), 1},
+		{NewSprintWIPUpdated("s", 0, 5), 1},
+		{NewBugDiscovered("s", 0, "t", 1.0), 1},
+		{NewScopeCreepOccurred("s", 0, "t", 1.0, 1.0), 1},
+		{NewMentorPaired("s", 0, "m", "n", "t", model.PhaseImplement), 1},
+		{NewMentorReleased("s", 0, "m", "n", "t", model.PhaseImplement), 1},
 	}
 
-	for _, e := range events { // justified:AS
-		if e.EventVersion() != 1 {
-			t.Errorf("%s.EventVersion() = %d, want 1", e.EventType(), e.EventVersion())
+	for _, ve := range events { // justified:AS
+		if ve.event.EventVersion() != ve.version {
+			t.Errorf("%s.EventVersion() = %d, want %d", ve.event.EventType(), ve.event.EventVersion(), ve.version)
 		}
 	}
 }
@@ -409,7 +415,7 @@ func TestApplyTrace_SetsAllTraceFields(t *testing.T) {
 	}
 
 	// Test with TicketAssigned (representative event type)
-	original := NewTicketAssigned("sim-1", 10, "TKT-001", "DEV-001", time.Now())
+	original := NewTicketAssigned("sim-1", 10, "TKT-001", "DEV-001", model.PhaseResearch, time.Now())
 	result := ApplyTrace(original, tc)
 
 	if result.TraceID() != "trace-test" {

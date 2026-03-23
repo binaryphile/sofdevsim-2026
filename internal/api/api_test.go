@@ -44,7 +44,7 @@ func TestAPI_AssignmentErrors(t *testing.T) {
 			ticketID:   "TKT-999", // doesn't exist
 			devID:      "dev-1",
 			wantStatus: http.StatusBadRequest,
-			wantError:  "ticket TKT-999 not found in backlog",
+			wantError:  "ticket TKT-999 not found in backlog or committed queue",
 		},
 		{
 			name: "developer not found",
