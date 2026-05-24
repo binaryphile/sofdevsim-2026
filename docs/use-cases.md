@@ -872,22 +872,20 @@ This use case requires event sourcing architecture:
 **Stakeholders and Interests:**
 
 - *Educator:* Wants to teach TOC systematically with concrete examples
-- *LLM agent operator:* Wants the 5FS event log to serve as a reward signal for batch-mode training
+- *LLM agent operator:* Wants the 5FS lesson trace (and, once Phase 5 lands, the investment event log) to serve as a reward signal for batch-mode training
 
-**Trigger:** 3+ sprints completed AND UC20 + UC21 lessons seen, OR manager has completed at least one investment window (UC40)
+**Trigger:** 3+ sprints completed AND UC20 + UC21 lessons seen, OR (once Phase 5 lands per roadmap) manager has completed at least one investment window (UC40)
 
 **Preconditions:**
 
 - UC20 and UC21 completed (constraint identified, exploit/elevate understood)
 - Manager has completed 3+ sprints
 - Metrics view has data to analyze
-- UC39 demand-driven mode available (need not be active)
-- UC40 investment budget initialised
 
 **Postconditions (Guarantees):**
 
-- *Success:* Manager has executed at least one cycle — identified a constraint, chosen an exploit-or-elevate action via UC40, and observed whether the constraint moved
-- *Minimal:* Manager can recite the 5FS: Identify, Exploit, Subordinate, Elevate, Repeat (the original lesson outcome — preserved as the floor)
+- *Success (today, lesson-based):* Manager can recite the 5FS: Identify, Exploit, Subordinate, Elevate, Repeat — the canonical lesson outcome, preserved from the original UC22 contract
+- *Success (advanced, once Phase 5 lands per roadmap):* Manager has executed at least one playable cycle — identified a constraint, chosen an exploit-or-elevate action via UC40, and observed whether the constraint moved. This advanced branch is unlocked when UC37/UC38/UC39/UC40 are implemented; until then the lesson-based success above is the sole pass criterion
 - *Failure:* Simulation data preserved; manager can return to Metrics view
 
 **Main Success Scenario:**
@@ -895,16 +893,16 @@ This use case requires event sourcing architecture:
 1. Manager views Metrics after 3+ sprints
 2. System detects sufficient data for pattern recognition
 3. System displays 5FS lesson with IDENTIFY step: "Your data shows understanding is the constraint"
-4. Manager reads EXPLOIT step (now spendable via UC40): "Upgrade Review tooling, pay down Verify variance, or change the mix (UC37) to reduce constraint load — TameFlow policy maxes understanding before committing"
-5. Manager reads SUBORDINATE step (now visible via UC39): "In demand-driven mode, non-constraint phases idle by design when the drum is full; other phases wait for understanding to stabilize"
-6. Manager reads ELEVATE step (now spendable via UC40): "Hire a developer or buy a CI/CD slot; budget enforces the exploitation-first discipline — decomposition adds capacity only after exploitation"
-7. Manager reads REPEAT step: "Replay the investment trace from UC40's event log — did each move shift the constraint as predicted? Run another sprint."
+4. Manager reads EXPLOIT step: "TameFlow policy maxes understanding before committing" *(Phase 5 forward-reference, planned — not yet implemented: once UC40 lands, EXPLOIT also becomes spendable — upgrade Review tooling, pay down Verify variance, or change the mix per UC37)*
+5. Manager reads SUBORDINATE step: "Other phases wait for understanding to stabilize" *(Phase 5 forward-reference, planned: once UC39 lands, SUBORDINATE becomes visible — in demand-driven mode non-constraint phases idle by design when the drum is full)*
+6. Manager reads ELEVATE step: "Decomposition adds capacity only after exploitation" *(Phase 5 forward-reference, planned: once UC40 lands, ELEVATE also becomes spendable — hire a developer or buy a CI/CD slot; budget enforces exploitation-first discipline)*
+7. Manager reads REPEAT step: "Run another sprint—did the constraint move?" *(Phase 5 forward-reference, planned: once UC40 lands, REPEAT can replay the investment trace from the event log)*
 8. Manager sees 5FS mapped to their actual simulation run
 
 **Extensions:**
 
 - 2a. *Data insufficient (< 3 sprints):* Lesson defers, suggests more sprints
-- 2b. *Manager has invested via UC40 but constraint did not move:* 5FS lesson surfaces the "elevation without exploitation" branch from UC21 with the specific investment event from UC40's log
+- 2b. *(Once Phase 5 lands) Manager has invested via UC40 but constraint did not move:* 5FS lesson surfaces the "elevation without exploitation" branch from UC21 with the specific investment event from UC40's log
 - *a. *Lessons disabled:* No lesson shown; manager discovers pattern independently
 
 ---
@@ -1492,6 +1490,8 @@ This use case requires event sourcing architecture:
 
 ### UC37: Configure Heterogeneous Ticket Mix
 
+> **Phase 5 planned — not yet implemented.** This UC describes a roadmap-planned capability; see `docs/roadmap.md` Phase 5. Mechanism details (Go types, CLI flag names, config schemas) live in `docs/design.md` once the implementing child cycle lands.
+
 **Primary Actor:** Manager
 
 **Goal in Context:** Compose a backlog whose ticket-type distribution shifts where the constraint surfaces, without changing developer count.
@@ -1506,26 +1506,26 @@ This use case requires event sourcing architecture:
 - *Educator:* Wants to demonstrate that constraint location is a function of the work mix, not just headcount or process
 - *Researcher:* Wants type-tagged dwell-time data to validate the variance model under mixed inputs
 
-**Trigger:** Manager configures a backlog generator profile that names ticket types and weights, or selects a preset mix (e.g., `--mix bug-heavy`, `--mix migration-quarter`).
+**Trigger:** Manager selects a typed backlog profile (a named mix of ticket types with weights) at simulation start, or chooses one of the bundled preset profiles.
 
 **Preconditions:**
 
 - Simulation initialised with a developer pool
 - Backlog generator supports type-aware emission
-- Phase-effort distribution per type is registered
+- A per-type phase-effort distribution is registered for each named type in the profile
 
 **Postconditions (Guarantees):**
 
-- *Success:* Tickets in the backlog carry an explicit `TicketType`. Phase dwell times diverge by type, and the TOC analyzer's identified constraint shifts when the mix shifts, even with identical developer counts
-- *Failure:* Generator rejects the profile (unknown type, weights don't sum) and emits no tickets; previous backlog state is unchanged
-- *Minimal:* Simulation runs with a uniform "feature" mix that reproduces today's behaviour exactly (regression-safe default)
+- *Success:* Manager can observe — via the existing per-phase dwell-time and constraint-identification displays — that the constraint phase reported under one mix profile differs from the constraint phase reported under a contrasting mix profile when developer count and other parameters are held equal. Per-type dwell breakdowns are surfaced in the existing flow-diagnostics view
+- *Failure:* Generator rejects the profile (unknown type, malformed weights) and emits no tickets; previous backlog state is unchanged; manager sees a diagnostic naming the rejected profile
+- *Minimal:* With a single-type "feature only" profile, simulation behaviour is observably equivalent to today's homogeneous-backlog mode (regression-safe default)
 
 **Main Success Scenario:**
 
-1. Manager specifies a mix profile (e.g., 60% feature / 25% bug / 10% spike / 5% migration)
-2. Backlog generator emits tickets, each stamped with a `TicketType` and a type-specific effort distribution
-3. Manager starts the sprint; tickets flow through phases per their type-specific shape (bugs bypass Planning; spikes pile up in Research; migrations linger in Verify)
-4. After 2-3 sprints, the TOC analyzer reports a constraint phase that differs from the uniform-mix baseline
+1. Manager selects a typed backlog profile (for example, 60% feature / 25% bug / 10% spike / 5% migration)
+2. Backlog generator emits tickets, each tagged with its type and routed through phases per that type's effort distribution (bugs bypass Planning; spikes are Research-heavy; migrations are Verify-heavy)
+3. Manager starts the sprint; tickets flow through phases following their type-specific shape
+4. After 2-3 sprints, manager observes the TOC flow-diagnostics view reporting a constraint phase that differs from the uniform-mix baseline run
 5. Manager inspects per-type dwell time and observes that one type dominates the constraint queue
 
 **Extensions:**
@@ -1533,15 +1533,17 @@ This use case requires event sourcing architecture:
 - 1a. *Profile weights don't sum to 1.0:* Generator normalises and warns in run log
 - 1b. *Unknown type name:* Generator rejects profile; lists registered types
 - 3a. *Mix is degenerate (single type):* Behaves as today; lessons subsystem suppresses mix-related teaching
-- 4a. *Constraint doesn't move:* System exposes per-type dwell breakdown so the manager can see why (e.g., the dominant type's heaviest phase coincides with the prior constraint)
+- 4a. *Constraint doesn't move under contrasting mixes:* System exposes per-type dwell breakdown so the manager can see why (e.g., the dominant type's heaviest phase coincides with the prior constraint)
 
 ---
 
 ### UC38: Enforce Per-Phase WIP Caps
 
+> **Phase 5 planned — not yet implemented.** This UC describes a roadmap-planned capability; see `docs/roadmap.md` Phase 5. Mechanism details (Go types, function names, schemas) live in `docs/design.md` once the implementing child cycle lands.
+
 **Primary Actor:** Manager
 
-**Goal in Context:** Make CONWIP and head-of-line blocking operationally visible by capping concurrent tickets per phase, including CI/CD.
+**Goal in Context:** Make CONWIP and head-of-line blocking operationally visible by capping concurrent tickets per phase, including the existing CI/CD slot count.
 
 **Scope:** Software Development Simulation
 
@@ -1550,42 +1552,44 @@ This use case requires event sourcing architecture:
 **Stakeholders and Interests:**
 
 - *Manager:* Wants to feel WIP limits as a binding constraint, not just a dashboard line
-- *Team Lead:* Wants `CICDSlots` to actually gate throughput, matching its declared intent
+- *Team Lead:* Wants the CI/CD slot count (a long-declared but currently unenforced capacity knob) to actually gate throughput
 - *Educator:* Wants the kanban "stop starting, start finishing" insight to emerge from observed queue behaviour
 
-**Trigger:** Manager supplies a `PhaseWIPConfig` (per-phase caps) at simulation startup, or accepts the default cap profile.
+**Trigger:** Manager supplies a per-phase WIP configuration at simulation startup, or accepts the bundled default cap profile.
 
 **Preconditions:**
 
 - UC37 in effect: heterogeneous ticket mix is producing differentiated per-phase load
 - Assignment policy honours WIP gating before matching idle developers to queues
-- `CICDSlots` is wired into the same cap enforcement path
+- CI/CD capacity is enforced via the same cap-enforcement path as the other phases
 
 **Postconditions (Guarantees):**
 
-- *Success:* No phase ever holds more than its cap in active work; tickets visibly queue at phase boundaries when downstream is full; CI/CD throughput is bounded by `CICDSlots`, not by developer availability
-- *Failure:* Misconfigured caps (zero, negative, or below mentor-pair minimum) are rejected at startup with explanatory diagnostic
-- *Minimal:* With caps set to "unlimited", behaviour reduces to today's sprint-commit-bounded model
+- *Success:* Manager can observe — via the queue-depth and active-work panels — that no phase displays more concurrent active tickets than its configured cap; that tickets accumulate at upstream phase boundaries when downstream is at its cap (head-of-line blocking); and that CI/CD admission rate is determined by the configured slot count, observable independent of developer idle/busy state
+- *Failure:* Misconfigured caps (zero, negative, or below the mentor-pair minimum of 2) are rejected at simulation startup with an explanatory diagnostic; simulation does not start
+- *Minimal:* With caps set to "unlimited" for every phase, simulation behaviour is observably equivalent to today's sprint-commit-bounded model
 
 **Main Success Scenario:**
 
-1. Manager configures per-phase caps (e.g., Implement: 4, Verify: 2, CI/CD: 1, Review: 2)
+1. Manager configures per-phase caps (for example, Implement: 4, Verify: 2, CI/CD: 1, Review: 2)
 2. Sprint starts; tickets are pulled into Research up to its cap
-3. As Implement fills, Sizing and Planning queues grow because Implement is full — head-of-line blocking is visible in the queue depth panel
-4. CI/CD admits one ticket at a time; subsequent tickets queue at CI/CD's boundary regardless of free developers
+3. As Implement fills to its cap, Sizing and Planning queues grow — head-of-line blocking is visible in the queue-depth panel
+4. CI/CD admits one ticket at a time; subsequent tickets queue at the CI/CD boundary regardless of how many developers are idle
 5. Manager observes that the previously-identified constraint may now shift to whichever phase is most cap-starved
 6. Manager adjusts a single cap and re-runs; throughput response is monotone and interpretable
 
 **Extensions:**
 
 - 1a. *Cap below mentor-pair minimum (= 2 for Implement under mentoring):* Rejected with diagnostic
-- 3a. *Aggregate `RopeConfig` and per-phase caps disagree:* Per-phase cap is the floor; rope acts as an additional ceiling on the Implement→Review span
+- 3a. *Aggregate rope-style WIP control and per-phase caps disagree:* Per-phase cap is the floor; the aggregate control acts as an additional ceiling on the Implement→Review span
 - 4a. *CI/CD cap = 0:* Rejected at startup (would deadlock the system)
 - 5a. *Cap change creates a new constraint that the TOC analyzer hasn't seen long enough:* Analyzer waits out its hysteresis window before re-classifying
 
 ---
 
 ### UC39: Run Simulation in Demand-Driven (Pull) Mode
+
+> **Phase 5 planned — not yet implemented.** This UC describes a roadmap-planned capability; see `docs/roadmap.md` Phase 5. Mechanism details (flags, control loop) live in `docs/design.md` once the implementing child cycle lands.
 
 **Primary Actor:** Manager
 
@@ -1601,19 +1605,19 @@ This use case requires event sourcing architecture:
 - *Educator:* Wants SUBORDINATE (5FS step 3) to become tangible — non-constraint phases waiting for the drum
 - *Researcher:* Wants comparative dwell-time and predictability data between push and pull modes on identical backlogs
 
-**Trigger:** Manager invokes the simulation with `--release-mode=demand` (or toggles in TUI).
+**Trigger:** Manager selects demand-driven release as the active release mode at simulation start (or toggles to it in the TUI).
 
 **Preconditions:**
 
 - UC38 in effect: per-phase WIP caps are enforced (the rope needs anchors)
-- TOC analyzer has identified a constraint phase (or buffer-penetration signal is available)
+- TOC analyzer has identified a constraint phase (or a buffer-penetration signal is available)
 - Backlog has uncommitted ready tickets
 
 **Postconditions (Guarantees):**
 
-- *Success:* Ticket release into Research is gated by downstream capacity and constraint-buffer penetration; the system reaches steady state where input rate equals constraint throughput; aggregate WIP stabilises
-- *Failure:* If the constraint cannot be detected (insufficient warm-up), the system stays in push mode and surfaces a "warming up" diagnostic; no tickets are released prematurely
-- *Minimal:* Push mode remains the default and is bit-for-bit unchanged when `--release-mode=push`
+- *Success:* Manager can observe — in the existing flow-diagnostics and WIP panels — that ticket release into Research occurs only when downstream capacity and the constraint-buffer-penetration signal both permit; that aggregate WIP stabilises within bounded variation across consecutive ticks; and that average WIP under pull mode is materially lower than under push mode for comparable throughput on the same backlog
+- *Failure:* If the constraint cannot be detected during warm-up, simulation stays in push mode and surfaces a "warming up" diagnostic; no tickets are released prematurely
+- *Minimal:* Push mode remains the default and is observably equivalent to today's behaviour when demand-driven mode is not selected
 
 **Main Success Scenario:**
 
@@ -1621,19 +1625,21 @@ This use case requires event sourcing architecture:
 2. System runs a warm-up phase (push) until the TOC analyzer locks a constraint
 3. Release controller computes available headroom from the constraint's buffer penetration and downstream WIP caps
 4. New tickets enter Research only when headroom is positive; otherwise they wait in the ready backlog
-5. Manager observes steady-state WIP that is materially lower than push mode for the same throughput
-6. Manager sees that non-constraint phases periodically idle waiting for the drum — SUBORDINATE made visible
+5. Manager observes average WIP materially lower than push-mode runs of the same backlog
+6. Manager observes that non-constraint phases periodically idle waiting for the drum — SUBORDINATE made visible
 
 **Extensions:**
 
 - 2a. *Analyzer can't lock a constraint in warm-up:* Stay in push mode; surface diagnostic
 - 3a. *Buffer penetration in red zone:* Release controller throttles to zero until penetration recovers
-- 5a. *Throughput drops materially vs push mode on the same backlog:* Lesson subsystem suggests the constraint may be elsewhere than buffer is configured for
-- 6a. *Mix change (UC37) shifts the constraint mid-run:* Release controller follows the new drum on next analyzer re-classification (after hysteresis)
+- 5a. *Throughput drops materially vs push mode on the same backlog:* Lesson subsystem suggests the constraint may be elsewhere than the buffer is configured for
+- 6a. *Mix change (UC37) shifts the constraint mid-run:* Release controller follows the new drum on the next analyzer re-classification (after hysteresis)
 
 ---
 
 ### UC40: Spend Investment Budget at Sprint Boundary
+
+> **Phase 5 planned — not yet implemented.** This UC describes a roadmap-planned capability; see `docs/roadmap.md` Phase 5. Mechanism details (event-schema, capacity-change semantics, budget bookkeeping) live in `docs/design.md` once the implementing child cycle lands.
 
 **Primary Actor:** Manager (or LLM agent in batch mode)
 
@@ -1649,28 +1655,29 @@ This use case requires event sourcing architecture:
 - *Educator:* Wants to reward exploitation-first reasoning and penalise premature elevation (mirroring UC21)
 - *LLM agent operator:* Wants a deterministic, event-sourced action surface for offline training and replay
 
-**Trigger:** Sprint ends; system opens an investment window before `StartSprint()` for the next sprint.
+**Trigger:** Manager chooses to enter the between-sprint investment window after a sprint has completed and before starting the next one.
 
 **Preconditions:**
 
 - UC37, UC38, UC39 in effect — there is a real constraint to identify and a real WIP/release regime to invest into
+- A previous sprint has completed and the next sprint has not yet started
 - Manager has remaining budget
 - At least one investment option is affordable
 
 **Postconditions (Guarantees):**
 
-- *Success:* Chosen investment is applied as an event-sourced capacity change; budget is debited; next sprint runs with the new capacity; the TOC analyzer eventually reports whether the constraint moved
-- *Failure:* Insufficient budget or invalid target — purchase rejected, budget unchanged, window stays open
-- *Minimal:* "No investment" is a valid choice; sprint proceeds with no state change
+- *Success:* Manager can observe — in the budget panel, the per-phase capacity panel, and the next sprint's flow-diagnostics — that the chosen investment was recorded (event log shows the action), that budget decreased by the option's cost, and that the targeted capacity dimension changed in the subsequent sprint. After the next sprint, the TOC flow-diagnostics view reports whether the constraint phase moved
+- *Failure:* Insufficient budget or invalid target — purchase rejected, budget unchanged, window stays open, manager sees a diagnostic
+- *Minimal:* "No investment" is a valid choice; sprint proceeds with no capacity-state change
 
 **Main Success Scenario:**
 
-1. Sprint completes; system pauses and opens the investment window with current budget, current constraint, and the menu of options (hire developer, buy CI/CD slot, upgrade Review tooling, pay down Verify tech debt)
+1. Manager chooses to enter the investment window after a sprint completes; system displays current budget, current constraint, and the menu of options (hire developer, buy CI/CD slot, upgrade Review tooling, pay down Verify tech debt)
 2. Manager reviews the TOC analyzer's identified constraint and per-phase dwell
 3. Manager selects an investment targeted at the constraint (or an upstream/downstream phase per their hypothesis)
 4. System records an investment event, debits budget, applies the capacity change
 5. Manager starts the next sprint; runs to completion
-6. Manager observes whether the constraint moved, stayed, or worsened — and decides next sprint's investment
+6. Manager observes whether the constraint moved, stayed, or worsened — and decides the next sprint's investment
 
 **Extensions:**
 
