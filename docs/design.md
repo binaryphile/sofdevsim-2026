@@ -231,6 +231,19 @@ Flow-based constraint detection via rolling window (default 10 ticks):
 
 Honest for shared-pool model: no fabricated per-phase utilization. The `toc/core` analyzer is available in degraded mode but the primary signal is flow-based.
 
+### Planned Phase 5 Extensions (Factorio-Inspired Dynamics)
+
+The TOC operating model described above (aggregate `RopeConfig`/`DownstreamWIP()` on the Implement→Review span; homogeneous ticket flow; push-mode sprint commit) is **today's** model. The roadmap Phase 5 program (parent epic task #15441) extends this model with four planned capabilities, each documented as a use case in `docs/use-cases.md` (UC37-UC40) and tracked as a separate child cycle. **These are forward-references**: until the child cycles land, this section's TOC description is complete for current behaviour. Each child cycle will amend its own HOW details into this design.md per the docs-first commit ordering rule.
+
+| Planned (UC) | Effect on this section's model |
+|---|---|
+| UC37 heterogeneous ticket types (#15442) | Ticket flow becomes per-type — `currentTick - PhaseEnteredTick` aggregation gets a type-dimension breakdown; constraint identification continues to operate on aggregated per-phase dwell |
+| UC38 per-phase WIP caps (#15443) | Aggregate `RopeConfig` is joined by a per-phase WIP configuration; the existing `CICDSlots` field gets wired into this enforcement path; constraint may shift to cap-starved phases |
+| UC39 demand-driven release (#15445) | Push-mode default joined by a pull-mode controller gated on constraint-buffer penetration; release rate becomes a function of constraint throughput, not sprint commit |
+| UC40 investment moves (#15446) | Sprint-boundary investment events become a new event class; capacity dimensions (developer count, CI/CD slot count, per-phase tooling multipliers, per-phase variance multipliers) become event-sourced rather than initialisation-fixed |
+
+See `docs/roadmap.md` Phase 5 for the sequencing rationale and child-cycle enumeration.
+
 ---
 
 ## Key Algorithms
