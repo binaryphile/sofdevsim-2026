@@ -12,7 +12,10 @@
 // later convert to event-sourced).
 package model
 
-import "errors"
+import (
+	"errors"
+	"fmt"
+)
 
 // Sentinel errors for per-phase WIP configuration. Use errors.Is to
 // differentiate; never string-match the message.
@@ -37,11 +40,36 @@ var (
 // existing mentor-pair semantics.
 const mentorPairMinimum = 2
 
-// ValidatePhaseWIPConfig — body lands in commit 6.
-// Declared here so commit 4's sentinels have a documented consumer.
+// ValidatePhaseWIPConfig validates a per-phase WIP cap configuration.
+// Returns the first-violation sentinel wrapped with fmt.Errorf carrying
+// the failing phase and cap value for operator diagnostics. Callers use
+// errors.Is to differentiate.
 //
 // Decision A (Khorikov Domain quadrant): pure function; heavy unit
 // coverage via table-driven tests over all 4 violation classes.
+//
+// Iteration order across the map is non-deterministic by Go's map
+// semantics; tests construct single-violation cases so the first-found
+// match is deterministic per case.
+func ValidatePhaseWIPConfig(cfg map[WorkflowPhase]int, rope RopeConfig) error {
+	for phase, cap := range cfg {
+		switch {
+		case cap == 0:
+			return fmt.Errorf("%w: phase=%s cap=%d", ErrCapZero, phase, cap)
+		case cap < 0:
+			return fmt.Errorf("%w: phase=%s cap=%d", ErrCapNegative, phase, cap)
+		}
+		if phase == PhaseImplement && cap < mentorPairMinimum {
+			return fmt.Errorf("%w: phase=%s cap=%d minimum=%d",
+				ErrCapBelowMentorMin, phase, cap, mentorPairMinimum)
+		}
+		if rope.Enabled && rope.MaxWIP > 0 && IsRopeControlledPhase(phase) && cap > rope.MaxWIP {
+			return fmt.Errorf("%w: phase=%s cap=%d ropeMaxWIP=%d",
+				ErrCapConflict, phase, cap, rope.MaxWIP)
+		}
+	}
+	return nil
+}
 
-// PhaseWIPCap and PhaseWIPCount methods on Simulation land in commit 5
-// (alongside the PhaseWIPConfig field that backs them).
+// PhaseWIPCap and PhaseWIPCount methods on Simulation land in
+// simulation.go (alongside the PhaseWIPConfig field that backs them).
