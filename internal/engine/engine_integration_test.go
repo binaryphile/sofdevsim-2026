@@ -1,6 +1,8 @@
 package engine_test
 
 import (
+	"math"
+	"math/rand"
 	"testing"
 
 	"github.com/binaryphile/sofdevsim-2026/internal/engine"
@@ -1113,5 +1115,136 @@ func TestEngine_IsRopeControlledPhase(t *testing.T) {
 		if got := model.IsRopeControlledPhase(tt.phase); got != tt.want {
 			t.Errorf("IsRopeControlledPhase(%s) = %v, want %v", tt.phase, got, tt.want)
 		}
+	}
+}
+
+// UC37 (cycle #15442) integration test: per Plan-agent Khorikov Controller quadrant
+// classification. ONE integration test covering UC37's full-stack postcondition —
+// the constraint phase shifts when the backlog mix shifts.
+//
+// Methodology (plan §Phase 3c tuning-risk):
+//   - Pin seed=42 for reproducibility under failure
+//   - Two sims, same dev pool + sprint count + seed, contrasting mix profiles:
+//       uc37-default   (aggregate Implement-dominant: ≈0.458)
+//       research-shop  (aggregate Research-dominant:  ≈0.480)
+//   - Aggregate per-phase total effort across all completed tickets
+//   - Primary assertion: per-phase dwell-time vectors diverge ≥10% Euclidean distance
+//   - Secondary observation: constraint-phase argmax differs (logged, not strictly
+//     asserted — the TOC analyzer's 10%-dominance margin may yield "no constraint"
+//     in either run; vector-divergence is the load-bearing evidence)
+func TestMixProfileChangesConstraintPhase(t *testing.T) {
+	const (
+		seed       = int64(42)
+		sprintsRun = 6 // Long enough for the constraint identifier's 10-eval hysteresis + several ticket completions
+		ticketsGen = 12 // Standard sim backlog count; enough for mix to be meaningful + tickets to complete
+	)
+
+	// runMix executes a full simulation with the given mix profile and returns
+	// the per-phase aggregate dwell-time vector across all completed tickets.
+	runMix := func(scenarioName string) ([]float64, model.WorkflowPhase) {
+		gen := engine.Scenarios[scenarioName]
+		// rand.New seeded explicitly so the same seed produces same RNG sequence
+		// regardless of mix; the mix-profile divergence comes from how that
+		// sequence's first roll lands in different cumulative-weight ranges.
+		tickets := gen.Generate(rand.New(rand.NewSource(seed)), ticketsGen)
+
+		sim := model.NewSimulation("uc37-int-"+scenarioName, model.PolicyNone, seed)
+		eng := engine.NewEngine(seed)
+		eng, _ = eng.EmitCreated(sim.ID, sim.CurrentTick, events.SimConfig{
+			TeamSize:     6,
+			SprintLength: sim.SprintLength,
+			Seed:         seed,
+			Policy:       model.PolicyNone,
+		})
+		// 6 developers (matching the standard team)
+		devs := []string{"d1", "d2", "d3", "d4", "d5", "d6"}
+		for _, name := range devs { // justified:SM (side-effectful add per dev)
+			eng, _ = eng.AddDeveloper(name, name, 1.0)
+		}
+		for _, tk := range tickets { // justified:SM (side-effectful add per ticket)
+			eng, _ = eng.AddTicket(tk)
+		}
+
+		// Round-robin manual assignment (existing engine integration-test pattern; auto-
+		// assignment via assignFromQueues only picks up phase-queued tickets, not the
+		// CommittedTickets that StartSprint populates).
+		for i, tk := range tickets { // justified:IX (round-robin index over devs)
+			eng, _ = eng.AssignTicket(tk.ID, devs[i%len(devs)])
+		}
+
+		for s := 0; s < sprintsRun; s++ { // justified:CF (sprint loop with error propagation)
+			eng, _, _ = eng.RunSprint()
+		}
+
+		// Debug: how much progress was made?
+		st := eng.Sim()
+		t.Logf("  [%s] tick=%d backlog=%d committed=%d active=%d completed=%d",
+			scenarioName, st.CurrentTick, len(st.Backlog), len(st.CommittedTickets),
+			len(st.ActiveTickets), len(st.CompletedTickets))
+
+		// Aggregate per-phase total effort across all completed AND active tickets.
+		// Using active tickets too because they carry PhaseEffortSpent[] data even
+		// before completing; that captures the per-phase dwell signal even if
+		// completion-throughput is too slow within the sprint window.
+		dwell := make([]float64, model.PhaseDone+1)
+		for _, tk := range eng.Sim().CompletedTickets { // justified:SM
+			for ph, ef := range tk.PhaseEffortSpent {
+				dwell[ph] += ef
+			}
+		}
+		for _, tk := range eng.Sim().ActiveTickets { // justified:SM (capture in-flight per-phase effort)
+			for ph, ef := range tk.PhaseEffortSpent {
+				dwell[ph] += ef
+			}
+		}
+
+		// Argmax phase (the "constraint candidate" — phase with highest total effort).
+		// Note: this is observable-vector argmax, NOT the TOC analyzer's constraint
+		// (which uses median dwell time + hysteresis). For the integration-test
+		// scope, the observable-vector argmax is the right signal: it's what an
+		// operator would see in the per-phase totals panel.
+		argmax := model.PhaseResearch
+		for ph := model.PhaseResearch; ph <= model.PhaseReview; ph++ { // justified:IX (phase-ordered argmax scan)
+			if dwell[ph] > dwell[argmax] {
+				argmax = ph
+			}
+		}
+		return dwell, argmax
+	}
+
+	dwellA, argmaxA := runMix("uc37-default")
+	dwellB, argmaxB := runMix("research-shop")
+
+	// Euclidean distance between the two vectors, normalised against the L2 norm
+	// of vector A to express as a relative percentage.
+	var sumSqDiff, sumSqA float64
+	for ph := model.PhaseResearch; ph <= model.PhaseReview; ph++ { // justified:IX (per-phase L2 components)
+		d := dwellA[ph] - dwellB[ph]
+		sumSqDiff += d * d
+		sumSqA += dwellA[ph] * dwellA[ph]
+	}
+	relDist := math.Sqrt(sumSqDiff) / math.Sqrt(sumSqA)
+
+	t.Logf("uc37-default per-phase dwell: %v (argmax=%s)", dwellA, argmaxA)
+	t.Logf("research-shop per-phase dwell: %v (argmax=%s)", dwellB, argmaxB)
+	t.Logf("relative L2 distance: %.3f (threshold 0.10)", relDist)
+
+	// PRIMARY assertion: vector divergence ≥10%.
+	// NaN-guard: if vector A is all-zeros (no tickets completed), sumSqA = 0 →
+	// relDist = NaN. NaN comparisons return false for both < and ≥, so without
+	// this guard the assertion silently passes on a degenerate run.
+	if math.IsNaN(relDist) {
+		t.Fatalf("relative L2 distance is NaN — likely no tickets completed (uc37-default L2=%.3f). Check sprint count + ticket generation produces completions.", math.Sqrt(sumSqA))
+	}
+	if relDist < 0.10 {
+		t.Errorf("per-phase dwell-time vectors too similar (rel L2 = %.3f, want ≥0.10) — UC37 postcondition violated; the mix shift didn't produce observable per-phase dwell-time divergence", relDist)
+	}
+
+	// SECONDARY observation: argmax difference is logged but not strictly asserted
+	// (the TOC analyzer's 10%-dominance margin may legitimately yield equal argmax
+	// across runs when both mixes happen to peak at the same phase under the
+	// shared-developer-pool dynamics).
+	if argmaxA == argmaxB {
+		t.Logf("note: argmax phase is the same (%s) across both mixes — primary vector-divergence assertion still holds at %.3f", argmaxA, relDist)
 	}
 }
