@@ -239,7 +239,7 @@ The TOC operating model described above (aggregate `RopeConfig`/`DownstreamWIP()
 |---|---|---|
 | UC37 heterogeneous ticket types (#15442) | **shipped** — see §"Heterogeneous Ticket Types" below | Ticket flow is now per-type — phase-effort distribution differs per type; `currentTick - PhaseEnteredTick` aggregation now has a type-dimension breakdown when needed; constraint identification continues to operate on aggregated per-phase dwell |
 | UC38 per-phase WIP caps (#15443) | **shipped** — see §"Per-Phase WIP Caps (UC38)" below | Aggregate `RopeConfig` is joined by a per-phase WIP configuration; the existing `CICDSlots` field is now wired into this enforcement path; constraint may shift to cap-starved phases |
-| UC39 demand-driven release (#15445) | planned | Push-mode default joined by a pull-mode controller gated on constraint-buffer penetration; release rate becomes a function of constraint throughput, not sprint commit |
+| UC39 demand-driven release (#15445) | **shipped** — see §"Demand-Driven Release (UC39)" below | Push-mode default joined by a pull-mode controller gated on constraint-buffer penetration; release rate becomes a function of constraint throughput, not sprint commit |
 | UC40 investment moves (#15446) | planned | Sprint-boundary investment events become a new event class; capacity dimensions (developer count, CI/CD slot count, per-phase tooling multipliers, per-phase variance multipliers) become event-sourced rather than initialisation-fixed |
 
 See `docs/roadmap.md` Phase 5 for the sequencing rationale and child-cycle enumeration.
@@ -376,6 +376,103 @@ Initial assignment to a phase triggers the phase-transition path, so the existin
 - `SimulationCreated` v1→v2 backward-compat — `TestSimulationCreated_GobBackwardCompat_PreV2DecodesAsUnlimited` mirrors UC37's `TestTicketCreated_GobBackwardCompat_PreV2DecodesAsFeature` pattern.
 - `assignFromQueues` cap-check integration — `assignment_wip_test.go` table-driven over cap-blocked/rope-blocked/both-blocked combinations.
 - TWO integration tests in `engine_integration_test.go`: `TestPhaseWIPCap_EnforcesCapAtAssignment` (seed=42, Implement cap=2, manual `AssignTicket` round-robin per UC37 lesson — RunSprint's auto-assignment doesn't pull from `CommittedTickets`; asserts no phase exceeds cap + head-of-line blocking observable) AND `TestPhaseWIPCap_StartupRejectsMisconfig` (table-driven 4 sentinel cases).
+
+---
+
+### Demand-Driven Release (UC39)
+
+**Status**: implemented in cycle #15443 (contract #18148, parent epic #15441).
+
+**Schema**: `Simulation.ReleaseMode model.ReleaseMode` (iota enum; `ReleaseModePush = 0` zero-value default, `ReleaseModeDemand = 1`). Companion sim fields: `WarmupActive bool` (true at sim creation when ReleaseMode==Demand; flipped to false by `WarmupExited` event), `WarmupFailed bool` (flipped to true by `WarmupTimedOut` event when warm-up exceeds N=5 sprints; terminal for the sim's lifetime), `MaxBacklogDrip int` (default 1; set explicitly in both `NewSimulation` and projection per UC38 CICDSlots-default precedent at commit a2c8dab — zero-value 0 would route through the headroom formula as a permanent throttle). `SimConfig.ReleaseMode` carries the mode at sim creation via `SimulationCreated` v2→v3 payload; pre-v3 events decode as `ReleaseModePush` (gob zero-value; regression-safe).
+
+**Mode state machine**:
+
+```
+sim created (ReleaseMode=Demand) ──▶ WarmupActive=true, WarmupFailed=false
+                                                 │
+                                                 ▼ Tick: runReleaseController
+              ┌──────────────────────────────────┼──────────────────────────────────┐
+              ▼                                  ▼                                  ▼
+   WarmupExit(signal, 0.5)?         SprintNumber >= 5?                       neither
+              │                                  │                                  │
+              ▼ yes                              ▼ yes                              ▼
+   emit WarmupExited                   emit WarmupTimedOut                  no-op (warming)
+   (projection: WarmupActive=false)    (projection: WarmupFailed=true,
+              │                          WarmupActive stays true → push-shape)
+              ▼
+   admission phase (controller drips per ShouldAdmit)
+```
+
+**Warmup-exit vs timeout race**: predicates evaluated in order — `WarmupExit` first; if true, emit `WarmupExited`; else if `SprintNumber >= 5`, emit `WarmupTimedOut` + return `ErrWarmupTimeout`. Warmup-exit wins ties (preserves happy-path preference). Mutual exclusion: only one transition fires per Tick.
+
+**Cap precedence + headroom formula**:
+
+`ShouldAdmit` is **demand-only** (the controller decides whether to invoke based on `sim.ReleaseMode`; the function has no `mode` parameter):
+
+```
+ShouldAdmit(signal AnalyzerSignal, drip int) (int, string):
+  headroom := math.Floor((1.0 - signal.Penetration) * float64(drip))
+  if headroom <= 0:
+    return 0, "red-zone throttle: penetration=<value>"
+  return int(headroom), "admit <n> (penetration=<value>, drip=<value>)"
+
+WarmupExit(signal AnalyzerSignal, threshold float64) bool:
+  return signal.Constraint != PhaseBacklog && signal.Confidence >= threshold
+```
+
+Default threshold: 0.5 (medium confidence; exact boundary returns true). The returned reason string from `ShouldAdmit` is `slog.Debug`-logged by the controller for operator visibility (not surfaced in TUI or CSV).
+
+**Sentinel errors** (per Go dev §8; co-located with the enum in `internal/model/release_mode.go`):
+
+| Sentinel | Trigger |
+|---|---|
+| `ErrInvalidReleaseMode` | `ParseReleaseMode("garbage")` — unknown mode name; HTTP 422 from REST handlers |
+| `ErrAnalyzerNotReady` | `runReleaseController` called when `tracker.TOCState.Ticks == 0` (defensive guard with real trigger site) |
+| `ErrWarmupTimeout` | `runReleaseController` returns this error (non-fatal; informational) alongside emitting `WarmupTimedOut` event |
+
+Callers MUST use `errors.Is`; never string-match (anti-pattern absorbed in UC37 /c at 9c3cd5e).
+
+**StartSprint behavior change**:
+
+```go
+// Pre-UC39: always auto-commits to capacity
+// Post-UC39: skip auto-commit when ReleaseMode==Demand AND !WarmupActive AND !WarmupFailed
+if state.ReleaseMode == model.ReleaseModeDemand && !state.WarmupActive && !state.WarmupFailed {
+    // demand mode post-warmup AND not timed-out: no bulk commit; controller drips per tick
+    return e.emit(events.NewSprintStarted(...))
+}
+// push OR demand-warmup OR demand-warmup-failed: existing commit-to-capacity loop
+```
+
+Push mode preserved byte-identical via the zero-value default. The demand-mode-success path is the one non-regression-safe aspect of UC39 (intentional; parallel to UC38's CICDSlots wiring at commit a2c8dab).
+
+**Warmup-failed semantics**: `WarmupTimedOut` sets `WarmupFailed=true` AND keeps `WarmupActive=true`. The StartSprint guard above keeps bulk-committing in this state, giving the operator effective push behavior without changing the reported ReleaseMode. UC39 makes this state terminal for the sim's lifetime; recovery requires sim restart.
+
+**TUI Mode indicator** (4 states; `HeaderVM` exposes `ReleaseMode` + `WarmupActive` + `WarmupFailed`):
+- `Mode: push` — ReleaseMode == Push (zero-value default)
+- `Mode: demand (warming)` — WarmupActive && !WarmupFailed (waiting for analyzer lock)
+- `Mode: demand (push fallback)` — WarmupActive && WarmupFailed (warmup-timeout fired; running as push)
+- `Mode: demand` — !WarmupActive (post-warmup-exit; controller is dripping)
+
+**Operator surface** (CLI + REST):
+- CLI: `--release-mode push|demand` flag (default `push`; empty/omitted → push). Unknown value → fatal with `ErrInvalidReleaseMode`-wrapped diagnostic.
+- REST: `POST /simulations` body accepts optional `releaseMode` field (string; "push" or "demand"; empty → push). Validation errors → **HTTP 422** (UC38-introduced status code for domain-rule violations).
+- Validation is **single-pass**: `registry.CreateSimulation` calls `ParseReleaseMode`; CLI's flag parser defers semantic validation to the registry for friendly-error consistency across CLI + REST.
+
+**CSV export**: `sprints.csv` gains 3 columns appended after UC38's `phase_avg_wip`:
+- `release_mode` — string "push"|"demand"
+- `constraint_phase` — string from `TOCState.ConstraintPhase.String()`; "none" if not locked
+- `buffer_penetration` — float [0,1] from `TOCState.Buffer.Penetration`; "null" if no constraint locked
+
+**Test surface** (Decisions A + B):
+- `ParseReleaseMode` — table-driven over happy + `ErrInvalidReleaseMode` cases.
+- `ShouldAdmit` — table-driven over Penetration ∈ {0, 0.5, 0.7, 1.0} × drip ∈ {1, 3}; assert (admit, reason) tuple + red-zone-throttle reason substring for Penetration=1.0.
+- `WarmupExit` — table-driven over threshold-crossing 0.0/0.49/0.5/1.0 (exact boundary at 0.5 must return true); Constraint==PhaseBacklog always false regardless of confidence.
+- `Simulation.Clone()` — `TestSimulation_Clone_ReleaseModeFields_Preserve` covers all 4 new scalar/enum fields.
+- `SimulationCreated` v2→v3 backward-compat — `TestSimulationCreated_GobBackwardCompat_PreV3DecodesAsPushMode` mirrors UC37/UC38 pattern.
+- `WarmupExited` + `WarmupTimedOut` projection handlers — assert post-event sim state.
+- `runReleaseController` — table-driven over 7 scenarios (push: no-op; demand-warmup-running: no-op; demand-warmup-exit-fires: WarmupExited + TicketCommitted same tick; demand-warmup-timeout: WarmupTimedOut + no TicketCommitted; demand-postwarmup-green: TicketCommitted count = admit headroom; demand-postwarmup-red: 0 TicketCommitted + red-zone reason; ErrAnalyzerNotReady defensive guard).
+- TWO integration tests in `engine_integration_test.go`: `TestDemandMode_LowersAvgWIPVsPush` (seed=42 + uc37-default mix + 3 sprints + ReleaseMode={Push, Demand} same seed; assert demand AvgWIP < push AvgWIP × 0.9) AND `TestDemandMode_WarmupFallsBackToPushIfNoConstraint` (degenerate mix; assert warmup timeout fires + effective-push fallback + `errors.Is(err, ErrWarmupTimeout)`).
 
 ---
 
