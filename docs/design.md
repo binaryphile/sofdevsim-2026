@@ -235,14 +235,73 @@ Honest for shared-pool model: no fabricated per-phase utilization. The `toc/core
 
 The TOC operating model described above (aggregate `RopeConfig`/`DownstreamWIP()` on the Implement→Review span; homogeneous ticket flow; push-mode sprint commit) is **today's** model. The roadmap Phase 5 program (parent epic task #15441) extends this model with four planned capabilities, each documented as a use case in `docs/use-cases.md` (UC37-UC40) and tracked as a separate child cycle. **These are forward-references**: until the child cycles land, this section's TOC description is complete for current behaviour. Each child cycle will amend its own HOW details into this design.md per the docs-first commit ordering rule.
 
-| Planned (UC) | Effect on this section's model |
-|---|---|
-| UC37 heterogeneous ticket types (#15442) | Ticket flow becomes per-type — `currentTick - PhaseEnteredTick` aggregation gets a type-dimension breakdown; constraint identification continues to operate on aggregated per-phase dwell |
-| UC38 per-phase WIP caps (#15443) | Aggregate `RopeConfig` is joined by a per-phase WIP configuration; the existing `CICDSlots` field gets wired into this enforcement path; constraint may shift to cap-starved phases |
-| UC39 demand-driven release (#15445) | Push-mode default joined by a pull-mode controller gated on constraint-buffer penetration; release rate becomes a function of constraint throughput, not sprint commit |
-| UC40 investment moves (#15446) | Sprint-boundary investment events become a new event class; capacity dimensions (developer count, CI/CD slot count, per-phase tooling multipliers, per-phase variance multipliers) become event-sourced rather than initialisation-fixed |
+| Planned (UC) | Status | Effect on this section's model |
+|---|---|---|
+| UC37 heterogeneous ticket types (#15442) | **shipped** — see §"Heterogeneous Ticket Types" below | Ticket flow is now per-type — phase-effort distribution differs per type; `currentTick - PhaseEnteredTick` aggregation now has a type-dimension breakdown when needed; constraint identification continues to operate on aggregated per-phase dwell |
+| UC38 per-phase WIP caps (#15443) | planned | Aggregate `RopeConfig` is joined by a per-phase WIP configuration; the existing `CICDSlots` field gets wired into this enforcement path; constraint may shift to cap-starved phases |
+| UC39 demand-driven release (#15445) | planned | Push-mode default joined by a pull-mode controller gated on constraint-buffer penetration; release rate becomes a function of constraint throughput, not sprint commit |
+| UC40 investment moves (#15446) | planned | Sprint-boundary investment events become a new event class; capacity dimensions (developer count, CI/CD slot count, per-phase tooling multipliers, per-phase variance multipliers) become event-sourced rather than initialisation-fixed |
 
 See `docs/roadmap.md` Phase 5 for the sequencing rationale and child-cycle enumeration.
+
+### Heterogeneous Ticket Types (UC37)
+
+**Status**: implemented in cycle #15442 (contract #16700).
+
+**Type vocabulary** (5 enum variants): `Feature`, `Bug`, `Spike`, `Migration`, `Infra`. Zero-value defaults to `Feature` — old serialised data (gob `saves/*.sds`, pre-v2 `TicketCreated` events) decodes with the regression-safe `Feature` default.
+
+**Per-type phase-effort distribution** (each row sums to 1.00; Done = 0 across all types; numbers are initial defensible defaults documented for future calibration):
+
+| Type | Research | Sizing | Planning | Implement | Verify | CI/CD | Review |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Feature   | 0.05 | 0.02 | 0.03 | 0.55 | 0.20 | 0.05 | 0.10 |
+| Bug       | 0.10 | 0.05 | 0.00 | 0.35 | 0.30 | 0.05 | 0.15 |
+| Spike     | 0.55 | 0.05 | 0.05 | 0.25 | 0.05 | 0.00 | 0.05 |
+| Migration | 0.05 | 0.05 | 0.10 | 0.30 | 0.35 | 0.05 | 0.10 |
+| Infra     | 0.10 | 0.02 | 0.08 | 0.30 | 0.20 | 0.20 | 0.10 |
+
+Per-type rationale:
+- **Feature**: byte-identical to pre-UC37 global `PhaseEffortPct`. All-Feature mixes reproduce today's behaviour bit-for-bit (regression-safe).
+- **Bug**: skips Planning (root cause already known); heavier Verify + Review (regression coverage dominates).
+- **Spike**: Research-heavy (the whole point); CI/CD = 0 (spikes don't deploy); tiny Implement (throwaway prototype).
+- **Migration**: lingers in Verify (data-shape correctness dominates); slight Planning bump (cross-system coordination).
+- **Infra**: heavy CI/CD (pipeline-shaped changes); Planning > Sizing (rollout sequencing matters).
+
+`Ticket.CalculatePhaseEffort` looks up `TypePhaseEffortPct[ticket.Type][phase]`, multiplies by `EstimatedDays`, then applies the existing `UnderstandingPhaseMultiplier` on Research/Implement/Verify. **Defensive fallback**: if `ticket.Type` is out of the registered enum range (corrupt input from external source), CalculatePhaseEffort falls through to the Feature distribution rather than silently returning zero — preserves work flow over a phantom phase-skip.
+
+**`PhaseEffortPct` backward-compat alias**: the package-level `PhaseEffortPct` variable now points to `TypePhaseEffortPct[TicketTypeFeature]` so downstream consumers (CSV export's `PhaseEffortDistribution` map; any test reading the global directly) work unchanged.
+
+**Decomposition inheritance**: when a parent ticket decomposes (sizing policies in `internal/engine/policies.go`), children inherit the parent's `Type` unchanged. Type does not improve via decomposition (orthogonal to Understanding's decomposition improvement).
+
+**Mix-profile generation** (`TicketGenerator.TypeWeights map[TicketType]float64`):
+- Generator selects a type per ticket via cumulative-weight roll (same RNG path as Understanding-level selection).
+- Weights silently normalise to sum to 1.0; nil/empty weights → all-Feature (regression-safe default; UC37 ext §1a).
+- Unknown type-name in profile → rejected at simulation startup with diagnostic listing registered types (UC37 ext §1b).
+- Single-type degenerate weights → 100% that type (UC37 ext §3a).
+
+**Bundled scenarios** (9 total; 4 existing all-Feature + 5 new typed):
+
+| Scenario | Feature | Bug | Spike | Migration | Infra | Aggregate dominant phase |
+|---|---:|---:|---:|---:|---:|---|
+| `healthy` (existing) | 1.00 | 0 | 0 | 0 | 0 | Implement |
+| `overloaded` (existing) | 1.00 | 0 | 0 | 0 | 0 | Implement |
+| `uncertain` (existing) | 1.00 | 0 | 0 | 0 | 0 | Implement |
+| `mixed` (existing) | 1.00 | 0 | 0 | 0 | 0 | Implement |
+| `uc37-default` | 0.60 | 0.25 | 0.10 | 0.05 | 0 | Implement (≈0.458) |
+| `bug-heavy` | 0.30 | 0.50 | 0.05 | 0.10 | 0.05 | Implement |
+| `migration-quarter` | 0.30 | 0.15 | 0.05 | 0.45 | 0.05 | Implement |
+| `infra-push` | 0.35 | 0.15 | 0.05 | 0.10 | 0.35 | Implement |
+| `research-shop` | 0.05 | 0.05 | 0.85 | 0.00 | 0.05 | Research (≈0.48) |
+
+**`mixed` scenario naming-vs-semantics**: the existing `mixed` scenario name predates UC37. It produces variety in non-type dimensions (understanding, estimates, priorities) and stays all-Feature post-UC37 — preserving its behavioural contract. Scenarios that vary along the TYPE dimension are explicitly named by their type-shape (`bug-heavy`, `migration-quarter`, etc.). Renaming `mixed` → `type-mixed` was considered and rejected: behavioural-contract preservation wins over naming purity.
+
+**Operator surface** (CLI + REST):
+- CLI: `--mix <scenario-name>` flag, defaults to `healthy`. Unknown name → startup error listing registered scenarios.
+- REST: `POST /simulations` body accepts optional `scenarioName` field, defaults to `healthy`. Same error handling. UC9/UC10 contract preserved.
+
+**Threading**: scenario name flows as a `string` parameter through `cmd/sofdevsim/main.go` → `registry.CreateSimulation` → `tui.NewAppWithRegistry`/`api.HandleCreateSimulation` → `engine.TicketGenerator`. No config-struct abstraction (YAGNI per CLAUDE.md tone; UC38 may introduce one if it needs broader config surface).
+
+**Event-sourcing impact**: `TicketCreated` event Version bumped 1→2 with new `Type` field. Pre-v2 events decode with `Type == TicketTypeFeature` (gob zero-value). No upcaster needed per CLAUDE.md "add fields freely". Backward-compat covered by unit test.
 
 ---
 
