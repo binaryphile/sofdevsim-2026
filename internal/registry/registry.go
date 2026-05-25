@@ -68,8 +68,8 @@ type SimInstance struct {
 }
 
 // CreateSimulation creates a new simulation with given seed, policy, backlog
-// mix scenario, and (UC38) per-phase WIP cap configuration. Returns the
-// simulation ID and nil error on success.
+// mix scenario, per-phase WIP cap configuration, and (UC39) release mode.
+// Returns the simulation ID and nil error on success.
 // Returns ErrAlreadyExists if a simulation with the same seed already exists.
 // Returns ErrUnknownScenario if scenarioName is not a registered scenario.
 // Returns one of model.ErrCap{Zero,Negative,BelowMentorMin,Conflict}
@@ -79,11 +79,15 @@ type SimInstance struct {
 // UC38: phaseWIPConfig nil/empty = unlimited everywhere (regression-safe per
 // Decision D); validation is single-pass here so CLI + REST share friendly
 // errors (the CLI parser only does syntax-only k=v checking).
+// UC39: releaseMode is a strongly-typed enum at this layer; ParseReleaseMode
+// is invoked upstream (HTTP handler / CLI parser) — the registry just accepts
+// the typed value. ReleaseModePush zero-value = regression-safe default.
 func (r *SimRegistry) CreateSimulation(
 	seed int64,
 	policy model.SizingPolicy,
 	scenarioName string,
 	phaseWIPConfig map[model.WorkflowPhase]int,
+	releaseMode model.ReleaseMode,
 ) (string, error) {
 	if scenarioName == "" {
 		scenarioName = "healthy"
@@ -119,6 +123,7 @@ func (r *SimRegistry) CreateSimulation(
 
 	sim := model.NewSimulation(id, policy, seed)
 	sim.PhaseWIPConfig = phaseWIPConfig
+	sim.ReleaseMode = releaseMode
 
 	var err error
 	eng := engine.NewEngineWithStore(sim.Seed, r.store)
@@ -128,6 +133,7 @@ func (r *SimRegistry) CreateSimulation(
 		Seed:           sim.Seed,
 		Policy:         policy,
 		PhaseWIPConfig: phaseWIPConfig,
+		ReleaseMode:    releaseMode,
 	}); err != nil {
 		return "", fmt.Errorf("emit created: %w", err)
 	}

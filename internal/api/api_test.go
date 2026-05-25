@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/binaryphile/sofdevsim-2026/internal/api"
+	"github.com/binaryphile/sofdevsim-2026/internal/model"
 )
 
 // NOTE: Controller integration test moved to TestTutorialWalkthrough in tutorial_walkthrough_test.go.
@@ -464,7 +465,7 @@ func TestSimRegistry_MutationPersists(t *testing.T) {
 	registry := api.NewSimRegistry()
 
 	// Call method that mutates internal map
-	id, err := registry.CreateSimulation(42, 0, "", nil) // 0 = PolicyNone; nil = unlimited (UC38)
+	id, err := registry.CreateSimulation(42, 0, "", nil, model.ReleaseModePush) // 0 = PolicyNone; nil = unlimited (UC38); push = default (UC39)
 	if err != nil {
 		t.Fatalf("CreateSimulation() error = %v", err)
 	}
@@ -848,3 +849,83 @@ func TestHandleCreateSimulation_PhaseWIPConfig_HTTP422(t *testing.T) {
 	}
 }
 
+// UC39 (#15445): POST /simulations with invalid releaseMode returns HTTP 422
+// (reuses UC38-introduced status code for domain-rule violations).
+func TestHandleCreateSimulation_ReleaseMode_HTTP422(t *testing.T) {
+	tests := []struct {
+		name    string
+		seed    int64
+		mode    string // releaseMode JSON value
+		wantSC  int
+		wantSub string
+	}{
+		{
+			name:    "garbage mode → 422 with ErrInvalidReleaseMode-wrapped message",
+			seed:    200,
+			mode:    "garbage",
+			wantSC:  http.StatusUnprocessableEntity,
+			wantSub: "invalid release mode",
+		},
+		{
+			name:    "pull (common typo) → 422",
+			seed:    201,
+			mode:    "pull",
+			wantSC:  http.StatusUnprocessableEntity,
+			wantSub: "invalid release mode",
+		},
+		{
+			name:   "valid push → 201",
+			seed:   202,
+			mode:   "push",
+			wantSC: http.StatusCreated,
+		},
+		{
+			name:   "valid demand → 201",
+			seed:   203,
+			mode:   "demand",
+			wantSC: http.StatusCreated,
+		},
+		{
+			name:   "empty mode → 201 (default push; regression-safe)",
+			seed:   204,
+			mode:   "",
+			wantSC: http.StatusCreated,
+		},
+		{
+			name:   "case-insensitive DEMAND → 201",
+			seed:   205,
+			mode:   "DEMAND",
+			wantSC: http.StatusCreated,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			registry := api.NewSimRegistry()
+			srv := httptest.NewServer(api.NewRouter(registry))
+			defer srv.Close()
+
+			body := map[string]any{"seed": tc.seed}
+			if tc.mode != "" {
+				body["releaseMode"] = tc.mode
+			}
+			reqBody, _ := json.Marshal(body)
+			resp, err := http.Post(srv.URL+"/simulations", "application/json", bytes.NewReader(reqBody))
+			if err != nil {
+				t.Fatalf("POST /simulations: %v", err)
+			}
+			defer resp.Body.Close()
+
+			if resp.StatusCode != tc.wantSC {
+				rbody, _ := io.ReadAll(resp.Body)
+				t.Errorf("status = %d, want %d; body=%s", resp.StatusCode, tc.wantSC, rbody)
+			}
+			if tc.wantSub != "" {
+				rbody, _ := io.ReadAll(resp.Body)
+				if !strings.Contains(string(rbody), tc.wantSub) {
+					t.Errorf("body missing %q; got %s", tc.wantSub, rbody)
+				}
+			}
+		})
+	}
+}

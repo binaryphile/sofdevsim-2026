@@ -129,6 +129,9 @@ type CreateSimulationRequest struct {
 	// "Planning", "Implement", "Verify", "CI/CD", "Review"). Validation errors
 	// map to HTTP 422 (Unprocessable Entity).
 	PhaseWIPConfig map[string]int `json:"phaseWIPConfig,omitempty"`
+	// UC39: release mode; "push" (default) or "demand". Empty/omitted → push
+	// (regression-safe). Invalid values → HTTP 422 via ErrInvalidReleaseMode.
+	ReleaseMode string `json:"releaseMode,omitempty"`
 }
 
 // HandleCreateSimulation creates a new simulation with the given seed and policy.
@@ -170,9 +173,19 @@ func (r SimRegistry) HandleCreateSimulation(w http.ResponseWriter, req *http.Req
 		return
 	}
 
+	// UC39: translate releaseMode string into ReleaseMode enum.
+	// ErrInvalidReleaseMode → HTTP 422 (domain-rule violation; reuses UC38's
+	// 422 introduction per Go dev §8 Error Translation).
+	releaseMode, modeErr := model.ParseReleaseMode(body.ReleaseMode)
+	if modeErr != nil {
+		writeError(w, http.StatusUnprocessableEntity, modeErr.Error())
+		return
+	}
+
 	// UC37: scenarioName selects the backlog mix profile. Empty → "healthy" (default).
 	// UC38: phaseWIPConfig nil/empty preserves regression-safe defaults.
-	id, err := r.CreateSimulation(body.Seed, policy, body.ScenarioName, phaseWIPConfig)
+	// UC39: releaseMode default is ReleaseModePush (regression-safe).
+	id, err := r.CreateSimulation(body.Seed, policy, body.ScenarioName, phaseWIPConfig, releaseMode)
 	if err != nil {
 		if errors.Is(err, ErrAlreadyExists) {
 			writeError(w, http.StatusConflict, err.Error())
