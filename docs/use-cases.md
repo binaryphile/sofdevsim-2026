@@ -1539,7 +1539,7 @@ This use case requires event sourcing architecture:
 
 ### UC38: Enforce Per-Phase WIP Caps
 
-> **Phase 5 planned — not yet implemented.** This UC describes a roadmap-planned capability; see `docs/roadmap.md` Phase 5. Mechanism details (Go types, function names, schemas) live in `docs/design.md` once the implementing child cycle lands.
+> **Phase 5 shipped in cycle #15443** (contract #17761). Mechanism details (Go types, function names, schemas) live in `docs/design.md` §"Per-Phase WIP Caps (UC38)".
 
 **Primary Actor:** Manager
 

@@ -238,7 +238,7 @@ The TOC operating model described above (aggregate `RopeConfig`/`DownstreamWIP()
 | Planned (UC) | Status | Effect on this section's model |
 |---|---|---|
 | UC37 heterogeneous ticket types (#15442) | **shipped** — see §"Heterogeneous Ticket Types" below | Ticket flow is now per-type — phase-effort distribution differs per type; `currentTick - PhaseEnteredTick` aggregation now has a type-dimension breakdown when needed; constraint identification continues to operate on aggregated per-phase dwell |
-| UC38 per-phase WIP caps (#15443) | planned | Aggregate `RopeConfig` is joined by a per-phase WIP configuration; the existing `CICDSlots` field gets wired into this enforcement path; constraint may shift to cap-starved phases |
+| UC38 per-phase WIP caps (#15443) | **shipped** — see §"Per-Phase WIP Caps (UC38)" below | Aggregate `RopeConfig` is joined by a per-phase WIP configuration; the existing `CICDSlots` field is now wired into this enforcement path; constraint may shift to cap-starved phases |
 | UC39 demand-driven release (#15445) | planned | Push-mode default joined by a pull-mode controller gated on constraint-buffer penetration; release rate becomes a function of constraint throughput, not sprint commit |
 | UC40 investment moves (#15446) | planned | Sprint-boundary investment events become a new event class; capacity dimensions (developer count, CI/CD slot count, per-phase tooling multipliers, per-phase variance multipliers) become event-sourced rather than initialisation-fixed |
 
