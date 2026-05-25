@@ -1,6 +1,8 @@
 package model
 
 import (
+	"math"
+
 	"github.com/binaryphile/fluentfp/option"
 	"github.com/binaryphile/fluentfp/slice"
 )
@@ -43,12 +45,17 @@ type Simulation struct {
 
 	// Phase queues (handoff model)
 	PhaseQueues map[WorkflowPhase][]string // ticket IDs waiting per phase
-	CICDSlots   int                        // max concurrent CI/CD pipeline runs
+	CICDSlots   int                        // max concurrent CI/CD pipeline runs (UC38: PhaseWIPCap(PhaseCICD) fallback)
 	CICDInUse   int                        // current pipeline runs
 
 	// Rope (DBR WIP admission control)
 	RopeQueue  []string   // ticket IDs waiting for admission past rope (Planning→Implement)
 	RopeConfig RopeConfig
+
+	// UC38: per-phase WIP caps. Nil zero-value = unlimited for every non-CICD phase
+	// (regression-safe; CICD falls back to CICDSlots when no explicit entry).
+	// Immutable per UC38 (Data layer per FP unified ACD); UC40 may convert to event-sourced.
+	PhaseWIPConfig map[WorkflowPhase]int
 
 	// Assignment cursor (persistent round-robin state)
 	AssignCursor int // index of last assigned dev, advances on each assignment
@@ -163,9 +170,47 @@ func (s Simulation) Clone() Simulation {
 		s.PhaseQueues = cloned
 	}
 
+	// UC38: deep-copy PhaseWIPConfig. Preserve nil semantically — nil-in
+	// stays nil-out (not nil-in → empty-map-out); equivalent under
+	// PhaseWIPCap which returns the unlimited sentinel for missing keys.
+	if s.PhaseWIPConfig != nil {
+		cloned := make(map[WorkflowPhase]int, len(s.PhaseWIPConfig))
+		for k, v := range s.PhaseWIPConfig { // justified:MB
+			cloned[k] = v
+		}
+		s.PhaseWIPConfig = cloned
+	}
+
 	s.RopeQueue = append([]string(nil), s.RopeQueue...)
 
 	return s
+}
+
+// PhaseWIPCap returns the WIP cap for a phase per UC38 precedence:
+//  1. PhaseWIPConfig explicit entry wins
+//  2. phase == PhaseCICD AND no explicit entry → CICDSlots fallback
+//  3. otherwise math.MaxInt (unlimited)
+func (s Simulation) PhaseWIPCap(phase WorkflowPhase) int {
+	if cap, ok := s.PhaseWIPConfig[phase]; ok {
+		return cap
+	}
+	if phase == PhaseCICD {
+		return s.CICDSlots
+	}
+	return math.MaxInt
+}
+
+// PhaseWIPCount counts tickets currently active or queued in the phase
+// (used by UC38's cap-check gate in engine.assignFromQueues).
+func (s Simulation) PhaseWIPCount(phase WorkflowPhase) int {
+	count := 0
+	for _, t := range s.ActiveTickets { // justified:SM
+		if t.Phase == phase {
+			count++
+		}
+	}
+	count += len(s.PhaseQueues[phase])
+	return count
 }
 
 // MentorKey returns the map key for TicketMentors lookup.
