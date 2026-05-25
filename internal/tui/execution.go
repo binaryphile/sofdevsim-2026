@@ -14,16 +14,45 @@ func renderExecution(vm ExecutionVM) string {
 	activeWork := renderActiveWork(vm.ActiveWork)
 	fever := renderFever(vm.Fever)
 	events := renderEvents(vm.Events)
+	phaseQueues := renderPhaseQueues(vm.PhaseQueues) // UC38 Phase Queues panel
 	office := RenderOffice(vm.OfficeState, vm.DevNames, vm.Width, vm.Height)
 
 	top := BoxStyle.Width(vm.Width - 2).Render(sprintBar)
 	middle := BoxStyle.Width(vm.Width - 2).Render(activeWork)
 
-	bottomLeft := BoxStyle.Width(vm.Width/2 - 2).Render(fever)
-	bottomRight := BoxStyle.Width(vm.Width/2 - 2).Render(events)
-	bottom := lipgloss.JoinHorizontal(lipgloss.Top, bottomLeft, bottomRight)
+	// Bottom row: Fever | Phase Queues | Events (three columns of equal width).
+	colWidth := vm.Width/3 - 2
+	bottomLeft := BoxStyle.Width(colWidth).Render(fever)
+	bottomCenter := BoxStyle.Width(colWidth).Render(phaseQueues)
+	bottomRight := BoxStyle.Width(colWidth).Render(events)
+	bottom := lipgloss.JoinHorizontal(lipgloss.Top, bottomLeft, bottomCenter, bottomRight)
 
 	return lipgloss.JoinVertical(lipgloss.Left, top, middle, bottom, office)
+}
+
+// Calculation: []PhaseQueueRow → string (UC38 Phase Queues panel).
+// One row per phase showing "Phase: depth/cap [bar]" — head-of-line
+// blocking is observable when depth > cap-attainable or queues backlog.
+func renderPhaseQueues(rows []PhaseQueueRow) string {
+	title := TitleStyle.Render("Phase Queues")
+
+	if len(rows) == 0 {
+		return lipgloss.JoinVertical(lipgloss.Left, title, MutedStyle.Render("No data"))
+	}
+
+	formatRow := func(row PhaseQueueRow) string {
+		// 12-char fill bar; "█" per active+queued ticket, capped to 12.
+		barLen := row.Depth
+		if barLen > 12 {
+			barLen = 12
+		}
+		bar := strings.Repeat("█", barLen) + strings.Repeat("·", 12-barLen)
+		return fmt.Sprintf("%-9s %2d/%-3s %s", row.Phase, row.Depth, row.CapDisplay, bar)
+	}
+	lines := slice.From(rows).ToString(formatRow)
+	content := strings.Join(lines, "\n")
+
+	return lipgloss.JoinVertical(lipgloss.Left, title, content)
 }
 
 // Calculation: SprintProgressVM → string

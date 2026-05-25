@@ -74,14 +74,26 @@ type EventVM struct {
 
 // ExecutionVM — data for the execution view.
 type ExecutionVM struct {
-	Sprint      SprintProgressVM
-	ActiveWork  []ActiveWorkRowVM
-	Fever       FeverVM
-	Events      []EventVM
-	OfficeState OfficeState
-	DevNames    []string
-	Width       int
-	Height      int
+	Sprint       SprintProgressVM
+	ActiveWork   []ActiveWorkRowVM
+	Fever        FeverVM
+	Events       []EventVM
+	OfficeState  OfficeState
+	DevNames     []string
+	PhaseQueues  []PhaseQueueRow // UC38: per-phase queue depth vs cap
+	Width        int
+	Height       int
+}
+
+// PhaseQueueRow — one row in the UC38 Phase Queues panel.
+// Depth = active+queued tickets in this phase (visible total);
+// Cap = PhaseWIPCap; CapDisplay carries the human-readable cap
+// ("∞" for unlimited, otherwise the integer cap).
+type PhaseQueueRow struct {
+	Phase      string
+	Depth      int
+	Cap        int
+	CapDisplay string
 }
 
 // DORAMetricsVM — DORA metrics with sparkline history.

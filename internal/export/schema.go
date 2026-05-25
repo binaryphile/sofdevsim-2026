@@ -1,6 +1,7 @@
 package export
 
 import (
+	"encoding/json"
 	"fmt"
 	"strconv"
 
@@ -26,6 +27,12 @@ var (
 		"sprint_number", "duration_days", "buffer_days", "buffer_used",
 		"buffer_pct", "fever_status", "tickets_started", "tickets_completed",
 		"incidents_generated", "max_wip", "avg_wip",
+		// UC38: per-phase WIP context. phase_wip_caps holds the JSON-serialized
+		// cap config (e.g. {"Implement":4,"CICD":1}); phase_avg_wip holds
+		// per-phase avg WIP across the sprint (currently emitted as JSON null
+		// since sprint-level per-phase WIP averaging is deferred — column is
+		// present for forward-compat with the documented schema).
+		"phase_wip_caps", "phase_avg_wip",
 	}
 
 	IncidentsHeader = []string{
@@ -114,8 +121,12 @@ func formatTicketRow(t model.Ticket, policy model.SizingPolicy, sprintNum int) [
 	}
 }
 
-// formatSprintRow formats a sprint for CSV export
-func formatSprintRow(s model.Sprint, ticketsStarted, ticketsCompleted, incidents int) []string {
+// formatSprintRow formats a sprint for CSV export. phaseWIPConfig is the
+// sim's UC38 PhaseWIPConfig (serialized as JSON with string keys for
+// portability). phaseAvgWIP is emitted as `null` JSON in UC38 — sprint-
+// level per-phase WIP averaging is deferred (schema reserves the column
+// for forward-compat; matches plan §Commit 11 contract).
+func formatSprintRow(s model.Sprint, ticketsStarted, ticketsCompleted, incidents int, phaseWIPConfig map[model.WorkflowPhase]int) []string {
 	return []string{
 		strconv.Itoa(s.Number),
 		strconv.Itoa(s.DurationDays),
@@ -128,7 +139,25 @@ func formatSprintRow(s model.Sprint, ticketsStarted, ticketsCompleted, incidents
 		strconv.Itoa(incidents),
 		strconv.Itoa(s.MaxWIP),
 		fmt.Sprintf("%.2f", s.AvgWIP()),
+		serializePhaseWIPConfig(phaseWIPConfig), // UC38 phase_wip_caps
+		"null",                                   // UC38 phase_avg_wip (deferred)
 	}
+}
+
+// serializePhaseWIPConfig emits the UC38 cap config as JSON with string
+// keys (canonical phase names; "CI/CD" included verbatim — not the
+// slash-free CICD alias, since CSV consumers re-key by exact match).
+// Returns "{}" for nil/empty so the column is always a valid JSON value.
+func serializePhaseWIPConfig(cfg map[model.WorkflowPhase]int) string {
+	out := make(map[string]int, len(cfg))
+	for k, v := range cfg {
+		out[k.String()] = v
+	}
+	b, err := json.Marshal(out)
+	if err != nil {
+		return "{}"
+	}
+	return string(b)
 }
 
 // formatIncidentRow formats an incident for CSV export

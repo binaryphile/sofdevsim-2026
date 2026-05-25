@@ -120,7 +120,7 @@ func (e Exporter) writeSprints(outputDir string) (int, error) {
 			Len()
 		incidents := len(e.sim.ResolvedIncidents) + len(e.sim.OpenIncidents)
 
-		row := formatSprintRow(sprint, ticketsStarted, ticketsCompleted, incidents)
+		row := formatSprintRow(sprint, ticketsStarted, ticketsCompleted, incidents, e.sim.PhaseWIPConfig)
 		if err := writer.Write(row); err != nil {
 			return count, err
 		}

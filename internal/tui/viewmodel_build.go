@@ -2,6 +2,8 @@ package tui
 
 import (
 	"fmt"
+	"math"
+	"strconv"
 
 	"github.com/binaryphile/fluentfp/either"
 	"github.com/binaryphile/fluentfp/slice"
@@ -109,9 +111,53 @@ func (a *App) buildExecutionVM() ExecutionVM {
 		Events:      a.buildEventsVM(),
 		OfficeState: a.officeProjection.State(),
 		DevNames:    a.getDeveloperNames(),
+		PhaseQueues: a.buildPhaseQueueRows(),
 		Width:       a.width,
 		Height:      a.height,
 	}
+}
+
+// Calculation: App → []PhaseQueueRow.
+// UC38 Phase Queues panel data: per-phase depth (assigned + queued
+// tickets currently in the phase) vs cap (PhaseWIPCap precedence:
+// PhaseWIPConfig entry → CICDSlots fallback for CI/CD → unlimited).
+// Returns empty in client mode (client uses a different state shape).
+func (a *App) buildPhaseQueueRows() []PhaseQueueRow {
+	eng, ok := a.mode.GetLeft()
+	if !ok {
+		return nil
+	}
+	sim := eng.Engine.Sim()
+	phases := []model.WorkflowPhase{
+		model.PhaseResearch,
+		model.PhaseSizing,
+		model.PhasePlanning,
+		model.PhaseImplement,
+		model.PhaseVerify,
+		model.PhaseCICD,
+		model.PhaseReview,
+	}
+	rows := make([]PhaseQueueRow, 0, len(phases))
+	for _, phase := range phases { // justified:CF
+		depth := 0
+		for _, t := range sim.ActiveTickets { // justified:CF
+			if t.Phase == phase {
+				depth++
+			}
+		}
+		cap := sim.PhaseWIPCap(phase)
+		display := strconv.Itoa(cap)
+		if cap == math.MaxInt {
+			display = "∞"
+		}
+		rows = append(rows, PhaseQueueRow{
+			Phase:      phase.String(),
+			Depth:      depth,
+			Cap:        cap,
+			CapDisplay: display,
+		})
+	}
+	return rows
 }
 
 // Calculation: App → SprintProgressVM
