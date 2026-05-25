@@ -49,6 +49,7 @@ func (a *App) buildPlanningVM() PlanningVM {
 				ID:            ticket.ID,
 				Title:         ticket.Title,
 				EstimatedDays: ticket.EstimatedDays,
+				Type:          ticket.Type.String(), // UC37
 				Understanding: ticket.UnderstandingLevel.String(),
 				Phase:         ticket.Phase.String(),
 				Selected:      i == a.selected,
@@ -57,6 +58,10 @@ func (a *App) buildPlanningVM() PlanningVM {
 		return tickets
 	}
 	// clientTickets builds backlog ticket VMs from client state.
+	// UC37: client TicketState doesn't yet carry Type from REST. Defaults to "Feature"
+	// (regression-safe). REST surface evolution to expose Type is deferred to a
+	// follow-up cycle (REST is operator-facing; TUI Type column displays correct
+	// state when running in engine mode, which is the primary operator path).
 	clientTickets := func(_ ClientMode) []BacklogTicketVM {
 		var tickets []BacklogTicketVM
 		for i, ticket := range a.state.Backlog { // justified:IX
@@ -64,6 +69,7 @@ func (a *App) buildPlanningVM() PlanningVM {
 				ID:            ticket.ID,
 				Title:         ticket.Title,
 				EstimatedDays: ticket.Size,
+				Type:          "Feature", // UC37: REST TicketState lacks Type field; safe default
 				Understanding: ticket.Understanding,
 				Phase:         ticket.Phase,
 				Selected:      i == a.selected,

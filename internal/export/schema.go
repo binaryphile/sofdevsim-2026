@@ -14,7 +14,7 @@ var (
 	}
 
 	TicketsHeader = []string{
-		"ticket_id", "title", "understanding", "estimated_days", "actual_days",
+		"ticket_id", "title", "understanding", "ticket_type", "estimated_days", "actual_days",
 		"variance_ratio", "expected_var_min", "expected_var_max", "within_expected",
 		"policy", "sprint_number", "started_tick", "completed_tick", "lead_time_days",
 		"phase_research_days", "phase_sizing_days", "phase_planning_days",
@@ -91,6 +91,7 @@ func formatTicketRow(t model.Ticket, policy model.SizingPolicy, sprintNum int) [
 		t.ID,
 		t.Title,
 		t.UnderstandingLevel.String(),
+		t.Type.String(), // UC37: ticket_type column (positioned between understanding and estimated_days per plan §Commit 9)
 		fmt.Sprintf("%.2f", t.EstimatedDays),
 		fmt.Sprintf("%.2f", t.ActualDays),
 		fmt.Sprintf("%.2f", varianceRatio),

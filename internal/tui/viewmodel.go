@@ -22,6 +22,7 @@ type BacklogTicketVM struct {
 	ID            string
 	Title         string
 	EstimatedDays float64
+	Type          string // UC37: ticket type short-name (Feature/Bug/Spike/Migration/Infra)
 	Understanding string
 	Phase         string
 	Selected      bool

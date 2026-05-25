@@ -19,8 +19,9 @@ func renderPlanning(vm PlanningVM) string {
 
 // Calculation: []BacklogTicketVM → string
 func renderBacklogTable(tickets []BacklogTicketVM) string {
-	header := HeaderStyle.Render(fmt.Sprintf("%-8s %-30s %6s %12s %10s",
-		"ID", "Title", "Est", "Understanding", "Phase"))
+	// UC37: Type column (5 chars) inserted between Est and Understanding.
+	header := HeaderStyle.Render(fmt.Sprintf("%-8s %-30s %6s %-5s %12s %10s",
+		"ID", "Title", "Est", "Type", "Understanding", "Phase"))
 
 	// formatTicketRow renders a backlog ticket with selection styling.
 	formatTicketRow := func(ticket BacklogTicketVM) string {
@@ -28,9 +29,9 @@ func renderBacklogTable(tickets []BacklogTicketVM) string {
 		if ticket.Selected {
 			style = TableSelectedStyle
 		}
-		return style.Render(fmt.Sprintf("%-8s %-30s %5.1fd %-12s %-10s",
+		return style.Render(fmt.Sprintf("%-8s %-30s %5.1fd %-5s %-12s %-10s",
 			ticket.ID, truncate(ticket.Title, 28), ticket.EstimatedDays,
-			ticket.Understanding, ticket.Phase))
+			ticket.Type, ticket.Understanding, ticket.Phase))
 	}
 	rows := slice.From(tickets).ToString(formatTicketRow)
 
