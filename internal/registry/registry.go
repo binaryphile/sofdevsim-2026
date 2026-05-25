@@ -60,10 +60,25 @@ type SimInstance struct {
 	Office  office.OfficeProjection // Animation state for Claude vision
 }
 
-// CreateSimulation creates a new simulation with given seed and policy.
-// Returns the simulation ID and nil error on success.
+// CreateSimulation creates a new simulation with given seed, policy, and backlog
+// mix scenario. Returns the simulation ID and nil error on success.
 // Returns ErrAlreadyExists if a simulation with the same seed already exists.
-func (r *SimRegistry) CreateSimulation(seed int64, policy model.SizingPolicy) (string, error) {
+// Returns an error if scenarioName is not a registered scenario.
+// UC37: scenarioName selects the backlog generation profile (default "healthy"
+// preserves pre-UC37 behaviour — all-Feature regression-safe default).
+func (r *SimRegistry) CreateSimulation(seed int64, policy model.SizingPolicy, scenarioName string) (string, error) {
+	if scenarioName == "" {
+		scenarioName = "healthy"
+	}
+	gen, ok := engine.Scenarios[scenarioName]
+	if !ok {
+		names := make([]string, 0, len(engine.Scenarios))
+		for n := range engine.Scenarios {
+			names = append(names, n)
+		}
+		return "", fmt.Errorf("unknown scenario %q (registered: %v)", scenarioName, names)
+	}
+
 	id := fmt.Sprintf("sim-%d", seed)
 
 	// Check existence under read lock first
@@ -100,7 +115,6 @@ func (r *SimRegistry) CreateSimulation(seed int64, policy model.SizingPolicy) (s
 	}
 
 	// Generate backlog via engine (emits TicketCreated events)
-	gen := engine.Scenarios["healthy"]
 	rng := rand.New(rand.NewSource(seed))
 	tickets := gen.Generate(rng, 12)
 	for _, t := range tickets {

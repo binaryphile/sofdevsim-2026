@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/binaryphile/fluentfp/either"
@@ -120,8 +121,9 @@ func (r SimRegistry) HandleListSimulations(w http.ResponseWriter, req *http.Requ
 
 // CreateSimulationRequest is the request body for creating a simulation.
 type CreateSimulationRequest struct {
-	Seed   int64  `json:"seed"`
-	Policy string `json:"policy,omitempty"` // "none", "dora-strict", "tameflow-cognitive"
+	Seed         int64  `json:"seed"`
+	Policy       string `json:"policy,omitempty"`       // "none", "dora-strict", "tameflow-cognitive"
+	ScenarioName string `json:"scenarioName,omitempty"` // UC37: backlog mix profile; default "healthy"
 }
 
 // HandleCreateSimulation creates a new simulation with the given seed and policy.
@@ -153,10 +155,16 @@ func (r SimRegistry) HandleCreateSimulation(w http.ResponseWriter, req *http.Req
 		return
 	}
 
-	id, err := r.CreateSimulation(body.Seed, policy)
+	// UC37: scenarioName selects the backlog mix profile. Empty → "healthy" (default).
+	id, err := r.CreateSimulation(body.Seed, policy, body.ScenarioName)
 	if err != nil {
 		if errors.Is(err, ErrAlreadyExists) {
 			writeError(w, http.StatusConflict, err.Error())
+			return
+		}
+		// Unknown scenarioName is a client-supplied bad-value condition.
+		if strings.Contains(err.Error(), "unknown scenario") {
+			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
 		writeError(w, http.StatusInternalServerError, err.Error())

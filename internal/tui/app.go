@@ -135,15 +135,24 @@ type httpResultMsg struct {
 // If seed is 0, uses current time for randomness.
 // Deprecated: Use NewAppWithRegistry for shared simulation access.
 func NewAppWithSeed(seed int64) *App {
-	return NewAppWithRegistry(seed, nil) // nil = standalone mode
+	return NewAppWithRegistry(seed, nil, "") // nil = standalone mode
 }
 
 // NewAppWithRegistry creates a new App that shares simulations via the registry.
 // If registry is nil, creates a standalone app with its own event store.
 // If seed is 0, uses current time for randomness.
-func NewAppWithRegistry(seed int64, reg *registry.SimRegistry) *App {
+// NewAppWithRegistry constructs the TUI App with a fresh simulation. The
+// scenarioName parameter selects the backlog mix profile (UC37); pass "" or
+// "healthy" for the regression-safe all-Feature default. Pass one of the 9
+// registered scenarios for typed backlogs. Unknown name → log + fall back to
+// healthy (this constructor doesn't return an error for backward compat; the
+// CLI flag in main.go validates upfront).
+func NewAppWithRegistry(seed int64, reg *registry.SimRegistry, scenarioName string) *App {
 	if seed == 0 {
 		seed = time.Now().UnixNano()
+	}
+	if scenarioName == "" {
+		scenarioName = "healthy"
 	}
 
 	simID := fmt.Sprintf("sim-%d", seed)
@@ -178,8 +187,12 @@ func NewAppWithRegistry(seed int64, reg *registry.SimRegistry) *App {
 	eng = must.Get(eng.AddDeveloper("dev-5", "Mappy", 0.9))
 	eng = must.Get(eng.AddDeveloper("dev-6", "Pengo", 1.1))
 
-	// Generate initial backlog via engine (emits TicketCreated events)
-	gen := engine.Scenarios["healthy"]
+	// Generate initial backlog via engine (emits TicketCreated events).
+	// UC37: scenarioName selects the mix profile; fall back to healthy if unknown.
+	gen, ok := engine.Scenarios[scenarioName]
+	if !ok {
+		gen = engine.Scenarios["healthy"]
+	}
 	rng := rand.New(rand.NewSource(seed))
 	tickets := gen.Generate(rng, 12)
 	for _, t := range tickets { // justified:CF

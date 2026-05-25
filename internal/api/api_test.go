@@ -462,7 +462,7 @@ func TestSimRegistry_MutationPersists(t *testing.T) {
 	registry := api.NewSimRegistry()
 
 	// Call method that mutates internal map
-	id, err := registry.CreateSimulation(42, 0) // 0 = PolicyNone
+	id, err := registry.CreateSimulation(42, 0, "") // 0 = PolicyNone
 	if err != nil {
 		t.Fatalf("CreateSimulation() error = %v", err)
 	}

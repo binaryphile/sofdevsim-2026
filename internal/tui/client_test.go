@@ -42,7 +42,7 @@ func TestClient_CreateSimulation_ReturnsValidState(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			resp, err := client.CreateSimulation(tt.seed, tt.policy)
+			resp, err := client.CreateSimulation(tt.seed, tt.policy, "")
 			if err != nil {
 				t.Fatalf("CreateSimulation failed: %v", err)
 			}
@@ -63,7 +63,7 @@ func TestClient_Tick_AdvancesSimulationTime(t *testing.T) {
 	client := NewClient(srv.URL)
 
 	// Create simulation and start sprint first
-	resp, err := client.CreateSimulation(42, "")
+	resp, err := client.CreateSimulation(42, "", "")
 	if err != nil {
 		t.Fatalf("CreateSimulation failed: %v", err)
 	}
@@ -92,7 +92,7 @@ func TestClient_Assign_MovesTicketToActive(t *testing.T) {
 	client := NewClient(srv.URL)
 
 	// Create simulation
-	resp, err := client.CreateSimulation(42, "")
+	resp, err := client.CreateSimulation(42, "", "")
 	if err != nil {
 		t.Fatalf("CreateSimulation failed: %v", err)
 	}
@@ -139,7 +139,7 @@ func TestClient_StartSprint_InitializesSprintState(t *testing.T) {
 	client := NewClient(srv.URL)
 
 	// Create simulation
-	resp, err := client.CreateSimulation(42, "")
+	resp, err := client.CreateSimulation(42, "", "")
 	if err != nil {
 		t.Fatalf("CreateSimulation failed: %v", err)
 	}
@@ -166,7 +166,7 @@ func TestClient_Idempotency(t *testing.T) {
 	client := NewClient(srv.URL)
 
 	// Create and get state
-	resp, err := client.CreateSimulation(42, "")
+	resp, err := client.CreateSimulation(42, "", "")
 	if err != nil {
 		t.Fatalf("CreateSimulation failed: %v", err)
 	}
@@ -204,7 +204,7 @@ func TestClient_ErrorHandling(t *testing.T) {
 		{
 			name: "tick without sprint returns error",
 			fn: func(c Client) error {
-				resp, _ := c.CreateSimulation(42, "")
+				resp, _ := c.CreateSimulation(42, "", "")
 				_, err := c.Tick(resp.Simulation.ID)
 				return err
 			},
@@ -247,7 +247,7 @@ func TestClient_RequestIDHeader(t *testing.T) {
 
 	// Multiple requests should all succeed (each gets unique ID)
 	for i := 0; i < 3; i++ { // justified:SM
-		_, err := client.CreateSimulation(int64(100+i), "")
+		_, err := client.CreateSimulation(int64(100+i), "", "")
 		if err != nil {
 			t.Errorf("Request %d failed: %v", i, err)
 		}
@@ -263,7 +263,7 @@ func TestClient_DedupMiddleware(t *testing.T) {
 
 	// Create simulation first
 	client := NewClient(srv.URL)
-	resp, err := client.CreateSimulation(42, "")
+	resp, err := client.CreateSimulation(42, "", "")
 	if err != nil {
 		t.Fatalf("CreateSimulation failed: %v", err)
 	}
@@ -308,7 +308,7 @@ func TestClient_GetSimulation_ReturnsCurrentState(t *testing.T) {
 	client := NewClient(srv.URL)
 
 	// Create simulation
-	createResp, err := client.CreateSimulation(42, "dora-strict")
+	createResp, err := client.CreateSimulation(42, "dora-strict", "")
 	if err != nil {
 		t.Fatalf("CreateSimulation failed: %v", err)
 	}
@@ -354,7 +354,7 @@ func TestClient_SetPolicy_UpdatesSizingPolicy(t *testing.T) {
 			client := NewClient(srv.URL)
 
 			// Create simulation with default policy
-			createResp, err := client.CreateSimulation(42, "dora-strict")
+			createResp, err := client.CreateSimulation(42, "dora-strict", "")
 			if err != nil {
 				t.Fatalf("CreateSimulation failed: %v", err)
 			}
@@ -389,7 +389,7 @@ func TestClient_Decompose_SplitsTicketIntoChildren(t *testing.T) {
 	client := NewClient(srv.URL)
 
 	// Create simulation with dora-strict policy (will decompose large tickets)
-	createResp, err := client.CreateSimulation(42, "dora-strict")
+	createResp, err := client.CreateSimulation(42, "dora-strict", "")
 	if err != nil {
 		t.Fatalf("CreateSimulation failed: %v", err)
 	}
@@ -430,7 +430,7 @@ func TestClient_Decompose_ReturnsNotFoundForMissingTicket(t *testing.T) {
 
 	client := NewClient(srv.URL)
 
-	createResp, err := client.CreateSimulation(42, "dora-strict")
+	createResp, err := client.CreateSimulation(42, "dora-strict", "")
 	if err != nil {
 		t.Fatalf("CreateSimulation failed: %v", err)
 	}

@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"sort"
 	"time"
 
 	"github.com/binaryphile/sofdevsim-2026/internal/api"
+	"github.com/binaryphile/sofdevsim-2026/internal/engine"
 	"github.com/binaryphile/sofdevsim-2026/internal/lesson"
 	"github.com/binaryphile/sofdevsim-2026/internal/tui"
 	tea "github.com/charmbracelet/bubbletea"
@@ -21,7 +23,20 @@ func main() {
 	localMode := flag.Bool("local", false, "Force local engine mode (for export, save/load, comparison)")
 	lessonName := flag.String("lesson", "", "Run interactive lesson (e.g., buffer-crisis)")
 	proverPath := flag.String("prover-path", "", "Path to zk-event-proofs project (default: ~/projects/zk-event-proofs)")
+	mix := flag.String("mix", "healthy", "Backlog mix profile (UC37): healthy|overloaded|uncertain|mixed|uc37-default|bug-heavy|migration-quarter|infra-push|research-shop")
 	flag.Parse()
+
+	// UC37: validate --mix upfront (registry will also reject unknown names, but
+	// startup-time validation matches the README contract per UC37 ext §1b).
+	if _, ok := engine.Scenarios[*mix]; !ok {
+		names := make([]string, 0, len(engine.Scenarios))
+		for n := range engine.Scenarios {
+			names = append(names, n)
+		}
+		sort.Strings(names)
+		fmt.Fprintf(os.Stderr, "Unknown --mix scenario %q. Registered: %v\n", *mix, names)
+		os.Exit(1)
+	}
 
 	// Handle lesson mode
 	if *lessonName != "" {
@@ -76,7 +91,7 @@ func main() {
 		// HTTP client mode: create simulation via API
 		client := tui.NewClient(baseURL)
 
-		resp, err := client.CreateSimulation(*seed, "dora-strict")
+		resp, err := client.CreateSimulation(*seed, "dora-strict", *mix)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Failed to create simulation: %v\n", err)
 			os.Exit(1)
@@ -89,7 +104,7 @@ func main() {
 			// No server started, create standalone registry
 			registry = api.NewSimRegistry()
 		}
-		app = tui.NewAppWithRegistry(*seed, registry.SimRegistry)
+		app = tui.NewAppWithRegistry(*seed, registry.SimRegistry, *mix)
 	}
 
 	app.EnableOpeningAnimation()

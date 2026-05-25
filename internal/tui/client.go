@@ -32,8 +32,9 @@ func NewClient(baseURL string) Client {
 
 // CreateSimulationRequest is the request body for creating a simulation.
 type CreateSimulationRequest struct {
-	Seed   int64  `json:"seed"`
-	Policy string `json:"policy,omitempty"`
+	Seed         int64  `json:"seed"`
+	Policy       string `json:"policy,omitempty"`
+	ScenarioName string `json:"scenarioName,omitempty"` // UC37: backlog mix profile (default "healthy")
 }
 
 // TicketState mirrors api.TicketState for client-side decoding.
@@ -136,8 +137,10 @@ type CreateSimulationResponse struct {
 }
 
 // CreateSimulation creates a new simulation via HTTP API.
-func (c Client) CreateSimulation(seed int64, policy string) (*CreateSimulationResponse, error) {
-	body := CreateSimulationRequest{Seed: seed, Policy: policy}
+// UC37: scenarioName selects the backlog mix profile (default "healthy" preserves
+// pre-UC37 behaviour for callers passing ""). Pass one of the 9 registered scenarios.
+func (c Client) CreateSimulation(seed int64, policy, scenarioName string) (*CreateSimulationResponse, error) {
+	body := CreateSimulationRequest{Seed: seed, Policy: policy, ScenarioName: scenarioName}
 	jsonBody, err := json.Marshal(body)
 	if err != nil {
 		return nil, fmt.Errorf("marshal request: %w", err)

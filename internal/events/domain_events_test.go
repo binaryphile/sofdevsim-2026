@@ -362,7 +362,7 @@ func TestAllConstructors_ReturnExpectedVersion(t *testing.T) {
 		{NewIncidentResolved("s", 0, "i", "d"), 1},
 		{NewDeveloperAdded("s", 0, "d", "name", 1.0), 2},
 		{NewDeveloperAddedWithExperience("s", 0, "d", "name", 1.0, [8]model.ExperienceLevel{}), 2},
-		{NewTicketCreated("s", 0, "t", "title", 5.0, model.HighUnderstanding, model.PriorityNormal, model.IntakeTriaged, model.TicketTypeFeature), 1},
+		{NewTicketCreated("s", 0, "t", "title", 5.0, model.HighUnderstanding, model.PriorityNormal, model.IntakeTriaged, model.TicketTypeFeature), 2}, // UC37 bumped 1→2
 		{NewWorkProgressed("s", 0, "t", model.PhaseImplement, 1.0), 1},
 		{NewTicketPhaseChanged("s", 0, "t", model.PhaseImplement, model.PhaseVerify), 1},
 		{NewBufferConsumed("s", 0, 1.0), 1},

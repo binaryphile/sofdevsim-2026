@@ -540,7 +540,7 @@ func TestApp_OfficeAnimation_ClientMode(t *testing.T) {
 	defer srv.Close()
 
 	client := NewClient(srv.URL)
-	createResp, err := client.CreateSimulation(42, "dora-strict")
+	createResp, err := client.CreateSimulation(42, "dora-strict", "")
 	if err != nil {
 		t.Fatalf("CreateSimulation failed: %v", err)
 	}
