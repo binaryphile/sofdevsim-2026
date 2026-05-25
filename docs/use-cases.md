@@ -1613,10 +1613,11 @@ This use case requires event sourcing architecture:
 - UC38 in effect: per-phase WIP caps are enforced (the rope needs anchors)
 - TOC analyzer has identified a constraint phase (or a buffer-penetration signal is available)
 - Backlog has uncommitted ready tickets
+- **Release mode selected at simulation startup** — `push` (default; current commit-then-flow behavior) or `demand` (this UC); selection is immutable for the simulation's lifetime in UC39 (UC40 may add a runtime toggle)
 
 **Postconditions (Guarantees):**
 
-- *Success:* Manager can observe — in the existing flow-diagnostics and WIP panels — that ticket release into Research occurs only when downstream capacity and the constraint-buffer-penetration signal both permit; that aggregate WIP stabilises within bounded variation across consecutive ticks; and that average WIP under pull mode is materially lower than under push mode for comparable throughput on the same backlog
+- *Success:* Manager can observe — in the existing flow-diagnostics and WIP panels — that ticket release into Research occurs only when downstream capacity and the constraint-buffer-penetration signal both permit; that aggregate WIP stabilises within bounded variation across consecutive ticks; and that average WIP under pull mode is materially lower than under push mode for comparable throughput on the same backlog. Specifically: (a) the **Mode indicator** in the TUI header reads 'Mode: demand' (or 'Mode: demand (warming)' during warm-up); (b) sprints.csv exports the per-sprint `release_mode`, `constraint_phase`, and `buffer_penetration` columns; (c) the AvgWIP comparison is verifiable from CSV exports between push and demand runs of the same seed/backlog
 - *Failure:* If the constraint cannot be detected during warm-up, simulation stays in push mode and surfaces a "warming up" diagnostic; no tickets are released prematurely
 - *Minimal:* Push mode remains the default and is observably equivalent to today's behaviour when demand-driven mode is not selected
 
@@ -1631,7 +1632,7 @@ This use case requires event sourcing architecture:
 
 **Extensions:**
 
-- 2a. *Analyzer can't lock a constraint in warm-up:* Stay in push mode; surface diagnostic
+- 2a. *Analyzer can't lock a constraint in warm-up:* Stay in push mode (warm-up timeout after a configurable N sprints — default 5); surface a typed diagnostic naming the failing predicate (no constraint locked OR confidence below threshold)
 - 3a. *Buffer penetration in red zone:* Release controller throttles to zero until penetration recovers
 - 5a. *Throughput drops materially vs push mode on the same backlog:* Lesson subsystem suggests the constraint may be elsewhere than the buffer is configured for
 - 6a. *Mix change (UC37) shifts the constraint mid-run:* Release controller follows the new drum on the next analyzer re-classification (after hysteresis)
