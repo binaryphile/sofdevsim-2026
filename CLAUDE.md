@@ -137,6 +137,21 @@ BenchmarkRunSprint-4                     10000   173612 ns/op     262 B/op   5 a
 
 Post-UC38 numbers will be re-measured at cycle #15443 completion-gate.
 
+### Baseline (2026-05-25, 4-core machine, post-UC38 pre-UC39)
+
+Recorded immediately before UC39 implementation begins. Same 4-core machine. UC39 adds a per-tick release-controller call (no-op fast-path when ReleaseMode==Push; small constant work otherwise) + new sim fields (ReleaseMode/WarmupActive/WarmupFailed/MaxBacklogDrip) trivially Cloned. Expected delta < 5% on push-mode runs (zero-value default; controller's first branch returns immediately). Wall-clock numbers reflect ambient machine load.
+
+```
+BenchmarkTick-4                          14164   170445 ns/op   10970 B/op   7 allocs/op
+BenchmarkTick_LargeSimulation-4           8118   143888 ns/op   10970 B/op   7 allocs/op
+BenchmarkFindActiveTicketIndex-4        614234     1922 ns/op       0 B/op   0 allocs/op
+BenchmarkFindActiveTicketIndex_Small-4 7375038      171.1 ns/op      0 B/op   0 allocs/op
+BenchmarkVarianceCalculate-4             28461    87507 ns/op    5376 B/op   1 allocs/op
+BenchmarkRunSprint-4                     44959    28512 ns/op     266 B/op   5 allocs/op
+```
+
+Post-UC39 numbers will be re-measured at cycle #15445 completion-gate.
+
 ## Persistence
 
 | Key | Action |

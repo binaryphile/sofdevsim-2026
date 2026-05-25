@@ -137,6 +137,7 @@ go run cmd/sofdevsim/main.go
 | `--mix` | `healthy` | Backlog mix profile (see "Backlog Mix Profiles" below) |
 | `--phase-wip` | none | Per-phase WIP caps as `phase=cap,...` (see "Per-Phase WIP Caps" below) |
 | `--phase-wip-profile` | `uncapped` | Bundled WIP profile shortcut (`uncapped` or `balanced`) |
+| `--release-mode` | `push` | Release controller mode (`push` or `demand`; see "Demand-Driven Release" below) |
 
 **Example:** Run with fixed seed for reproducible results:
 ```bash
@@ -198,6 +199,45 @@ Per-phase caps are also available via the REST API: `POST /simulations` accepts 
 **Behavior-change note**: pre-UC38 the `CICDSlots` field was declared but never enforced. Post-UC38, `PhaseWIPCap(CICD)` falls back to `CICDSlots` (default 2), so CI/CD throughput is now bound to ≤ 2 concurrent tickets in the absence of an explicit override. For typical mixes (CI/CD phase effort ≈ 5%) this is invisible; for CI/CD-bound pathological runs it surfaces as observable head-of-line blocking on the CI/CD queue.
 
 See `docs/design.md` §"Per-Phase WIP Caps (UC38)" for the schema, dual-checkpoint enforcement, and direct-CICDSlots-reader migration notes.
+
+## Demand-Driven Release
+
+The `--release-mode` flag selects between two release controllers (UC39: demand-driven release):
+
+| Mode | Behavior |
+|---|---|
+| `push` (default) | Current commit-then-flow behavior — `StartSprint` commits to capacity; assignment + phase-advance flow as today. Zero-value default for regression-safety |
+| `demand` | `StartSprint` skips bulk-commit; release controller drips one ticket per tick when downstream headroom permits. Warm-up phase forces push behavior until the TOC analyzer locks a constraint with at least medium confidence |
+
+**Example:** Run in demand mode for the same backlog as a push baseline:
+```bash
+go run cmd/sofdevsim/main.go --seed 42 --mix uc37-default --release-mode demand
+go run cmd/sofdevsim/main.go --seed 42 --mix uc37-default --release-mode push
+```
+
+Aggregate WIP under demand mode should be materially lower (UC39 §Postconditions/Success); verifiable from the `avg_wip` column in `sprints.csv` exports.
+
+**Mode indicator**: the TUI header displays one of 4 states:
+- `Mode: push` — push mode (zero-value default)
+- `Mode: demand (warming)` — warmup running (waiting for analyzer lock)
+- `Mode: demand (push fallback)` — warmup-timeout fired (sim falls back to push behavior; terminal for the run)
+- `Mode: demand` — post-warmup-exit (release controller is dripping)
+
+**Headroom formula**: `floor((1 - Buffer.Penetration) × MaxBacklogDrip)`. With MaxBacklogDrip default 1, fully-green admits 1 ticket/tick; fully-red (Penetration=1.0) throttles to 0.
+
+**Warmup-timeout**: hard-coded to N=5 sprints. If the TOC analyzer can't lock a constraint within 5 sprints (e.g., on a degenerate mix), the `WarmupTimedOut` event fires, `WarmupFailed` becomes true, and the sim falls back to effective push behavior for the rest of its life. The TUI Mode indicator reflects this as `demand (push fallback)`.
+
+Validation errors map to:
+
+| Sentinel | Trigger |
+|---|---|
+| `ErrInvalidReleaseMode` | Unknown mode name (e.g., `--release-mode garbage`); HTTP 422 from REST |
+| `ErrAnalyzerNotReady` | Defensive guard — controller called before analyzer has any ticks |
+| `ErrWarmupTimeout` | Returned (non-fatal) by the release controller alongside the `WarmupTimedOut` event |
+
+Demand mode is also available via the REST API: `POST /simulations` accepts an optional `releaseMode` field. Invalid mode values return HTTP 422.
+
+See `docs/design.md` §"Demand-Driven Release (UC39)" for the state machine, ShouldAdmit pseudocode, and warmup-exit-vs-timeout race resolution.
 
 ## HTTP API
 
