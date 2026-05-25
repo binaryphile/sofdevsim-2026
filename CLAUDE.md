@@ -122,6 +122,21 @@ BenchmarkVarianceCalculate-4          32220    51991 ns/op    5376 B/op   1 allo
 
 Post-UC37 numbers re-measured at cycle #15442 completion-gate.
 
+### Baseline (2026-05-24, 4-core machine, post-UC37 pre-UC38)
+
+Recorded immediately before UC38 implementation begins. Same 4-core machine as the pre-UC37 baseline above. UC38 adds a `PhaseWIPConfig` map lookup per assignment + a deep-copy of the map in `Simulation.Clone()`; expected delta < 5% (map-of-7-entries-max worst-case lookup is O(1) amortised). Wall-clock numbers below reflect ambient machine load at measurement time; the relative-delta comparison to the post-UC38 re-measurement at cycle #15443 completion-gate is what matters.
+
+```
+BenchmarkTick-4                          10000   473937 ns/op   10970 B/op   7 allocs/op
+BenchmarkTick_LargeSimulation-4          10000   470656 ns/op   10970 B/op   7 allocs/op
+BenchmarkFindActiveTicketIndex-4       1000000     3186 ns/op       0 B/op   0 allocs/op
+BenchmarkFindActiveTicketIndex_Small-4 2821860      562.1 ns/op      0 B/op   0 allocs/op
+BenchmarkVarianceCalculate-4             10000   204944 ns/op    5376 B/op   1 allocs/op
+BenchmarkRunSprint-4                     10000   173612 ns/op     262 B/op   5 allocs/op
+```
+
+Post-UC38 numbers will be re-measured at cycle #15443 completion-gate.
+
 ## Persistence
 
 | Key | Action |

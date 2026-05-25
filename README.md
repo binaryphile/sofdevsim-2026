@@ -135,6 +135,8 @@ go run cmd/sofdevsim/main.go
 | `--seed` | 0 | Random seed for reproducibility (0 = use current time) |
 | `--api-port` | 8080 | HTTP API port |
 | `--mix` | `healthy` | Backlog mix profile (see "Backlog Mix Profiles" below) |
+| `--phase-wip` | none | Per-phase WIP caps as `phase=cap,...` (see "Per-Phase WIP Caps" below) |
+| `--phase-wip-profile` | `uncapped` | Bundled WIP profile shortcut (`uncapped` or `balanced`) |
 
 **Example:** Run with fixed seed for reproducible results:
 ```bash
@@ -166,6 +168,36 @@ go run cmd/sofdevsim/main.go --seed 42 --mix research-shop
 Unknown mix names are rejected at startup with a diagnostic listing registered scenarios. Mix profile selection is also available via the REST API: `POST /simulations` accepts an optional `scenarioName` field (default `healthy`).
 
 See `docs/design.md` §"Heterogeneous Ticket Types (UC37)" for per-type phase-effort distributions and the design rationale.
+
+## Per-Phase WIP Caps
+
+The `--phase-wip` flag (or `--phase-wip-profile` shortcut) caps how many concurrent tickets each phase may host. Cap-blocked queues surface as head-of-line blocking in the new Phase Queues panel (UC38: per-phase WIP caps).
+
+| Profile | Research | Sizing | Planning | Implement | Verify | CI/CD | Review | Use case |
+|---|---:|---:|---:|---:|---:|---:|---:|---|
+| `uncapped` (default) | nil | nil | nil | nil | nil | **2 (via CICDSlots)** | nil | Most-regression-safe; nil = unlimited; CI/CD effective cap of 2 reflects the existing `CICDSlots` declaration now wired into the cap path |
+| `balanced` | nil | nil | nil | 4 | 2 | 1 | 2 | Demonstrates head-of-line blocking under heterogeneous mix; CI/CD=1 (explicit, overrides CICDSlots fallback) |
+
+**Example:** Run with explicit per-phase caps:
+```bash
+go run cmd/sofdevsim/main.go --seed 42 --mix uc37-default \
+  --phase-wip Implement=4,Verify=2,CICD=1,Review=2
+```
+
+The flag's phase-name parser accepts the canonical phase names (`Research`, `Sizing`, `Planning`, `Implement`, `Verify`, `CI/CD`, `Review`) AND the slash-free `CICD` alias for `CI/CD` (parser-friendly); matching is case-insensitive. Invalid configs are rejected at simulation startup with a typed diagnostic identifying the failing phase, the cap value, and the rule that was violated. The four diagnostic categories are:
+
+| Sentinel | Trigger |
+|---|---|
+| `ErrCapZero` | Any cap = 0 — would deadlock that phase |
+| `ErrCapNegative` | Any cap < 0 — semantic error |
+| `ErrCapBelowMentorMin` | `Implement` cap < 2 — mentor-pair minimum |
+| `ErrCapConflict` | Per-phase cap exceeds the aggregate rope-style WIP ceiling on the Implement→Review span |
+
+Per-phase caps are also available via the REST API: `POST /simulations` accepts an optional `phaseWIPConfig` object field (e.g., `{"Implement": 4, "Verify": 2}`). Validation errors return HTTP 422 (Unprocessable Entity) with sentinel-differentiated diagnostics.
+
+**Behavior-change note**: pre-UC38 the `CICDSlots` field was declared but never enforced. Post-UC38, `PhaseWIPCap(CICD)` falls back to `CICDSlots` (default 2), so CI/CD throughput is now bound to ≤ 2 concurrent tickets in the absence of an explicit override. For typical mixes (CI/CD phase effort ≈ 5%) this is invisible; for CI/CD-bound pathological runs it surfaces as observable head-of-line blocking on the CI/CD queue.
+
+See `docs/design.md` §"Per-Phase WIP Caps (UC38)" for the schema, dual-checkpoint enforcement, and direct-CICDSlots-reader migration notes.
 
 ## HTTP API
 
