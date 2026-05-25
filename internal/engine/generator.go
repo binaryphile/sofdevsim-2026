@@ -6,6 +6,7 @@ import (
 	"math/rand"
 	"time"
 
+	"github.com/binaryphile/fluentfp/slice"
 	"github.com/binaryphile/sofdevsim-2026/internal/model"
 )
 
@@ -70,21 +71,27 @@ func (g TicketGenerator) Generate(rng *rand.Rand, count int) []model.Ticket {
 		model.TicketTypeMigration,
 		model.TicketTypeInfra,
 	}
+	// /c absorption (FluentFP decision gate): sum is a fold. Use slice.Fold so the
+	// accumulator pattern is expressed in domain language (sum reduction) rather
+	// than imperative for-loop with mutable typeSum.
+	typeSum := slice.Fold(typeOrder, 0.0, func(acc float64, tt model.TicketType) float64 {
+		return acc + g.TypeWeights[tt]
+	})
 	var typeCum []float64
-	var typeSum float64
-	for _, tt := range typeOrder {
-		typeSum += g.TypeWeights[tt]
-	}
 	if typeSum > 0 {
-		// Normalise to 1.0; cumulative for lookup
+		// Normalise to 1.0; cumulative for lookup. This loop is a scan (fold-with-trail),
+		// not a pure fold — each step contributes both to the running total and to the
+		// output slice. FluentFP's slice.Fold accumulates a single value; scan would need
+		// custom helper. Annotate as IX (index-dependent: order of typeOrder iteration
+		// must match the lookup order in the type roll below).
 		var acc float64
-		for _, tt := range typeOrder {
+		for _, tt := range typeOrder { // justified:IX (scan with ordered output)
 			acc += g.TypeWeights[tt] / typeSum
 			typeCum = append(typeCum, acc)
 		}
 	}
 
-	for i := range tickets {
+	for i := range tickets { // justified:IX (parallel-array build; index-based ticket assignment)
 		// Log-normal distribution for size (right-skewed, realistic)
 		size := math.Exp(rng.NormFloat64()*g.SizeStdDev + math.Log(g.SizeMean))
 		size = math.Max(0.5, math.Min(size, 20)) // Clamp 0.5-20 days

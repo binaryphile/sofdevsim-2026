@@ -1,6 +1,9 @@
 package model
 
-import "time"
+import (
+	"log/slog"
+	"time"
+)
 
 // Ticket represents a unit of work progressing through the 8-phase workflow
 type Ticket struct {
@@ -110,6 +113,12 @@ func (t Ticket) GetEstimatedDays() float64 { return t.EstimatedDays }
 // TypePhaseEffortPct defines per-type phase-effort distributions. Each row sums to 1.0.
 // Done is implicit 0 across all types. Per UC37 (see docs/design.md §"Heterogeneous
 // Ticket Types"); per-type rationale documented there.
+//
+// IMMUTABLE BY CONVENTION (/c absorption per FP unified guide §3 Data layer + Go dev
+// guide §3 value semantics): do NOT mutate this map at runtime. It is exposed for
+// read-only access via CalculatePhaseEffort and for test introspection. The
+// PhaseEffortPct backward-compat alias below is a deep-copy snapshot so accidental
+// mutation through that alias does not leak into this canonical table.
 var TypePhaseEffortPct = map[TicketType]map[WorkflowPhase]float64{
 	TicketTypeFeature: {
 		PhaseResearch:  0.05,
@@ -161,7 +170,19 @@ var TypePhaseEffortPct = map[TicketType]map[WorkflowPhase]float64{
 // PhaseEffortPct is a backward-compat alias pointing to the Feature distribution.
 // Preserved so downstream consumers (CSV export's PhaseEffortDistribution map; any
 // test reading the global directly) work unchanged after UC37.
-var PhaseEffortPct = TypePhaseEffortPct[TicketTypeFeature]
+//
+// Deep-copied at init (/c absorption per FP unified guide §3 ACD): the alias is a
+// SNAPSHOT of TypePhaseEffortPct[TicketTypeFeature], not a pointer to the same
+// underlying map. Mutating PhaseEffortPct does NOT leak into TypePhaseEffortPct.
+// IMMUTABLE BY CONVENTION same as the canonical table above.
+var PhaseEffortPct = func() map[WorkflowPhase]float64 {
+	src := TypePhaseEffortPct[TicketTypeFeature]
+	dst := make(map[WorkflowPhase]float64, len(src))
+	for k, v := range src { // justified:MB (map building — deep-copy snapshot)
+		dst[k] = v
+	}
+	return dst
+}()
 
 // UnderstandingPhaseMultiplier adjusts phase effort based on understanding
 var UnderstandingPhaseMultiplier = map[UnderstandingLevel]map[WorkflowPhase]float64{
@@ -191,6 +212,10 @@ func (t Ticket) CalculatePhaseEffort(phase WorkflowPhase) float64 {
 	if !ok {
 		// Defensive fallback (UC37 plan §commit 5): unrecognised Type → Feature distribution.
 		// Protects against external-source corruption where Type could be out-of-range.
+		// /c absorption (Go dev guide §8 + N5 audit): log the fallback so silent corruption
+		// is observable. Use slog.Warn to surface the bug without breaking the simulation.
+		slog.Warn("ticket has unrecognised Type; falling back to Feature distribution",
+			"ticket_id", t.ID, "type_int", int(t.Type))
 		typeDist = TypePhaseEffortPct[TicketTypeFeature]
 	}
 

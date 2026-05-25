@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"sort"
 	"sync"
 	"time"
 
@@ -18,6 +19,12 @@ import (
 
 // ErrAlreadyExists is returned when attempting to create a duplicate simulation.
 var ErrAlreadyExists = errors.New("already exists")
+
+// ErrUnknownScenario is returned when CreateSimulation receives a scenarioName
+// not registered in engine.Scenarios. Per /c absorption (Go dev guide §8 errors-
+// as-values): callers MUST use errors.Is(err, ErrUnknownScenario) to differentiate
+// the bad-input case from internal errors — never string-matching the message.
+var ErrUnknownScenario = errors.New("unknown scenario")
 
 // SimRegistry manages simulation instances.
 // Pointer receiver required: contains sync.RWMutex (must not be copied).
@@ -73,10 +80,11 @@ func (r *SimRegistry) CreateSimulation(seed int64, policy model.SizingPolicy, sc
 	gen, ok := engine.Scenarios[scenarioName]
 	if !ok {
 		names := make([]string, 0, len(engine.Scenarios))
-		for n := range engine.Scenarios {
+		for n := range engine.Scenarios { // justified:SM (key extraction for diagnostic; sorted by caller)
 			names = append(names, n)
 		}
-		return "", fmt.Errorf("unknown scenario %q (registered: %v)", scenarioName, names)
+		sort.Strings(names)
+		return "", fmt.Errorf("%w %q (registered: %v)", ErrUnknownScenario, scenarioName, names)
 	}
 
 	id := fmt.Sprintf("sim-%d", seed)

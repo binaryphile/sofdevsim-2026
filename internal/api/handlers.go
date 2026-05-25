@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/binaryphile/fluentfp/either"
@@ -162,8 +161,10 @@ func (r SimRegistry) HandleCreateSimulation(w http.ResponseWriter, req *http.Req
 			writeError(w, http.StatusConflict, err.Error())
 			return
 		}
-		// Unknown scenarioName is a client-supplied bad-value condition.
-		if strings.Contains(err.Error(), "unknown scenario") {
+		// /c absorption (Go dev guide §8 errors-as-values): typed sentinel via
+		// errors.Is rather than string-matching the message; sentinel defined in
+		// registry/registry.go (ErrUnknownScenario).
+		if errors.Is(err, registry.ErrUnknownScenario) {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
