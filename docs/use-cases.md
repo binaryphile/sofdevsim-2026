@@ -885,7 +885,7 @@ This use case requires event sourcing architecture:
 **Postconditions (Guarantees):**
 
 - *Success (today, lesson-based):* Manager can recite the 5FS: Identify, Exploit, Subordinate, Elevate, Repeat — the canonical lesson outcome, preserved from the original UC22 contract
-- *Success (advanced, once Phase 5 lands per roadmap):* Manager has executed at least one playable cycle — identified a constraint, chosen an exploit-or-elevate action via UC40, and observed whether the constraint moved. This advanced branch is unlocked when UC37/UC38/UC39/UC40 are implemented; until then the lesson-based success above is the sole pass criterion
+- *Success (advanced, Phase 5 shipped per #15441 program):* Manager has executed at least one playable cycle — identified a constraint, chosen an exploit-or-elevate action via UC40, and observed whether the constraint moved. UC37/UC38/UC39/UC40 are all implemented (cycles #15442/#15443/#15445/#15446); the advanced branch is unlocked end-to-end
 - *Failure:* Simulation data preserved; manager can return to Metrics view
 
 **Main Success Scenario:**
@@ -893,10 +893,10 @@ This use case requires event sourcing architecture:
 1. Manager views Metrics after 3+ sprints
 2. System detects sufficient data for pattern recognition
 3. System displays 5FS lesson with IDENTIFY step: "Your data shows understanding is the constraint"
-4. Manager reads EXPLOIT step: "TameFlow policy maxes understanding before committing" *(Phase 5 forward-reference, planned — not yet implemented: once UC40 lands, EXPLOIT also becomes spendable — upgrade Review tooling, pay down Verify variance, or change the mix per UC37)*
+4. Manager reads EXPLOIT step: "TameFlow policy maxes understanding before committing" *(Phase 5 shipped in #15446: EXPLOIT is now spendable — upgrade Review tooling, pay down Verify variance, or change the mix per UC37)*
 5. Manager reads SUBORDINATE step: "Other phases wait for understanding to stabilize" *(Phase 5 forward-reference, planned: once UC39 lands, SUBORDINATE becomes visible — in demand-driven mode non-constraint phases idle by design when the drum is full)*
-6. Manager reads ELEVATE step: "Decomposition adds capacity only after exploitation" *(Phase 5 forward-reference, planned: once UC40 lands, ELEVATE also becomes spendable — hire a developer or buy a CI/CD slot; budget enforces exploitation-first discipline)*
-7. Manager reads REPEAT step: "Run another sprint—did the constraint move?" *(Phase 5 forward-reference, planned: once UC40 lands, REPEAT can replay the investment trace from the event log)*
+6. Manager reads ELEVATE step: "Decomposition adds capacity only after exploitation" *(Phase 5 shipped in #15446: ELEVATE is now spendable — hire a developer or buy a CI/CD slot; budget enforces exploitation-first discipline)*
+7. Manager reads REPEAT step: "Run another sprint—did the constraint move?" *(Phase 5 shipped in #15446: REPEAT can replay the investment trace from the event log)*
 8. Manager sees 5FS mapped to their actual simulation run
 
 **Extensions:**
@@ -1665,10 +1665,11 @@ This use case requires event sourcing architecture:
 - A previous sprint has completed and the next sprint has not yet started
 - Manager has remaining budget
 - At least one investment option is affordable
+- **Default starting budget is 10** (configurable in future via --budget flag; currently a single constant per Phase 1b Decision A); the 4 investment options have fixed costs {Hire:5, CICDSlot:3, ReviewTool:2, VerifyPaydown:2}
 
 **Postconditions (Guarantees):**
 
-- *Success:* Manager can observe — in the budget panel, the per-phase capacity panel, and the next sprint's flow-diagnostics — that the chosen investment was recorded (event log shows the action), that budget decreased by the option's cost, and that the targeted capacity dimension changed in the subsequent sprint. After the next sprint, the TOC flow-diagnostics view reports whether the constraint phase moved
+- *Success:* Manager can observe — in the budget panel, the per-phase capacity panel, and the next sprint's flow-diagnostics — that the chosen investment was recorded (event log shows the action), that budget decreased by the option's cost, and that the targeted capacity dimension changed in the subsequent sprint. After the next sprint, the TOC flow-diagnostics view reports whether the constraint phase moved. Specifically: (a) the **TUI header** surfaces 'Budget: $N' alongside Mode + Policy; (b) sprints.csv exports the per-sprint `budget_remaining` and `investment_applied` columns (option name or 'none'); (c) the budget-decrement and capacity-change are atomic per investment event
 - *Failure:* Insufficient budget or invalid target — purchase rejected, budget unchanged, window stays open, manager sees a diagnostic
 - *Minimal:* "No investment" is a valid choice; sprint proceeds with no capacity-state change
 
@@ -1683,11 +1684,11 @@ This use case requires event sourcing architecture:
 
 **Extensions:**
 
-- 1a. *Budget exhausted:* Window opens read-only; manager may only skip
+- 1a. *Budget exhausted (no affordable options remain):* Investment window opens but the AvailableOptions menu is empty; the only operator action is 'start next sprint'. Sentinel `ErrInsufficientBudget` documents the boundary for batch/REST callers
 - 3a. *Manager elevates a non-constraint phase:* Allowed; lesson subsystem flags it as candidate for the "elevation without exploitation" teaching after the following sprint's data lands
 - 3b. *Manager pays down Verify tech debt but Verify isn't the constraint:* Allowed; variance reduction may pre-empt a future constraint shift after UC37 mix changes
 - 4a. *Investment event would create an impossible state* (e.g., upgrade Review tooling when no Review capacity exists): Rejected with diagnostic
-- 5a. *Batch/LLM mode:* Investment chosen by policy callback; same event log, same postconditions
+- 5a. *Batch/LLM mode (deferred to follow-up cycle per UC40 plan §Out of scope):* Investment chosen by future `InvestmentPolicy` interface; same event log, same postconditions. UC40 cycle ships only the human-operator TUI + REST POST endpoint surfaces; the `InvestmentPolicy` interface is acknowledged but scope-bounded to a tracked follow-up task
 
 ---
 
