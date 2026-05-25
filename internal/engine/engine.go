@@ -9,6 +9,7 @@ import (
 	"github.com/binaryphile/fluentfp/option"
 	"github.com/binaryphile/fluentfp/slice"
 	"github.com/binaryphile/sofdevsim-2026/internal/events"
+	"github.com/binaryphile/sofdevsim-2026/internal/metrics"
 	"github.com/binaryphile/sofdevsim-2026/internal/model"
 )
 
@@ -68,6 +69,12 @@ type Engine struct {
 	assignPol  AssignmentPolicy               // Calculation: dev selection for queue assignment
 	storeOption option.Option[events.Store]   // Action: I/O to event store (optional)
 	trace      events.TraceContext            // Data: correlation context for events
+	// UC39: TOC analyzer state owned by Engine for the release controller's
+	// AnalyzerSignal input. Pointer because TOCState updates in place; the
+	// Engine value-receiver copies the pointer, not the underlying ring buffer.
+	// Tracker (TUI layer) keeps its own independent TOCState; deterministic
+	// from same sim → consistent values at the same tick.
+	toc *metrics.TOCState
 }
 
 // NewEngine creates a simulation engine without event sourcing.
@@ -79,6 +86,7 @@ func NewEngine(seed int64) Engine {
 		evtGen:    NewEventGenerator(seed),
 		policies:  NewPolicyEngine(seed),
 		assignPol: NewRoundRobinPolicy(),
+		toc:       metrics.NewTOCState(metrics.TOCFlow, 10),
 	}
 }
 
@@ -92,7 +100,38 @@ func NewEngineWithStore(seed int64, store events.Store) Engine {
 		policies:    NewPolicyEngine(seed),
 		assignPol:   NewRoundRobinPolicy(),
 		storeOption: option.Of(store),
+		toc:         metrics.NewTOCState(metrics.TOCFlow, 10),
 	}
+}
+
+// NewEngineWithNilTOCForTest is a test-only constructor that omits the
+// TOC analyzer. Used by UC39's TestRunReleaseController_NilTOC test to
+// exercise the ErrAnalyzerNotReady defensive guard. Not for production use.
+func NewEngineWithNilTOCForTest(seed int64) Engine {
+	return Engine{
+		proj:      events.NewProjection(),
+		variance:  NewVarianceModel(seed),
+		evtGen:    NewEventGenerator(seed),
+		policies:  NewPolicyEngine(seed),
+		assignPol: NewRoundRobinPolicy(),
+		// toc intentionally nil for ErrAnalyzerNotReady-guard testing
+	}
+}
+
+// EmitForTest is a test-only escape hatch that exposes the unexported
+// emit method. Used by UC39 release-controller tests to set up state
+// (e.g., directly emit WarmupTimedOut to enter terminal state without
+// running 5 sprints). Not for production use.
+func (e Engine) EmitForTest(evt events.Event) (Engine, error) {
+	return e.emit(evt)
+}
+
+// RunReleaseControllerForTest is a test-only accessor for the
+// unexported runReleaseController method. Used by UC39 release-
+// controller tests to invoke the controller directly with controlled
+// preconditions. Not for production use.
+func (e Engine) RunReleaseControllerForTest() (Engine, []model.Event, error) {
+	return e.runReleaseController()
 }
 
 // EmitCreated emits SimulationCreated event with the given config.
@@ -242,6 +281,30 @@ func (e Engine) Tick() (Engine, []model.Event, error) {
 			}
 			allEvents = append(allEvents, uiEvents...)
 		}
+	}
+
+	// UC39: refresh TOC analyzer state (rolling window over per-tick data)
+	// BEFORE invoking the release controller so the controller reads fresh
+	// constraint + buffer-penetration values. Independent of metrics.Tracker
+	// (TUI/App layer keeps its own TOC); deterministic from same sim state.
+	if e.toc != nil {
+		e.toc.Update(e.state())
+	}
+
+	// UC39: release controller (Action) — admits backlog tickets per the
+	// demand-mode headroom formula, or no-ops in push/warmup-running/
+	// warmup-failed modes. Inserted BEFORE assignFromQueues so admitted
+	// tickets are visible to the assignment pass this same tick.
+	{
+		var controllerEvents []model.Event
+		// ErrAnalyzerNotReady is informational; controller has already
+		// no-op'd. Don't propagate up — Tick continues. Future error-
+		// surfacing UI may wire this through allEvents instead.
+		var controllerErr error
+		if e, controllerEvents, controllerErr = e.runReleaseController(); controllerErr != nil && !isInformationalControllerErr(controllerErr) {
+			return e, nil, controllerErr
+		}
+		allEvents = append(allEvents, controllerEvents...)
 	}
 
 	// 2. Assignment pass: match idle devs to queued tickets
@@ -523,8 +586,17 @@ func (e Engine) StartSprint() (Engine, error) {
 		}
 	}
 
-	// Sprint commitment: commit highest-priority triaged tickets up to capacity
+	// UC39: in demand mode post-warmup (not timed out), skip bulk-commit
+	// — the release controller drips tickets per tick instead. Push mode,
+	// warmup-running mode, and warmup-failed mode all preserve the existing
+	// commit-to-capacity loop (regression-safe defaults + UC39 ext §2a
+	// effective-push-fallback for warmup-failed sims).
 	state = e.state()
+	if state.ReleaseMode == model.ReleaseModeDemand && !state.WarmupActive && !state.WarmupFailed {
+		return e, nil
+	}
+
+	// Sprint commitment: commit highest-priority triaged tickets up to capacity
 
 	// Calculate available capacity: sprintLength * sum(velocity) * capacityFactor
 	capFactor := option.NonZero(state.ExperienceConfig.SprintCapacityFactor).Or(0.8)
