@@ -351,7 +351,7 @@ func TestAllConstructors_ReturnExpectedVersion(t *testing.T) {
 		version int
 	}
 	events := []versionedEvent{
-		{NewSimulationCreated("s", 0, SimConfig{}), 2}, // UC38 bumped 1→2
+		{NewSimulationCreated("s", 0, SimConfig{}), 3}, // UC39 bumped 2→3 (UC38 had bumped 1→2)
 		{NewSprintStarted("s", 0, 1, 2.0), 1},
 		{NewSprintEnded("s", 0, 1), 1},
 		{NewTicked("s", 0), 1},
@@ -555,5 +555,72 @@ func TestSimulationCreated_GobBackwardCompat_PreV2DecodesAsUnlimited(t *testing.
 	}
 	if v2.Config.Seed != 42 {
 		t.Errorf("v2.Config.Seed = %d, want 42", v2.Config.Seed)
+	}
+}
+
+// SimulationCreated v3 must decode pre-v3 (ReleaseMode-less) gob-
+// encoded events with ReleaseMode == ReleaseModePush (gob zero-value,
+// projection treats as push). Mirrors the UC38 SimulationCreated v1→v2
+// pattern above.
+func TestSimulationCreated_GobBackwardCompat_PreV3DecodesAsPushMode(t *testing.T) {
+	// v2-shape SimConfig (ReleaseMode-less) inline so we can simulate
+	// pre-UC39 gob bytes.
+	type simConfigV2 struct {
+		TeamSize       int
+		SprintLength   int
+		Seed           int64
+		Policy         model.SizingPolicy
+		BufferPct      float64
+		PhaseWIPConfig map[model.WorkflowPhase]int // UC38 field
+	}
+	type simulationCreatedV2 struct {
+		Header
+		Config simConfigV2
+	}
+
+	v2 := simulationCreatedV2{
+		Header: Header{
+			ID:         "evt-sim-2",
+			SimID:      "sim-legacy-v2",
+			Type:       "SimulationCreated",
+			OccurredAt: 0,
+			DetectedAt: time.Now(),
+			Version:    2,
+		},
+		Config: simConfigV2{
+			TeamSize:     6,
+			SprintLength: 10,
+			Seed:         42,
+			Policy:       model.PolicyHybrid,
+			BufferPct:    0.2,
+			PhaseWIPConfig: map[model.WorkflowPhase]int{
+				model.PhaseImplement: 4,
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	if err := gob.NewEncoder(&buf).Encode(v2); err != nil {
+		t.Fatalf("encode v2: %v", err)
+	}
+
+	var v3 SimulationCreated
+	if err := gob.NewDecoder(&buf).Decode(&v3); err != nil {
+		t.Fatalf("decode v2-bytes into v3: %v", err)
+	}
+
+	// Pre-v3 events MUST decode with ReleaseMode == ReleaseModePush
+	// (gob zero-value for the missing iota field).
+	if v3.Config.ReleaseMode != model.ReleaseModePush {
+		t.Errorf("v3.Config.ReleaseMode = %v, want ReleaseModePush (regression-safe gob zero-value); UC39 backward-compat contract violated",
+			v3.Config.ReleaseMode)
+	}
+	// Sanity: UC38's PhaseWIPConfig field still round-trips correctly.
+	if v3.Config.PhaseWIPConfig[model.PhaseImplement] != 4 {
+		t.Errorf("v3.Config.PhaseWIPConfig[Implement] = %d, want 4 (UC38 field must round-trip)",
+			v3.Config.PhaseWIPConfig[model.PhaseImplement])
+	}
+	if v3.Config.TeamSize != 6 {
+		t.Errorf("v3.Config.TeamSize = %d, want 6", v3.Config.TeamSize)
 	}
 }

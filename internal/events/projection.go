@@ -73,6 +73,16 @@ func (p Projection) Apply(evt Event) Projection {
 			// and the cap was dead; now PhaseWIPCap(PhaseCICD) flows through this
 			// default unless PhaseWIPConfig overrides.
 			CICDSlots: 2,
+			// UC39: ReleaseMode carried via SimulationCreated payload (Decision E).
+			// Pre-v3 events decode with ReleaseMode=ReleaseModePush (gob zero-value;
+			// regression-safe). WarmupActive flipped on at sim creation when
+			// ReleaseMode==Demand (controller will flip off via WarmupExited event).
+			ReleaseMode:  e.Config.ReleaseMode,
+			WarmupActive: e.Config.ReleaseMode == model.ReleaseModeDemand,
+			// UC39 closes the same dual-default class UC38 fixed for CICDSlots:
+			// MaxBacklogDrip default 1 set explicitly here (NewSimulation also sets
+			// it). Zero-value 0 would deadlock the controller via floor(0)=0.
+			MaxBacklogDrip: 1,
 		}
 
 	case Ticked:
@@ -476,6 +486,21 @@ func (p Projection) Apply(evt Event) Projection {
 			}
 		}
 		next.sim.RopeQueue = append(next.sim.RopeQueue, e.TicketID)
+
+	case WarmupExited:
+		// UC39: TOC analyzer locked a constraint with sufficient confidence;
+		// flip the demand-mode sim out of warm-up into release-controlled
+		// admission. Idempotent — multiple emissions leave state unchanged.
+		next.sim.WarmupActive = false
+
+	case WarmupTimedOut:
+		// UC39 ext §2a: warm-up exceeded the sprint limit; sim falls back
+		// to effective push (StartSprint continues bulk-commit; controller
+		// no-ops). WarmupFailed is terminal for the sim's lifetime;
+		// WarmupActive intentionally stays true so the controller continues
+		// to no-op (the controller predicate is "demand AND !warmupActive
+		// AND !warmupFailed" — both flags route to push behavior).
+		next.sim.WarmupFailed = true
 
 	default:
 		// Unknown event type - silently ignore per event sourcing convention

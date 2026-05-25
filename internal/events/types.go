@@ -169,6 +169,9 @@ type SimConfig struct {
 	// Pre-UC38 (Version 1) SimulationCreated events decode with PhaseWIPConfig
 	// = nil via gob zero-value; projection treats nil as unlimited.
 	PhaseWIPConfig map[model.WorkflowPhase]int
+	// UC39: release mode. Zero-value ReleaseModePush = regression-safe;
+	// pre-UC39 (Version 2) SimulationCreated events decode here.
+	ReleaseMode model.ReleaseMode
 }
 
 // SimulationCreated is emitted when a simulation is created.
@@ -178,9 +181,10 @@ type SimulationCreated struct {
 }
 
 // NewSimulationCreated creates a SimulationCreated event with proper header.
-// Version 2 (UC38 #15443) carries SimConfig.PhaseWIPConfig. Pre-v2 events
-// decode with PhaseWIPConfig = nil (gob zero-value, projection treats as
-// unlimited); no upcaster needed per CLAUDE.md "add fields freely".
+// Version 3 (UC39 #15445) carries SimConfig.ReleaseMode. Pre-v3 events
+// decode with ReleaseMode = ReleaseModePush (gob zero-value, projection
+// treats as push); pre-v2 events additionally decode with PhaseWIPConfig
+// = nil. No upcaster needed per CLAUDE.md "add fields freely".
 func NewSimulationCreated(simID string, tick int, config SimConfig) SimulationCreated {
 	return SimulationCreated{
 		Header: Header{
@@ -189,7 +193,7 @@ func NewSimulationCreated(simID string, tick int, config SimConfig) SimulationCr
 			Type:       "SimulationCreated",
 			OccurredAt: tick,
 			DetectedAt: time.Now(),
-			Version:    2,
+			Version:    3,
 		},
 		Config: config,
 	}
@@ -1519,6 +1523,100 @@ func (e TicketRopeHeld) withTrace(traceID, spanID, parentSpanID string) Event {
 
 // WithCausedBy returns a copy with causation link to parent event.
 func (e TicketRopeHeld) WithCausedBy(eventID string) TicketRopeHeld {
+	e.Header.CausedByID = eventID
+	return e
+}
+
+// WarmupExited is emitted by the release controller when the TOC analyzer
+// locks a constraint with at least medium confidence (default threshold 0.5),
+// flipping the demand-mode simulation out of warm-up into release-controlled
+// admission. UC39 #15445.
+type WarmupExited struct {
+	Header
+	// SprintNumber at which the warm-up exit fired (informational; useful
+	// for replay diagnostics and the TUI event log).
+	SprintNumber int
+	// ConstraintPhase the analyzer locked onto (informational; the actual
+	// post-event constraint is still read from TOCState by the controller).
+	ConstraintPhase model.WorkflowPhase
+}
+
+// NewWarmupExited creates a WarmupExited event with proper header.
+func NewWarmupExited(simID string, tick int, sprintNumber int, constraintPhase model.WorkflowPhase) WarmupExited {
+	return WarmupExited{
+		Header: Header{
+			ID:         nextEventID("WarmupExited"),
+			SimID:      simID,
+			Type:       "WarmupExited",
+			OccurredAt: tick,
+			DetectedAt: time.Now(),
+			Version:    1,
+		},
+		SprintNumber:    sprintNumber,
+		ConstraintPhase: constraintPhase,
+	}
+}
+
+// WithTrace returns a copy with tracing fields set for fluent chaining.
+func (e WarmupExited) WithTrace(traceID, spanID, parentSpanID string) WarmupExited {
+	e.Header.Trace = traceID
+	e.Header.Span = spanID
+	e.Header.ParentSpan = parentSpanID
+	return e
+}
+
+// withTrace implements Event interface for polymorphic tracing.
+func (e WarmupExited) withTrace(traceID, spanID, parentSpanID string) Event {
+	return e.WithTrace(traceID, spanID, parentSpanID)
+}
+
+// WithCausedBy returns a copy with causation link to parent event.
+func (e WarmupExited) WithCausedBy(eventID string) WarmupExited {
+	e.Header.CausedByID = eventID
+	return e
+}
+
+// WarmupTimedOut is emitted by the release controller when warm-up exceeds
+// the configured sprint limit (N=5) without the analyzer locking a constraint.
+// Sets sim.WarmupFailed=true via projection; sim then behaves as effective
+// push (StartSprint continues bulk-commit) for the rest of its lifetime per
+// UC39 ext §2a. UC39 #15445.
+type WarmupTimedOut struct {
+	Header
+	// SprintNumber at which the timeout fired (= the configured limit).
+	SprintNumber int
+}
+
+// NewWarmupTimedOut creates a WarmupTimedOut event with proper header.
+func NewWarmupTimedOut(simID string, tick int, sprintNumber int) WarmupTimedOut {
+	return WarmupTimedOut{
+		Header: Header{
+			ID:         nextEventID("WarmupTimedOut"),
+			SimID:      simID,
+			Type:       "WarmupTimedOut",
+			OccurredAt: tick,
+			DetectedAt: time.Now(),
+			Version:    1,
+		},
+		SprintNumber: sprintNumber,
+	}
+}
+
+// WithTrace returns a copy with tracing fields set for fluent chaining.
+func (e WarmupTimedOut) WithTrace(traceID, spanID, parentSpanID string) WarmupTimedOut {
+	e.Header.Trace = traceID
+	e.Header.Span = spanID
+	e.Header.ParentSpan = parentSpanID
+	return e
+}
+
+// withTrace implements Event interface for polymorphic tracing.
+func (e WarmupTimedOut) withTrace(traceID, spanID, parentSpanID string) Event {
+	return e.WithTrace(traceID, spanID, parentSpanID)
+}
+
+// WithCausedBy returns a copy with causation link to parent event.
+func (e WarmupTimedOut) WithCausedBy(eventID string) WarmupTimedOut {
 	e.Header.CausedByID = eventID
 	return e
 }

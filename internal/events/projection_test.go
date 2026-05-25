@@ -1203,3 +1203,100 @@ func TestProjection_Apply_IncidentStarted_Enhanced(t *testing.T) {
 		})
 	}
 }
+
+// UC39 (#15445): projection handlers for the 2 new warm-up state events.
+
+func TestProjection_Apply_SimulationCreated_DemandMode_SetsWarmupActive(t *testing.T) {
+	proj := events.NewProjection()
+	evt := events.NewSimulationCreated("sim-demand", 0, events.SimConfig{
+		Seed:        42,
+		Policy:      model.PolicyNone,
+		ReleaseMode: model.ReleaseModeDemand,
+	})
+	got := proj.Apply(evt).State()
+
+	if got.ReleaseMode != model.ReleaseModeDemand {
+		t.Errorf("ReleaseMode = %v; want ReleaseModeDemand", got.ReleaseMode)
+	}
+	if !got.WarmupActive {
+		t.Errorf("WarmupActive = false; want true (demand mode at sim creation)")
+	}
+	if got.WarmupFailed {
+		t.Errorf("WarmupFailed = true; want false (only WarmupTimedOut sets this)")
+	}
+	if got.MaxBacklogDrip != 1 {
+		t.Errorf("MaxBacklogDrip = %d; want 1 (projection default per UC38 fix precedent)", got.MaxBacklogDrip)
+	}
+}
+
+func TestProjection_Apply_SimulationCreated_PushMode_NoWarmup(t *testing.T) {
+	proj := events.NewProjection()
+	evt := events.NewSimulationCreated("sim-push", 0, events.SimConfig{
+		Seed:        42,
+		Policy:      model.PolicyNone,
+		ReleaseMode: model.ReleaseModePush,
+	})
+	got := proj.Apply(evt).State()
+
+	if got.ReleaseMode != model.ReleaseModePush {
+		t.Errorf("ReleaseMode = %v; want ReleaseModePush", got.ReleaseMode)
+	}
+	if got.WarmupActive {
+		t.Errorf("WarmupActive = true; want false (push mode has no warm-up)")
+	}
+}
+
+func TestProjection_Apply_WarmupExited_FlipsWarmupActiveFalse(t *testing.T) {
+	proj := events.NewProjection()
+	proj = proj.Apply(events.NewSimulationCreated("sim", 0, events.SimConfig{
+		ReleaseMode: model.ReleaseModeDemand,
+	}))
+	// Sanity: starts WarmupActive=true
+	if !proj.State().WarmupActive {
+		t.Fatalf("setup: WarmupActive should be true after SimulationCreated(Demand)")
+	}
+
+	proj = proj.Apply(events.NewWarmupExited("sim", 5, 1, model.PhaseImplement))
+
+	got := proj.State()
+	if got.WarmupActive {
+		t.Errorf("WarmupActive = true; want false after WarmupExited")
+	}
+	if got.WarmupFailed {
+		t.Errorf("WarmupFailed = true; want false (WarmupExited is the happy-path event; only timeout sets WarmupFailed)")
+	}
+}
+
+func TestProjection_Apply_WarmupTimedOut_SetsFailedKeepsActive(t *testing.T) {
+	proj := events.NewProjection()
+	proj = proj.Apply(events.NewSimulationCreated("sim", 0, events.SimConfig{
+		ReleaseMode: model.ReleaseModeDemand,
+	}))
+
+	proj = proj.Apply(events.NewWarmupTimedOut("sim", 50, 5))
+
+	got := proj.State()
+	if !got.WarmupFailed {
+		t.Errorf("WarmupFailed = false; want true after WarmupTimedOut")
+	}
+	// Intentional: WarmupActive stays true so the controller's "demand &&
+	// !warmupActive && !warmupFailed" predicate routes to push-fallback
+	// behavior. Plan §"Warmup-failed semantics".
+	if !got.WarmupActive {
+		t.Errorf("WarmupActive = false; want true after WarmupTimedOut (intentional — controller stays disabled; sim behaves as push)")
+	}
+}
+
+func TestProjection_Apply_WarmupExited_Idempotent(t *testing.T) {
+	proj := events.NewProjection()
+	proj = proj.Apply(events.NewSimulationCreated("sim", 0, events.SimConfig{
+		ReleaseMode: model.ReleaseModeDemand,
+	}))
+	proj = proj.Apply(events.NewWarmupExited("sim", 5, 1, model.PhaseImplement))
+	// Second emission must not toggle state back.
+	proj = proj.Apply(events.NewWarmupExited("sim", 6, 1, model.PhaseImplement))
+
+	if proj.State().WarmupActive {
+		t.Errorf("idempotency: second WarmupExited should leave WarmupActive=false; got true")
+	}
+}
