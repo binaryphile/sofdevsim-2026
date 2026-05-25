@@ -1590,7 +1590,7 @@ This use case requires event sourcing architecture:
 
 ### UC39: Run Simulation in Demand-Driven (Pull) Mode
 
-> **Phase 5 planned — not yet implemented.** This UC describes a roadmap-planned capability; see `docs/roadmap.md` Phase 5. Mechanism details (flags, control loop) live in `docs/design.md` once the implementing child cycle lands.
+> **Phase 5 shipped in cycle #15445** (contract #18148). Mechanism details (flags, control loop) live in `docs/design.md` §"Demand-Driven Release (UC39)".
 
 **Primary Actor:** Manager
 
