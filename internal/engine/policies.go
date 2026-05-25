@@ -58,6 +58,7 @@ func (p PolicyEngine) Decompose(ticket model.Ticket) []model.Ticket {
 			Title:              fmt.Sprintf("%s (Part %d/%d)", ticket.Title, i+1, numChildren),
 			EstimatedDays:      childEstimate,
 			UnderstandingLevel: improveUnderstanding(ticket.UnderstandingLevel, rng),
+			Type:               ticket.Type, // UC37: children inherit parent type
 			ParentID:           ticket.ID,
 			Phase:              model.PhaseBacklog,
 			PhaseEffortSpent:   make(map[model.WorkflowPhase]float64),

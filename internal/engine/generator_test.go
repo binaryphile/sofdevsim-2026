@@ -103,3 +103,118 @@ func TestScenarios_HaveDifferentCharacteristics(t *testing.T) {
 		t.Errorf("Uncertain scenario has %d/50 low understanding, want ~60%%", uncertainLow)
 	}
 }
+
+// UC37 cycle #15442: TicketGenerator.TypeWeights roll respects weights.
+// Khorikov Algorithm quadrant — output-based testing over many draws.
+
+// Nil TypeWeights produces all-Feature (regression-safe default).
+func TestGenerate_NilWeightsAreAllFeature(t *testing.T) {
+	gen := engine.Scenarios["healthy"]
+	if gen.TypeWeights != nil {
+		t.Fatalf("healthy scenario should have nil TypeWeights (all-Feature default); got %v", gen.TypeWeights)
+	}
+	rng := rand.New(rand.NewSource(42))
+	tickets := gen.Generate(rng, 200)
+	for _, tk := range tickets {
+		if tk.Type != model.TicketTypeFeature {
+			t.Errorf("expected all Feature with nil TypeWeights; got %s", tk.Type)
+			break
+		}
+	}
+}
+
+// Single-type degenerate weights → 100% that type (UC37 ext §3a).
+func TestGenerate_SingleTypeDegenerate(t *testing.T) {
+	gen := engine.Scenarios["healthy"]
+	gen.TypeWeights = map[model.TicketType]float64{
+		model.TicketTypeBug: 1.0,
+	}
+	rng := rand.New(rand.NewSource(7))
+	tickets := gen.Generate(rng, 100)
+	for _, tk := range tickets {
+		if tk.Type != model.TicketTypeBug {
+			t.Errorf("expected 100%% Bug with single-type weights; got %s", tk.Type)
+			break
+		}
+	}
+}
+
+// Non-1.0-sum weights normalise silently (UC37 ext §1a).
+// 2:2 → 50/50 distribution within tolerance over 10K draws.
+func TestGenerate_TypeWeightsNormalize(t *testing.T) {
+	gen := engine.Scenarios["healthy"]
+	gen.TypeWeights = map[model.TicketType]float64{
+		model.TicketTypeFeature: 2.0,
+		model.TicketTypeBug:     2.0,
+	}
+	rng := rand.New(rand.NewSource(1234))
+	tickets := gen.Generate(rng, 10000)
+	var feat, bug int
+	for _, tk := range tickets { // justified:SM
+		switch tk.Type {
+		case model.TicketTypeFeature:
+			feat++
+		case model.TicketTypeBug:
+			bug++
+		default:
+			t.Fatalf("unexpected type %s with Feature+Bug weights", tk.Type)
+		}
+	}
+	// 50/50 within 3% tolerance (5000 ± 150 each)
+	if feat < 4700 || feat > 5300 {
+		t.Errorf("Feature count = %d, want ≈5000 ± 300 (3%% tolerance) — weight normalisation broken", feat)
+	}
+	if bug < 4700 || bug > 5300 {
+		t.Errorf("Bug count = %d, want ≈5000 ± 300", bug)
+	}
+}
+
+// research-shop scenario: aggregate Spike count should dominate (≈85%).
+// Acts as regression sentinel for the integration-test pair (uc37-default vs research-shop).
+func TestGenerate_ResearchShopIsSpikeDominated(t *testing.T) {
+	gen := engine.Scenarios["research-shop"]
+	rng := rand.New(rand.NewSource(42))
+	tickets := gen.Generate(rng, 1000)
+	var spike int
+	for _, tk := range tickets { // justified:SM
+		if tk.Type == model.TicketTypeSpike {
+			spike++
+		}
+	}
+	// Spike weighted 0.85 → expect ≈850 of 1000; tolerance ±50 (5%)
+	if spike < 800 || spike > 900 {
+		t.Errorf("research-shop Spike count = %d/1000, want ≈850 ± 50 (5%% tolerance)", spike)
+	}
+}
+
+// uc37-default scenario: aggregate Feature count should dominate (≈60%).
+func TestGenerate_UC37DefaultIsFeatureDominated(t *testing.T) {
+	gen := engine.Scenarios["uc37-default"]
+	rng := rand.New(rand.NewSource(42))
+	tickets := gen.Generate(rng, 1000)
+	var feat int
+	for _, tk := range tickets { // justified:SM
+		if tk.Type == model.TicketTypeFeature {
+			feat++
+		}
+	}
+	// Feature weighted 0.60 → expect ≈600 of 1000; tolerance ±50
+	if feat < 550 || feat > 650 {
+		t.Errorf("uc37-default Feature count = %d/1000, want ≈600 ± 50 (5%% tolerance)", feat)
+	}
+}
+
+// Pinned-seed reproducibility: same seed + same mix profile = same Type sequence.
+// (Different mix profiles diverge from the first roll because cumulative-weight
+// ranges differ, but same-mix reproducibility holds.)
+func TestGenerate_SameSeedSameMixIsReproducible(t *testing.T) {
+	gen := engine.Scenarios["uc37-default"]
+	a := gen.Generate(rand.New(rand.NewSource(42)), 50)
+	b := gen.Generate(rand.New(rand.NewSource(42)), 50)
+	for i := range a {
+		if a[i].Type != b[i].Type {
+			t.Errorf("seed-reproducibility broken at index %d: a=%s b=%s", i, a[i].Type, b[i].Type)
+			break
+		}
+	}
+}

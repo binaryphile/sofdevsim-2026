@@ -111,3 +111,31 @@ func TestPolicyEngine_DecompositionImprovesUnderstanding(t *testing.T) {
 		t.Errorf("Understanding improvement rate = %.2f, want ~0.60", improvementRate)
 	}
 }
+
+// UC37: Decompose propagates parent ticket's Type to children unchanged.
+// Khorikov Domain quadrant — table inheritance per type.
+func TestDecompose_ChildrenInheritParentType(t *testing.T) {
+	types := []model.TicketType{
+		model.TicketTypeFeature,
+		model.TicketTypeBug,
+		model.TicketTypeSpike,
+		model.TicketTypeMigration,
+		model.TicketTypeInfra,
+	}
+	pe := engine.NewPolicyEngine(42)
+	for _, parentType := range types {
+		t.Run(parentType.String(), func(t *testing.T) {
+			parent := model.NewTicket("P", "test parent", 10.0, model.LowUnderstanding)
+			parent.Type = parentType
+			children := pe.Decompose(parent)
+			if len(children) == 0 {
+				t.Fatalf("Decompose returned no children for %s", parentType)
+			}
+			for i, c := range children {
+				if c.Type != parentType {
+					t.Errorf("child %d (%s) Type = %s, want %s (parent type must be inherited)", i, c.ID, c.Type, parentType)
+				}
+			}
+		})
+	}
+}

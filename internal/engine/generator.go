@@ -25,6 +25,11 @@ type TicketGenerator struct {
 
 	// Title pool
 	Titles []string
+
+	// UC37: type weights for heterogeneous ticket mix. Nil/empty → all-Feature
+	// (regression-safe). Weights silently normalised to sum to 1.0; single-type
+	// degenerate weights produce 100% that type. Unrecognised type-keys ignored.
+	TypeWeights map[model.TicketType]float64
 }
 
 // DefaultTitles provides realistic ticket titles
@@ -56,6 +61,29 @@ var DefaultTitles = []string{
 func (g TicketGenerator) Generate(rng *rand.Rand, count int) []model.Ticket {
 	tickets := make([]model.Ticket, count)
 
+	// UC37: pre-compute cumulative type-weights (ordered by TicketType iota)
+	// for type roll. Nil/empty weights → all-Feature regression-safe default.
+	typeOrder := []model.TicketType{
+		model.TicketTypeFeature,
+		model.TicketTypeBug,
+		model.TicketTypeSpike,
+		model.TicketTypeMigration,
+		model.TicketTypeInfra,
+	}
+	var typeCum []float64
+	var typeSum float64
+	for _, tt := range typeOrder {
+		typeSum += g.TypeWeights[tt]
+	}
+	if typeSum > 0 {
+		// Normalise to 1.0; cumulative for lookup
+		var acc float64
+		for _, tt := range typeOrder {
+			acc += g.TypeWeights[tt] / typeSum
+			typeCum = append(typeCum, acc)
+		}
+	}
+
 	for i := range tickets {
 		// Log-normal distribution for size (right-skewed, realistic)
 		size := math.Exp(rng.NormFloat64()*g.SizeStdDev + math.Log(g.SizeMean))
@@ -73,11 +101,24 @@ func (g TicketGenerator) Generate(rng *rand.Rand, count int) []model.Ticket {
 			understanding = model.HighUnderstanding
 		}
 
+		// UC37: ticket-type roll. Nil/empty weights → Feature (zero-value default).
+		ticketType := model.TicketTypeFeature
+		if len(typeCum) > 0 {
+			rt := rng.Float64()
+			for idx, c := range typeCum { // justified:IX
+				if rt < c {
+					ticketType = typeOrder[idx]
+					break
+				}
+			}
+		}
+
 		tickets[i] = model.Ticket{
 			ID:                 fmt.Sprintf("TKT-%03d", i+1),
 			Title:              g.Titles[rng.Intn(len(g.Titles))],
 			EstimatedDays:      size,
 			UnderstandingLevel: understanding,
+			Type:               ticketType,
 			Phase:              model.PhaseBacklog,
 			PhaseEffortSpent:   make(map[model.WorkflowPhase]float64),
 			CreatedAt:          time.Now(),
@@ -112,5 +153,73 @@ var Scenarios = map[string]TicketGenerator{
 		LowPct: 0.33, MediumPct: 0.34, HighPct: 0.33,
 		TicketsPerSprint: 12,
 		Titles:           DefaultTitles,
+	},
+	// UC37 typed scenarios (cycle #15442). Existing 4 above remain all-Feature
+	// (TypeWeights nil) to preserve their behavioural contracts.
+	"uc37-default": {
+		SizeMean: 4, SizeStdDev: 0.7,
+		LowPct: 0.25, MediumPct: 0.50, HighPct: 0.25,
+		TicketsPerSprint: 12,
+		Titles:           DefaultTitles,
+		TypeWeights: map[model.TicketType]float64{
+			model.TicketTypeFeature:   0.60,
+			model.TicketTypeBug:       0.25,
+			model.TicketTypeSpike:     0.10,
+			model.TicketTypeMigration: 0.05,
+		},
+	},
+	"bug-heavy": {
+		SizeMean: 3, SizeStdDev: 0.6,
+		LowPct: 0.30, MediumPct: 0.45, HighPct: 0.25,
+		TicketsPerSprint: 12,
+		Titles:           DefaultTitles,
+		TypeWeights: map[model.TicketType]float64{
+			model.TicketTypeFeature:   0.30,
+			model.TicketTypeBug:       0.50,
+			model.TicketTypeSpike:     0.05,
+			model.TicketTypeMigration: 0.10,
+			model.TicketTypeInfra:     0.05,
+		},
+	},
+	"migration-quarter": {
+		SizeMean: 5, SizeStdDev: 0.8,
+		LowPct: 0.25, MediumPct: 0.50, HighPct: 0.25,
+		TicketsPerSprint: 12,
+		Titles:           DefaultTitles,
+		TypeWeights: map[model.TicketType]float64{
+			model.TicketTypeFeature:   0.30,
+			model.TicketTypeBug:       0.15,
+			model.TicketTypeSpike:     0.05,
+			model.TicketTypeMigration: 0.45,
+			model.TicketTypeInfra:     0.05,
+		},
+	},
+	"infra-push": {
+		SizeMean: 4, SizeStdDev: 0.7,
+		LowPct: 0.25, MediumPct: 0.50, HighPct: 0.25,
+		TicketsPerSprint: 12,
+		Titles:           DefaultTitles,
+		TypeWeights: map[model.TicketType]float64{
+			model.TicketTypeFeature:   0.35,
+			model.TicketTypeBug:       0.15,
+			model.TicketTypeSpike:     0.05,
+			model.TicketTypeMigration: 0.10,
+			model.TicketTypeInfra:     0.35,
+		},
+	},
+	"research-shop": {
+		// Spike-heavy; aggregate Research dominates (≈0.48). Designed as
+		// contrasting integration-test pair vs uc37-default.
+		SizeMean: 4, SizeStdDev: 0.6,
+		LowPct: 0.30, MediumPct: 0.50, HighPct: 0.20,
+		TicketsPerSprint: 12,
+		Titles:           DefaultTitles,
+		TypeWeights: map[model.TicketType]float64{
+			model.TicketTypeFeature:   0.05,
+			model.TicketTypeBug:       0.05,
+			model.TicketTypeSpike:     0.85,
+			model.TicketTypeMigration: 0.00,
+			model.TicketTypeInfra:     0.05,
+		},
 	},
 }
