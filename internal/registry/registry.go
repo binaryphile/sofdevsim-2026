@@ -67,13 +67,24 @@ type SimInstance struct {
 	Office  office.OfficeProjection // Animation state for Claude vision
 }
 
-// CreateSimulation creates a new simulation with given seed, policy, and backlog
-// mix scenario. Returns the simulation ID and nil error on success.
+// CreateSimulation creates a new simulation with given seed, policy, backlog
+// mix scenario, and (UC38) per-phase WIP cap configuration. Returns the
+// simulation ID and nil error on success.
 // Returns ErrAlreadyExists if a simulation with the same seed already exists.
-// Returns an error if scenarioName is not a registered scenario.
+// Returns ErrUnknownScenario if scenarioName is not a registered scenario.
+// Returns one of model.ErrCap{Zero,Negative,BelowMentorMin,Conflict}
+// (wrapped) if phaseWIPConfig fails validation.
 // UC37: scenarioName selects the backlog generation profile (default "healthy"
 // preserves pre-UC37 behaviour — all-Feature regression-safe default).
-func (r *SimRegistry) CreateSimulation(seed int64, policy model.SizingPolicy, scenarioName string) (string, error) {
+// UC38: phaseWIPConfig nil/empty = unlimited everywhere (regression-safe per
+// Decision D); validation is single-pass here so CLI + REST share friendly
+// errors (the CLI parser only does syntax-only k=v checking).
+func (r *SimRegistry) CreateSimulation(
+	seed int64,
+	policy model.SizingPolicy,
+	scenarioName string,
+	phaseWIPConfig map[model.WorkflowPhase]int,
+) (string, error) {
 	if scenarioName == "" {
 		scenarioName = "healthy"
 	}
@@ -87,6 +98,15 @@ func (r *SimRegistry) CreateSimulation(seed int64, policy model.SizingPolicy, sc
 		return "", fmt.Errorf("%w %q (registered: %v)", ErrUnknownScenario, scenarioName, names)
 	}
 
+	// UC38 single-pass validation: rope config defaults to disabled at
+	// registry creation so ErrCapConflict only fires when caller's
+	// PhaseWIPConfig conflicts with an explicit rope config (deferred to
+	// future cycle if needed). NewSimulation's zero-value RopeConfig is
+	// Enabled=false, so conflict-detection is dormant by design here.
+	if err := model.ValidatePhaseWIPConfig(phaseWIPConfig, model.RopeConfig{}); err != nil {
+		return "", err
+	}
+
 	id := fmt.Sprintf("sim-%d", seed)
 
 	// Check existence under read lock first
@@ -98,14 +118,16 @@ func (r *SimRegistry) CreateSimulation(seed int64, policy model.SizingPolicy, sc
 	}
 
 	sim := model.NewSimulation(id, policy, seed)
+	sim.PhaseWIPConfig = phaseWIPConfig
 
 	var err error
 	eng := engine.NewEngineWithStore(sim.Seed, r.store)
 	if eng, err = eng.EmitCreated(sim.ID, sim.CurrentTick, events.SimConfig{
-		TeamSize:     len(sim.Developers),
-		SprintLength: sim.SprintLength,
-		Seed:         sim.Seed,
-		Policy:       policy,
+		TeamSize:       len(sim.Developers),
+		SprintLength:   sim.SprintLength,
+		Seed:           sim.Seed,
+		Policy:         policy,
+		PhaseWIPConfig: phaseWIPConfig,
 	}); err != nil {
 		return "", fmt.Errorf("emit created: %w", err)
 	}

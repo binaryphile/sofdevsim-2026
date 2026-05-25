@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/binaryphile/sofdevsim-2026/internal/api"
@@ -462,7 +464,7 @@ func TestSimRegistry_MutationPersists(t *testing.T) {
 	registry := api.NewSimRegistry()
 
 	// Call method that mutates internal map
-	id, err := registry.CreateSimulation(42, 0, "") // 0 = PolicyNone
+	id, err := registry.CreateSimulation(42, 0, "", nil) // 0 = PolicyNone; nil = unlimited (UC38)
 	if err != nil {
 		t.Fatalf("CreateSimulation() error = %v", err)
 	}
@@ -759,5 +761,90 @@ func TestAPI_DecomposeEdgeCases(t *testing.T) {
 			t.Error("expected decomposed=false with PolicyNone")
 		}
 	})
+}
+
+// UC38 (#15443): POST /simulations with invalid phaseWIPConfig returns HTTP
+// 422 (Unprocessable Entity). Each of the 4 sentinel cases is exercised
+// through the HTTP surface; the unknown-phase case returns 400 because the
+// parsePhaseWIPConfig translation fails before the domain validator runs.
+func TestHandleCreateSimulation_PhaseWIPConfig_HTTP422(t *testing.T) {
+	tests := []struct {
+		name    string
+		seed    int64
+		config  map[string]int
+		wantSC  int
+		wantSub string // substring that must appear in response body
+	}{
+		{
+			name:    "ErrCapZero → 422",
+			seed:    100,
+			config:  map[string]int{"Verify": 0},
+			wantSC:  http.StatusUnprocessableEntity,
+			wantSub: "phase WIP cap is zero",
+		},
+		{
+			name:    "ErrCapNegative → 422",
+			seed:    101,
+			config:  map[string]int{"Review": -1},
+			wantSC:  http.StatusUnprocessableEntity,
+			wantSub: "phase WIP cap is negative",
+		},
+		{
+			name:    "ErrCapBelowMentorMin → 422",
+			seed:    102,
+			config:  map[string]int{"Implement": 1},
+			wantSC:  http.StatusUnprocessableEntity,
+			wantSub: "below mentor-pair minimum",
+		},
+		{
+			name:    "unknown phase name → 400 (structural)",
+			seed:    103,
+			config:  map[string]int{"BadPhase": 5},
+			wantSC:  http.StatusBadRequest,
+			wantSub: "unknown phase",
+		},
+		{
+			name:   "valid PhaseWIPConfig → 201",
+			seed:   104,
+			config: map[string]int{"Implement": 4, "CICD": 1},
+			wantSC: http.StatusCreated,
+		},
+		{
+			name:   "nil PhaseWIPConfig → 201 (regression-safe)",
+			seed:   105,
+			config: nil,
+			wantSC: http.StatusCreated,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			registry := api.NewSimRegistry()
+			srv := httptest.NewServer(api.NewRouter(registry))
+			defer srv.Close()
+
+			body := map[string]any{"seed": tc.seed}
+			if tc.config != nil {
+				body["phaseWIPConfig"] = tc.config
+			}
+			reqBody, _ := json.Marshal(body)
+			resp, err := http.Post(srv.URL+"/simulations", "application/json", bytes.NewReader(reqBody))
+			if err != nil {
+				t.Fatalf("POST /simulations: %v", err)
+			}
+			defer resp.Body.Close()
+
+			if resp.StatusCode != tc.wantSC {
+				rbody, _ := io.ReadAll(resp.Body)
+				t.Errorf("status = %d, want %d; body=%s", resp.StatusCode, tc.wantSC, rbody)
+			}
+			if tc.wantSub != "" {
+				rbody, _ := io.ReadAll(resp.Body)
+				if !strings.Contains(string(rbody), tc.wantSub) {
+					t.Errorf("body missing %q; got %s", tc.wantSub, rbody)
+				}
+			}
+		})
+	}
 }
 

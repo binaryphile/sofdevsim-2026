@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/binaryphile/fluentfp/either"
@@ -123,6 +124,11 @@ type CreateSimulationRequest struct {
 	Seed         int64  `json:"seed"`
 	Policy       string `json:"policy,omitempty"`       // "none", "dora-strict", "tameflow-cognitive"
 	ScenarioName string `json:"scenarioName,omitempty"` // UC37: backlog mix profile; default "healthy"
+	// UC38: per-phase WIP caps; nil/omitted → unlimited (regression-safe).
+	// Keys are canonical WorkflowPhase.String() output ("Research", "Sizing",
+	// "Planning", "Implement", "Verify", "CI/CD", "Review"). Validation errors
+	// map to HTTP 422 (Unprocessable Entity).
+	PhaseWIPConfig map[string]int `json:"phaseWIPConfig,omitempty"`
 }
 
 // HandleCreateSimulation creates a new simulation with the given seed and policy.
@@ -154,8 +160,19 @@ func (r SimRegistry) HandleCreateSimulation(w http.ResponseWriter, req *http.Req
 		return
 	}
 
+	// UC38: translate string-keyed PhaseWIPConfig into WorkflowPhase-keyed.
+	// Unknown phase names → HTTP 400 (structural client error; doesn't reach
+	// the domain validator since the key set is unrecognized JSON, not a
+	// well-formed-but-invalid config).
+	phaseWIPConfig, parseErr := parsePhaseWIPConfig(body.PhaseWIPConfig)
+	if parseErr != nil {
+		writeError(w, http.StatusBadRequest, parseErr.Error())
+		return
+	}
+
 	// UC37: scenarioName selects the backlog mix profile. Empty → "healthy" (default).
-	id, err := r.CreateSimulation(body.Seed, policy, body.ScenarioName)
+	// UC38: phaseWIPConfig nil/empty preserves regression-safe defaults.
+	id, err := r.CreateSimulation(body.Seed, policy, body.ScenarioName, phaseWIPConfig)
 	if err != nil {
 		if errors.Is(err, ErrAlreadyExists) {
 			writeError(w, http.StatusConflict, err.Error())
@@ -168,12 +185,65 @@ func (r SimRegistry) HandleCreateSimulation(w http.ResponseWriter, req *http.Req
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
+		// UC38: per-phase WIP cap validation errors → HTTP 422 Unprocessable
+		// Entity (semantically-valid JSON, domain-rule violation per Go dev
+		// guide §8 Error Translation). 4 sentinel cases all map here.
+		if errors.Is(err, model.ErrCapZero) ||
+			errors.Is(err, model.ErrCapNegative) ||
+			errors.Is(err, model.ErrCapBelowMentorMin) ||
+			errors.Is(err, model.ErrCapConflict) {
+			writeError(w, http.StatusUnprocessableEntity, err.Error())
+			return
+		}
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
 	inst, _ := r.GetInstanceOption(id).Get()
 	respondWithSimulation(w, inst, http.StatusCreated)
+}
+
+// parsePhaseWIPConfig translates a string-keyed PhaseWIPConfig map (REST
+// surface form) into a WorkflowPhase-keyed map (domain form). Returns nil
+// for nil/empty input (preserves regression-safe default). Accepts the
+// canonical WorkflowPhase.String() output AND the slash-free "CICD" alias
+// for "CI/CD"; matching is case-insensitive (consistent with the CLI
+// parser per design.md §"Per-Phase WIP Caps").
+func parsePhaseWIPConfig(in map[string]int) (map[model.WorkflowPhase]int, error) {
+	if len(in) == 0 {
+		return nil, nil
+	}
+	out := make(map[model.WorkflowPhase]int, len(in))
+	for k, v := range in {
+		phase, ok := parsePhaseName(k)
+		if !ok {
+			return nil, fmt.Errorf("unknown phase %q (valid: Research, Sizing, Planning, Implement, Verify, CI/CD or CICD, Review)", k)
+		}
+		out[phase] = v
+	}
+	return out, nil
+}
+
+// parsePhaseName maps an operator-supplied phase string to WorkflowPhase.
+// Case-insensitive; accepts both "CI/CD" and "CICD" for the CI/CD phase.
+func parsePhaseName(s string) (model.WorkflowPhase, bool) {
+	switch strings.ToUpper(s) {
+	case "RESEARCH":
+		return model.PhaseResearch, true
+	case "SIZING":
+		return model.PhaseSizing, true
+	case "PLANNING":
+		return model.PhasePlanning, true
+	case "IMPLEMENT":
+		return model.PhaseImplement, true
+	case "VERIFY":
+		return model.PhaseVerify, true
+	case "CI/CD", "CICD":
+		return model.PhaseCICD, true
+	case "REVIEW":
+		return model.PhaseReview, true
+	}
+	return 0, false
 }
 
 // HandleGetSimulation returns the current state of a simulation.
