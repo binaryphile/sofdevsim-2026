@@ -1512,13 +1512,13 @@ This use case requires event sourcing architecture:
 
 - Simulation initialised with a developer pool
 - Backlog generator supports type-aware emission
-- A per-type phase-effort distribution is registered for each named type in the profile
+- A per-type phase-effort distribution is registered for each of the 5 ship-day types: Feature, Bug, Spike, Migration, Infra.
 
 **Postconditions (Guarantees):**
 
 - *Success:* Manager can observe — via the existing per-phase dwell-time and constraint-identification displays — that the constraint phase reported under one mix profile differs from the constraint phase reported under a contrasting mix profile when developer count and other parameters are held equal. Per-type dwell breakdowns are surfaced in the existing flow-diagnostics view
 - *Failure:* Generator rejects the profile (unknown type, malformed weights) and emits no tickets; previous backlog state is unchanged; manager sees a diagnostic naming the rejected profile
-- *Minimal:* With a single-type "feature only" profile, simulation behaviour is observably equivalent to today's homogeneous-backlog mode (regression-safe default)
+- *Minimal:* With a Feature-only profile (the zero-value default for `TicketType`), simulation behaviour is observably equivalent to today's homogeneous-backlog mode
 
 **Main Success Scenario:**
 
@@ -1530,7 +1530,7 @@ This use case requires event sourcing architecture:
 
 **Extensions:**
 
-- 1a. *Profile weights don't sum to 1.0:* Generator normalises and warns in run log
+- 1a. *Profile weights don't sum to 1.0:* Generator normalises and proceeds; no warning is emitted (today's simulation has no separate run-log surface; normalisation is silent)
 - 1b. *Unknown type name:* Generator rejects profile; lists registered types
 - 3a. *Mix is degenerate (single type):* Behaves as today; lessons subsystem suppresses mix-related teaching
 - 4a. *Constraint doesn't move under contrasting mixes:* System exposes per-type dwell breakdown so the manager can see why (e.g., the dominant type's heaviest phase coincides with the prior constraint)
