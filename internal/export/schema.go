@@ -33,6 +33,13 @@ var (
 		// since sprint-level per-phase WIP averaging is deferred — column is
 		// present for forward-compat with the documented schema).
 		"phase_wip_caps", "phase_avg_wip",
+		// UC39: release mode + TOC analyzer snapshot. release_mode is the
+		// sim's mode at sprint time ("push"|"demand"). constraint_phase is
+		// the TOC analyzer's currently-locked constraint phase name (or
+		// "none" if no constraint locked). buffer_penetration is the
+		// constraint buffer's penetration value [0,1] (or "null" if no
+		// constraint locked).
+		"release_mode", "constraint_phase", "buffer_penetration",
 	}
 
 	IncidentsHeader = []string{
@@ -125,8 +132,10 @@ func formatTicketRow(t model.Ticket, policy model.SizingPolicy, sprintNum int) [
 // sim's UC38 PhaseWIPConfig (serialized as JSON with string keys for
 // portability). phaseAvgWIP is emitted as `null` JSON in UC38 — sprint-
 // level per-phase WIP averaging is deferred (schema reserves the column
-// for forward-compat; matches plan §Commit 11 contract).
-func formatSprintRow(s model.Sprint, ticketsStarted, ticketsCompleted, incidents int, phaseWIPConfig map[model.WorkflowPhase]int) []string {
+// for forward-compat). UC39 appends releaseMode + constraintPhase +
+// bufferPenetration columns; bufferPenetration emits "null" when no
+// constraint is locked.
+func formatSprintRow(s model.Sprint, ticketsStarted, ticketsCompleted, incidents int, phaseWIPConfig map[model.WorkflowPhase]int, releaseMode string, constraintPhase string, bufferPenetration string) []string {
 	return []string{
 		strconv.Itoa(s.Number),
 		strconv.Itoa(s.DurationDays),
@@ -141,6 +150,9 @@ func formatSprintRow(s model.Sprint, ticketsStarted, ticketsCompleted, incidents
 		fmt.Sprintf("%.2f", s.AvgWIP()),
 		serializePhaseWIPConfig(phaseWIPConfig), // UC38 phase_wip_caps
 		"null",                                   // UC38 phase_avg_wip (deferred)
+		releaseMode,                              // UC39 release_mode
+		constraintPhase,                          // UC39 constraint_phase
+		bufferPenetration,                        // UC39 buffer_penetration
 	}
 }
 

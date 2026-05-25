@@ -120,7 +120,16 @@ func (e Exporter) writeSprints(outputDir string) (int, error) {
 			Len()
 		incidents := len(e.sim.ResolvedIncidents) + len(e.sim.OpenIncidents)
 
-		row := formatSprintRow(sprint, ticketsStarted, ticketsCompleted, incidents, e.sim.PhaseWIPConfig)
+		// UC39: TOC snapshot for the constraint_phase + buffer_penetration
+		// columns. ConstraintPhase=PhaseBacklog (zero-value) signals "no
+		// constraint locked yet" → emit "none" + "null" placeholders.
+		constraintPhase := "none"
+		bufferPenetration := "null"
+		if e.tracker.TOC != nil && e.tracker.TOC.ConstraintPhase != model.PhaseBacklog {
+			constraintPhase = e.tracker.TOC.ConstraintPhase.String()
+			bufferPenetration = fmt.Sprintf("%.2f", e.tracker.TOC.Buffer.Penetration)
+		}
+		row := formatSprintRow(sprint, ticketsStarted, ticketsCompleted, incidents, e.sim.PhaseWIPConfig, e.sim.ReleaseMode.String(), constraintPhase, bufferPenetration)
 		if err := writer.Write(row); err != nil {
 			return count, err
 		}

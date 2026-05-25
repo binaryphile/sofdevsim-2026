@@ -10,6 +10,14 @@ type HeaderVM struct {
 	CompletedCount int
 	Seed           int64
 	Width          int
+	// UC39: Mode indicator state. 4 display strings:
+	//   "Mode: push"                     — ReleaseMode == Push
+	//   "Mode: demand (warming)"         — Demand && WarmupActive && !WarmupFailed
+	//   "Mode: demand (push fallback)"   — Demand && WarmupActive && WarmupFailed
+	//   "Mode: demand"                   — Demand && !WarmupActive
+	ReleaseMode  string // canonical "push" or "demand"
+	WarmupActive bool
+	WarmupFailed bool
 }
 
 // HelpVM — data for the help bar.

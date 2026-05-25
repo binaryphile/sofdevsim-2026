@@ -22,6 +22,9 @@ func (a *App) buildHeaderVM() HeaderVM {
 				BacklogCount:   len(sim.Backlog),
 				CompletedCount: len(sim.CompletedTickets),
 				Seed:           sim.Seed,
+				ReleaseMode:    sim.ReleaseMode.String(), // UC39
+				WarmupActive:   sim.WarmupActive,
+				WarmupFailed:   sim.WarmupFailed,
 			}
 		},
 		func(_ ClientMode) HeaderVM {
@@ -31,6 +34,10 @@ func (a *App) buildHeaderVM() HeaderVM {
 				BacklogCount:   a.state.BacklogCount,
 				CompletedCount: a.state.CompletedTicketCount,
 				Seed:           a.state.Seed,
+				// Client mode: state doesn't carry UC39 mode info; default
+				// to push for now (REST resource exposure deferred to a
+				// future polish cycle if operators need it).
+				ReleaseMode: "push",
 			}
 		},
 	)

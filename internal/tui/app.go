@@ -1217,6 +1217,25 @@ func (a *App) View() string {
 	return lipgloss.JoinVertical(lipgloss.Left, header, content, help)
 }
 
+// releaseModeIndicator returns the 4-state Mode display per UC39 plan
+// §"Warmup-failed semantics":
+//   - "Mode: push"                    — ReleaseMode != demand
+//   - "Mode: demand (warming)"        — Demand && WarmupActive && !WarmupFailed
+//   - "Mode: demand (push fallback)"  — Demand && WarmupActive && WarmupFailed
+//   - "Mode: demand"                  — Demand && !WarmupActive
+func releaseModeIndicator(vm HeaderVM) string {
+	if vm.ReleaseMode != "demand" {
+		return "Mode: push"
+	}
+	if vm.WarmupActive {
+		if vm.WarmupFailed {
+			return "Mode: demand (push fallback)"
+		}
+		return "Mode: demand (warming)"
+	}
+	return "Mode: demand"
+}
+
 func renderHeader(vm HeaderVM) string {
 	viewNames := []string{"Planning", "Execution", "Metrics", "Comparison"}
 	tabs := ""
@@ -1234,7 +1253,7 @@ func renderHeader(vm HeaderVM) string {
 		status = "RUNNING"
 	}
 
-	right := MutedStyle.Render(fmt.Sprintf("%s | %s | Day %d | Backlog: %d | Done: %d | Seed %d", policyStr, status, vm.CurrentTick, vm.BacklogCount, vm.CompletedCount, vm.Seed))
+	right := MutedStyle.Render(fmt.Sprintf("%s | %s | %s | Day %d | Backlog: %d | Done: %d | Seed %d", policyStr, releaseModeIndicator(vm), status, vm.CurrentTick, vm.BacklogCount, vm.CompletedCount, vm.Seed))
 
 	return BoxStyle.Width(vm.Width - 2).Render(
 		lipgloss.JoinHorizontal(lipgloss.Top, tabs, "  ", right),
