@@ -635,6 +635,8 @@ func (e DeveloperAdded) WithCausedBy(eventID string) DeveloperAdded {
 }
 
 // TicketCreated is emitted when a ticket is added to the backlog.
+// Version 2 (UC37) adds the Type field. Pre-v2 events decode with
+// Type == TicketTypeFeature (gob zero-value) — regression-safe.
 type TicketCreated struct {
 	Header
 	TicketID      string
@@ -643,10 +645,13 @@ type TicketCreated struct {
 	Understanding model.UnderstandingLevel
 	Priority      model.Priority
 	IntakeStatus  model.IntakeStatus
+	Type          model.TicketType // UC37 (Version 2)
 }
 
 // NewTicketCreated creates a TicketCreated event with proper header.
-func NewTicketCreated(simID string, tick int, ticketID, title string, estimatedDays float64, understanding model.UnderstandingLevel, priority model.Priority, intakeStatus model.IntakeStatus) TicketCreated {
+// Version 2: ticketType param added (UC37). Pass model.TicketTypeFeature
+// for the regression-safe default if callers don't care about type.
+func NewTicketCreated(simID string, tick int, ticketID, title string, estimatedDays float64, understanding model.UnderstandingLevel, priority model.Priority, intakeStatus model.IntakeStatus, ticketType model.TicketType) TicketCreated {
 	return TicketCreated{
 		Header: Header{
 			ID:         nextEventID("TicketCreated"),
@@ -654,7 +659,7 @@ func NewTicketCreated(simID string, tick int, ticketID, title string, estimatedD
 			Type:       "TicketCreated",
 			OccurredAt: tick,
 			DetectedAt: time.Now(),
-			Version:    1,
+			Version:    2,
 		},
 		TicketID:      ticketID,
 		Title:         title,
@@ -662,6 +667,7 @@ func NewTicketCreated(simID string, tick int, ticketID, title string, estimatedD
 		Understanding: understanding,
 		Priority:      priority,
 		IntakeStatus:  intakeStatus,
+		Type:          ticketType,
 	}
 }
 

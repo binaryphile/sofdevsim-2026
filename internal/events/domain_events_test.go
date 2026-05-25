@@ -1,6 +1,8 @@
 package events
 
 import (
+	"bytes"
+	"encoding/gob"
 	"strings"
 	"testing"
 	"time"
@@ -360,7 +362,7 @@ func TestAllConstructors_ReturnExpectedVersion(t *testing.T) {
 		{NewIncidentResolved("s", 0, "i", "d"), 1},
 		{NewDeveloperAdded("s", 0, "d", "name", 1.0), 2},
 		{NewDeveloperAddedWithExperience("s", 0, "d", "name", 1.0, [8]model.ExperienceLevel{}), 2},
-		{NewTicketCreated("s", 0, "t", "title", 5.0, model.HighUnderstanding, model.PriorityNormal, model.IntakeTriaged), 1},
+		{NewTicketCreated("s", 0, "t", "title", 5.0, model.HighUnderstanding, model.PriorityNormal, model.IntakeTriaged, model.TicketTypeFeature), 1},
 		{NewWorkProgressed("s", 0, "t", model.PhaseImplement, 1.0), 1},
 		{NewTicketPhaseChanged("s", 0, "t", model.PhaseImplement, model.PhaseVerify), 1},
 		{NewBufferConsumed("s", 0, 1.0), 1},
@@ -431,5 +433,63 @@ func TestApplyTrace_SetsAllTraceFields(t *testing.T) {
 	// Verify original unchanged (value semantics)
 	if original.TraceID() != "" {
 		t.Errorf("Original should be unchanged, TraceID = %s", original.TraceID())
+	}
+}
+
+// UC37 regression sentinel (cycle #15442 contract criterion 4):
+// TicketCreated v2 must decode pre-v2 (Type-less) gob-encoded events with
+// Type == TicketTypeFeature (zero value). Without this, old saves/event-streams
+// would silently corrupt to invalid Type=0 (which happens to be Feature, but
+// the test enforces the contract regardless).
+func TestTicketCreated_GobBackwardCompat_PreV2DecodesAsFeature(t *testing.T) {
+	// Define a v1-shape struct (TicketCreated minus Type field) inline so we
+	// can simulate gob bytes from before UC37 landed.
+	type ticketCreatedV1 struct {
+		Header
+		TicketID      string
+		Title         string
+		EstimatedDays float64
+		Understanding model.UnderstandingLevel
+		Priority      model.Priority
+		IntakeStatus  model.IntakeStatus
+	}
+
+	v1 := ticketCreatedV1{
+		Header: Header{
+			ID:         "evt-1",
+			SimID:      "sim-1",
+			Type:       "TicketCreated",
+			OccurredAt: 0,
+			DetectedAt: time.Now(),
+			Version:    1,
+		},
+		TicketID:      "TKT-001",
+		Title:         "Legacy ticket",
+		EstimatedDays: 3.0,
+		Understanding: model.HighUnderstanding,
+		Priority:      model.PriorityNormal,
+		IntakeStatus:  model.IntakeTriaged,
+	}
+
+	var buf bytes.Buffer
+	if err := gob.NewEncoder(&buf).Encode(v1); err != nil {
+		t.Fatalf("encode v1: %v", err)
+	}
+
+	var v2 TicketCreated
+	if err := gob.NewDecoder(&buf).Decode(&v2); err != nil {
+		t.Fatalf("decode v1-bytes into v2: %v", err)
+	}
+
+	// Pre-v2 events MUST decode with Type == TicketTypeFeature (gob zero-value).
+	if v2.Type != model.TicketTypeFeature {
+		t.Errorf("v2.Type = %v, want TicketTypeFeature (regression-safe gob zero-value); UC37 backward-compat contract violated", v2.Type)
+	}
+	// Sanity: other fields round-trip intact.
+	if v2.TicketID != "TKT-001" {
+		t.Errorf("v2.TicketID = %q, want TKT-001 (other fields must round-trip)", v2.TicketID)
+	}
+	if v2.Understanding != model.HighUnderstanding {
+		t.Errorf("v2.Understanding = %v, want HighUnderstanding", v2.Understanding)
 	}
 }

@@ -672,7 +672,7 @@ func (e Engine) AddDeveloperWithExperience(id, name string, velocity float64, ex
 // AddTicket adds a ticket to the backlog and emits TicketCreated event.
 // Returns new Engine and error (immutable pattern).
 func (e Engine) AddTicket(t model.Ticket) (Engine, error) {
-	return e.emit(events.NewTicketCreated(e.state().ID, e.state().CurrentTick, t.ID, t.Title, t.EstimatedDays, t.UnderstandingLevel, t.Priority, t.IntakeStatus))
+	return e.emit(events.NewTicketCreated(e.state().ID, e.state().CurrentTick, t.ID, t.Title, t.EstimatedDays, t.UnderstandingLevel, t.Priority, t.IntakeStatus, t.Type))
 }
 
 // SetPolicy changes the sizing policy and emits PolicyChanged event.
@@ -731,7 +731,7 @@ func (e Engine) emitLoadedTeam(sim model.Simulation) (Engine, error) {
 func (e Engine) emitLoadedBacklog(sim model.Simulation) (Engine, error) {
 	var err error
 	for _, t := range sim.Backlog { // justified:EP
-		if e, err = e.emit(events.NewTicketCreated(e.state().ID, 0, t.ID, t.Title, t.EstimatedDays, t.UnderstandingLevel, t.Priority, t.IntakeStatus)); err != nil {
+		if e, err = e.emit(events.NewTicketCreated(e.state().ID, 0, t.ID, t.Title, t.EstimatedDays, t.UnderstandingLevel, t.Priority, t.IntakeStatus, t.Type)); err != nil {
 			return e, err
 		}
 	}
@@ -743,7 +743,7 @@ func (e Engine) emitLoadedBacklog(sim model.Simulation) (Engine, error) {
 func (e Engine) emitLoadedActiveTickets(sim model.Simulation) (Engine, error) {
 	var err error
 	for _, t := range sim.ActiveTickets { // justified:EP
-		if e, err = e.emit(events.NewTicketCreated(e.state().ID, 0, t.ID, t.Title, t.EstimatedDays, t.UnderstandingLevel, t.Priority, t.IntakeStatus)); err != nil {
+		if e, err = e.emit(events.NewTicketCreated(e.state().ID, 0, t.ID, t.Title, t.EstimatedDays, t.UnderstandingLevel, t.Priority, t.IntakeStatus, t.Type)); err != nil {
 			return e, err
 		}
 		if e, err = e.emit(events.NewTicketStateRestored(e.state().ID, t.StartedTick, t.ID, t.AssignedTo, t.Phase, t.RemainingEffort, t.ActualDays, t.StartedAt)); err != nil {
@@ -756,7 +756,7 @@ func (e Engine) emitLoadedActiveTickets(sim model.Simulation) (Engine, error) {
 func (e Engine) emitLoadedCompletedTickets(sim model.Simulation) (Engine, error) {
 	var err error
 	for _, t := range sim.CompletedTickets { // justified:EP
-		if e, err = e.emit(events.NewTicketCreated(e.state().ID, 0, t.ID, t.Title, t.EstimatedDays, t.UnderstandingLevel, t.Priority, t.IntakeStatus)); err != nil {
+		if e, err = e.emit(events.NewTicketCreated(e.state().ID, 0, t.ID, t.Title, t.EstimatedDays, t.UnderstandingLevel, t.Priority, t.IntakeStatus, t.Type)); err != nil {
 			return e, err
 		}
 		if e, err = e.emit(events.NewTicketAssigned(e.state().ID, t.StartedTick, t.ID, t.AssignedTo, model.PhaseResearch, t.StartedAt)); err != nil {

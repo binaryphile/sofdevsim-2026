@@ -92,11 +92,14 @@ func (p Projection) Apply(evt Event) Projection {
 		})
 
 	case TicketCreated:
+		// UC37: e.Type carries the ticket type. For pre-v2 events the field is
+		// gob zero-value (TicketTypeFeature) — regression-safe.
 		next.sim.Backlog = append(next.sim.Backlog, model.Ticket{
 			ID:                 e.TicketID,
 			Title:              e.Title,
 			EstimatedDays:      e.EstimatedDays,
 			UnderstandingLevel: e.Understanding,
+			Type:               e.Type,
 			Phase:              model.PhaseBacklog,
 			PhaseEffortSpent:   make(map[model.WorkflowPhase]float64),
 			Priority:           e.Priority,

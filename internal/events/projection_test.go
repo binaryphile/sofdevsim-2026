@@ -87,7 +87,7 @@ func TestProjection_Apply_TicketCreated(t *testing.T) {
 	proj := events.NewProjection()
 	proj = proj.Apply(events.NewSimulationCreated("sim-1", 0, events.SimConfig{Seed: 42}))
 
-	evt := events.NewTicketCreated("sim-1", 0, "TKT-001", "Fix bug", 3.0, model.MediumUnderstanding, model.PriorityNormal, model.IntakeTriaged)
+	evt := events.NewTicketCreated("sim-1", 0, "TKT-001", "Fix bug", 3.0, model.MediumUnderstanding, model.PriorityNormal, model.IntakeTriaged, model.TicketTypeFeature)
 	got := proj.Apply(evt)
 
 	state := got.State()
@@ -150,7 +150,7 @@ func TestProjection_Apply_TicketAssigned(t *testing.T) {
 	proj := events.NewProjection()
 	proj = proj.Apply(events.NewSimulationCreated("sim-1", 0, events.SimConfig{Seed: 42}))
 	proj = proj.Apply(events.NewDeveloperAdded("sim-1", 0, "dev-1", "Alice", 1.0))
-	proj = proj.Apply(events.NewTicketCreated("sim-1", 0, "TKT-001", "Fix bug", 3.0, model.MediumUnderstanding, model.PriorityNormal, model.IntakeTriaged))
+	proj = proj.Apply(events.NewTicketCreated("sim-1", 0, "TKT-001", "Fix bug", 3.0, model.MediumUnderstanding, model.PriorityNormal, model.IntakeTriaged, model.TicketTypeFeature))
 
 	// Assign at tick 5
 	startedAt := time.Now()
@@ -188,7 +188,7 @@ func TestProjection_Apply_WorkProgressed(t *testing.T) {
 	proj := events.NewProjection()
 	proj = proj.Apply(events.NewSimulationCreated("sim-1", 0, events.SimConfig{Seed: 42}))
 	proj = proj.Apply(events.NewDeveloperAdded("sim-1", 0, "dev-1", "Alice", 1.0))
-	proj = proj.Apply(events.NewTicketCreated("sim-1", 0, "TKT-001", "Fix bug", 3.0, model.MediumUnderstanding, model.PriorityNormal, model.IntakeTriaged))
+	proj = proj.Apply(events.NewTicketCreated("sim-1", 0, "TKT-001", "Fix bug", 3.0, model.MediumUnderstanding, model.PriorityNormal, model.IntakeTriaged, model.TicketTypeFeature))
 	proj = proj.Apply(events.NewTicketAssigned("sim-1", 0, "TKT-001", "dev-1", model.PhaseResearch, time.Time{}))
 
 	// Get initial remaining effort
@@ -218,7 +218,7 @@ func TestProjection_Apply_WorkProgressed_MultiplePhases(t *testing.T) {
 	proj := events.NewProjection()
 	proj = proj.Apply(events.NewSimulationCreated("sim-1", 0, events.SimConfig{Seed: 42}))
 	proj = proj.Apply(events.NewDeveloperAdded("sim-1", 0, "dev-1", "Alice", 1.0))
-	proj = proj.Apply(events.NewTicketCreated("sim-1", 0, "TKT-001", "Fix bug", 3.0, model.MediumUnderstanding, model.PriorityNormal, model.IntakeTriaged))
+	proj = proj.Apply(events.NewTicketCreated("sim-1", 0, "TKT-001", "Fix bug", 3.0, model.MediumUnderstanding, model.PriorityNormal, model.IntakeTriaged, model.TicketTypeFeature))
 	proj = proj.Apply(events.NewTicketAssigned("sim-1", 0, "TKT-001", "dev-1", model.PhaseResearch, time.Time{}))
 
 	// Work in Research phase
@@ -253,7 +253,7 @@ func TestProjection_Apply_TicketCompleted(t *testing.T) {
 	proj := events.NewProjection()
 	proj = proj.Apply(events.NewSimulationCreated("sim-1", 0, events.SimConfig{Seed: 42}))
 	proj = proj.Apply(events.NewDeveloperAdded("sim-1", 0, "dev-1", "Alice", 1.0))
-	proj = proj.Apply(events.NewTicketCreated("sim-1", 0, "TKT-001", "Fix bug", 3.0, model.MediumUnderstanding, model.PriorityNormal, model.IntakeTriaged))
+	proj = proj.Apply(events.NewTicketCreated("sim-1", 0, "TKT-001", "Fix bug", 3.0, model.MediumUnderstanding, model.PriorityNormal, model.IntakeTriaged, model.TicketTypeFeature))
 	proj = proj.Apply(events.NewTicketAssigned("sim-1", 0, "TKT-001", "dev-1", model.PhaseResearch, time.Time{}))
 
 	evt := events.NewTicketCompleted("sim-1", 3, "TKT-001", "dev-1", 3.0)
@@ -322,8 +322,8 @@ func TestProjection_Apply_BufferConsumed_FeverTransitions(t *testing.T) {
 	proj = proj.Apply(events.NewSprintStarted("sim-1", 0, 1, 10.0)) // 10 buffer days
 
 	// Create 2 tickets with 5 days each = 10 total days of work
-	proj = proj.Apply(events.NewTicketCreated("sim-1", 0, "T-1", "Test Ticket 1", 5.0, model.HighUnderstanding, model.PriorityNormal, model.IntakeTriaged))
-	proj = proj.Apply(events.NewTicketCreated("sim-1", 0, "T-2", "Test Ticket 2", 5.0, model.HighUnderstanding, model.PriorityNormal, model.IntakeTriaged))
+	proj = proj.Apply(events.NewTicketCreated("sim-1", 0, "T-1", "Test Ticket 1", 5.0, model.HighUnderstanding, model.PriorityNormal, model.IntakeTriaged, model.TicketTypeFeature))
+	proj = proj.Apply(events.NewTicketCreated("sim-1", 0, "T-2", "Test Ticket 2", 5.0, model.HighUnderstanding, model.PriorityNormal, model.IntakeTriaged, model.TicketTypeFeature))
 
 	// Assign BOTH tickets to sprint (adds them to sprint.Tickets)
 	proj = proj.Apply(events.NewTicketAssigned("sim-1", 1, "T-1", "dev-1", model.PhaseResearch, time.Time{}))
@@ -687,8 +687,8 @@ func TestProjection_Apply_DivergentProjections(t *testing.T) {
 	base := events.NewProjection()
 	base = base.Apply(events.NewSimulationCreated("sim-1", 0, events.SimConfig{Seed: 42}))
 	base = base.Apply(events.NewDeveloperAdded("sim-1", 0, "dev-1", "Alice", 1.0))
-	base = base.Apply(events.NewTicketCreated("sim-1", 0, "T-1", "Ticket 1", 5.0, model.HighUnderstanding, model.PriorityNormal, model.IntakeTriaged))
-	base = base.Apply(events.NewTicketCreated("sim-1", 0, "T-2", "Ticket 2", 5.0, model.HighUnderstanding, model.PriorityNormal, model.IntakeTriaged))
+	base = base.Apply(events.NewTicketCreated("sim-1", 0, "T-1", "Ticket 1", 5.0, model.HighUnderstanding, model.PriorityNormal, model.IntakeTriaged, model.TicketTypeFeature))
+	base = base.Apply(events.NewTicketCreated("sim-1", 0, "T-2", "Ticket 2", 5.0, model.HighUnderstanding, model.PriorityNormal, model.IntakeTriaged, model.TicketTypeFeature))
 	base = base.Apply(events.NewTicketAssigned("sim-1", 1, "T-1", "dev-1", model.PhaseResearch, time.Time{}))
 	base = base.Apply(events.NewTicketAssigned("sim-1", 1, "T-2", "dev-1", model.PhaseResearch, time.Time{}))
 
@@ -860,7 +860,7 @@ func TestProjection_Apply_TicketDecomposed(t *testing.T) {
 	// Setup: create simulation with a parent ticket in backlog
 	proj := events.NewProjection()
 	proj = proj.Apply(events.NewSimulationCreated("sim-1", 0, events.SimConfig{Seed: 42}))
-	proj = proj.Apply(events.NewTicketCreated("sim-1", 0, "TKT-PARENT", "Big feature", 10.0, model.LowUnderstanding, model.PriorityNormal, model.IntakeTriaged))
+	proj = proj.Apply(events.NewTicketCreated("sim-1", 0, "TKT-PARENT", "Big feature", 10.0, model.LowUnderstanding, model.PriorityNormal, model.IntakeTriaged, model.TicketTypeFeature))
 
 	// Verify parent is in backlog
 	if len(proj.State().Backlog) != 1 {
@@ -921,7 +921,7 @@ func TestProjection_Apply_BugDiscovered(t *testing.T) {
 			proj := events.NewProjection()
 			proj = proj.Apply(events.NewSimulationCreated("sim-1", 0, events.SimConfig{Seed: 42}))
 			proj = proj.Apply(events.NewDeveloperAdded("sim-1", 0, "dev-1", "Alice", 1.0))
-			proj = proj.Apply(events.NewTicketCreated("sim-1", 0, "TKT-001", "Fix bug", 5.0, model.MediumUnderstanding, model.PriorityNormal, model.IntakeTriaged))
+			proj = proj.Apply(events.NewTicketCreated("sim-1", 0, "TKT-001", "Fix bug", 5.0, model.MediumUnderstanding, model.PriorityNormal, model.IntakeTriaged, model.TicketTypeFeature))
 			proj = proj.Apply(events.NewTicketAssigned("sim-1", 1, "TKT-001", "dev-1", model.PhaseResearch, time.Time{}))
 
 			// Get RemainingEffort after assignment (calculated from phase effort)
@@ -963,7 +963,7 @@ func TestProjection_Apply_ScopeCreepOccurred(t *testing.T) {
 			proj := events.NewProjection()
 			proj = proj.Apply(events.NewSimulationCreated("sim-1", 0, events.SimConfig{Seed: 42}))
 			proj = proj.Apply(events.NewDeveloperAdded("sim-1", 0, "dev-1", "Alice", 1.0))
-			proj = proj.Apply(events.NewTicketCreated("sim-1", 0, "TKT-001", "Feature", 5.0, model.MediumUnderstanding, model.PriorityNormal, model.IntakeTriaged))
+			proj = proj.Apply(events.NewTicketCreated("sim-1", 0, "TKT-001", "Feature", 5.0, model.MediumUnderstanding, model.PriorityNormal, model.IntakeTriaged, model.TicketTypeFeature))
 			proj = proj.Apply(events.NewTicketAssigned("sim-1", 1, "TKT-001", "dev-1", model.PhaseResearch, time.Time{}))
 
 			// Get values after assignment
@@ -1031,7 +1031,7 @@ func TestProjection_CalculateSprintProgress(t *testing.T) {
 			for i := 0; i < tt.sprintActive; i++ {
 				ticketNum++
 				id := fmt.Sprintf("T-SPRINT-%d", ticketNum)
-				proj = proj.Apply(events.NewTicketCreated("sim-1", 0, id, "Sprint Active", 5.0, model.HighUnderstanding, model.PriorityNormal, model.IntakeTriaged))
+				proj = proj.Apply(events.NewTicketCreated("sim-1", 0, id, "Sprint Active", 5.0, model.HighUnderstanding, model.PriorityNormal, model.IntakeTriaged, model.TicketTypeFeature))
 				proj = proj.Apply(events.NewTicketAssigned("sim-1", 1, id, "dev-1", model.PhaseResearch, time.Time{})) // During sprint
 			}
 
@@ -1039,7 +1039,7 @@ func TestProjection_CalculateSprintProgress(t *testing.T) {
 			for i := 0; i < tt.sprintDone; i++ {
 				ticketNum++
 				id := fmt.Sprintf("T-SPRINT-DONE-%d", ticketNum)
-				proj = proj.Apply(events.NewTicketCreated("sim-1", 0, id, "Sprint Done", 5.0, model.HighUnderstanding, model.PriorityNormal, model.IntakeTriaged))
+				proj = proj.Apply(events.NewTicketCreated("sim-1", 0, id, "Sprint Done", 5.0, model.HighUnderstanding, model.PriorityNormal, model.IntakeTriaged, model.TicketTypeFeature))
 				proj = proj.Apply(events.NewTicketAssigned("sim-1", 1, id, "dev-1", model.PhaseResearch, time.Time{})) // During sprint
 				proj = proj.Apply(events.NewTicketCompleted("sim-1", 5, id, "dev-1", 5.0))
 			}
@@ -1075,7 +1075,7 @@ func TestProjection_CalculateSprintProgress_IgnoresOtherTickets(t *testing.T) {
 	// Create and complete tickets BEFORE sprint starts (not in sprint)
 	for i := 0; i < 3; i++ { // justified:SM
 		id := fmt.Sprintf("T-BEFORE-%d", i)
-		proj = proj.Apply(events.NewTicketCreated("sim-1", 0, id, "Before Sprint", 5.0, model.HighUnderstanding, model.PriorityNormal, model.IntakeTriaged))
+		proj = proj.Apply(events.NewTicketCreated("sim-1", 0, id, "Before Sprint", 5.0, model.HighUnderstanding, model.PriorityNormal, model.IntakeTriaged, model.TicketTypeFeature))
 		proj = proj.Apply(events.NewTicketAssigned("sim-1", 0, id, "dev-1", model.PhaseResearch, time.Time{}))
 		proj = proj.Apply(events.NewTicketCompleted("sim-1", 0, id, "dev-1", 5.0))
 	}
@@ -1084,7 +1084,7 @@ func TestProjection_CalculateSprintProgress_IgnoresOtherTickets(t *testing.T) {
 	proj = proj.Apply(events.NewSprintStarted("sim-1", 1, 1, 10.0))
 
 	// Add one ticket to sprint (active)
-	proj = proj.Apply(events.NewTicketCreated("sim-1", 1, "T-SPRINT-1", "Sprint", 5.0, model.HighUnderstanding, model.PriorityNormal, model.IntakeTriaged))
+	proj = proj.Apply(events.NewTicketCreated("sim-1", 1, "T-SPRINT-1", "Sprint", 5.0, model.HighUnderstanding, model.PriorityNormal, model.IntakeTriaged, model.TicketTypeFeature))
 	proj = proj.Apply(events.NewTicketAssigned("sim-1", 2, "T-SPRINT-1", "dev-1", model.PhaseResearch, time.Time{}))
 
 	// Complete it
@@ -1159,7 +1159,7 @@ func TestProjection_Apply_IncidentStarted_Enhanced(t *testing.T) {
 			proj := events.NewProjection()
 			proj = proj.Apply(events.NewSimulationCreated("sim-1", 0, events.SimConfig{Seed: 42}))
 			proj = proj.Apply(events.NewDeveloperAdded("sim-1", 0, "dev-1", "Alice", 1.0))
-			proj = proj.Apply(events.NewTicketCreated("sim-1", 0, "TKT-001", "Feature", 3.0, model.MediumUnderstanding, model.PriorityNormal, model.IntakeTriaged))
+			proj = proj.Apply(events.NewTicketCreated("sim-1", 0, "TKT-001", "Feature", 3.0, model.MediumUnderstanding, model.PriorityNormal, model.IntakeTriaged, model.TicketTypeFeature))
 			proj = proj.Apply(events.NewTicketAssigned("sim-1", 1, "TKT-001", "dev-1", model.PhaseResearch, time.Time{}))
 			proj = proj.Apply(events.NewTicketCompleted("sim-1", 5, "TKT-001", "dev-1", 3.0))
 
