@@ -29,6 +29,7 @@ func main() {
 	mix := flag.String("mix", "healthy", "Backlog mix profile (UC37): healthy|overloaded|uncertain|mixed|uc37-default|bug-heavy|migration-quarter|infra-push|research-shop")
 	phaseWIP := flag.String("phase-wip", "", "Per-phase WIP caps (UC38): comma-separated phase=cap, e.g. 'Implement=4,Verify=2,CICD=1,Review=2'. Empty = unlimited (regression-safe)")
 	phaseWIPProfile := flag.String("phase-wip-profile", "", "Bundled phase-WIP profile (UC38): uncapped|balanced. Mutually exclusive with --phase-wip when both nonempty")
+	releaseMode := flag.String("release-mode", "push", "Release controller mode (UC39): push|demand. Demand mode requires warm-up before dripping; falls back to push if analyzer can't lock constraint within 5 sprints")
 	flag.Parse()
 
 	// UC37: validate --mix upfront (registry will also reject unknown names, but
@@ -51,6 +52,15 @@ func main() {
 		os.Exit(1)
 	}
 	phaseWIPConfig, err := parsePhaseWIPFlags(*phaseWIP, *phaseWIPProfile)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
+		os.Exit(1)
+	}
+
+	// UC39: parse --release-mode upfront. Syntax-only checking here;
+	// semantic validation (the enum value itself) flows through
+	// registry.CreateSimulation per Decision E single-pass validation.
+	parsedReleaseMode, err := model.ParseReleaseMode(*releaseMode)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
 		os.Exit(1)
@@ -109,7 +119,7 @@ func main() {
 		// HTTP client mode: create simulation via API
 		client := tui.NewClient(baseURL)
 
-		resp, err := client.CreateSimulation(*seed, "dora-strict", *mix, phaseWIPConfigStringKeys(phaseWIPConfig))
+		resp, err := client.CreateSimulation(*seed, "dora-strict", *mix, phaseWIPConfigStringKeys(phaseWIPConfig), parsedReleaseMode.String())
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Failed to create simulation: %v\n", err)
 			os.Exit(1)
@@ -122,7 +132,7 @@ func main() {
 			// No server started, create standalone registry
 			registry = api.NewSimRegistry()
 		}
-		app = tui.NewAppWithRegistry(*seed, registry.SimRegistry, *mix, phaseWIPConfig)
+		app = tui.NewAppWithRegistry(*seed, registry.SimRegistry, *mix, phaseWIPConfig, parsedReleaseMode)
 	}
 
 	app.EnableOpeningAnimation()

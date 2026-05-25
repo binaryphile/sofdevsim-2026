@@ -18,7 +18,7 @@ func BenchmarkClient_CreateSimulation(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_, err := client.CreateSimulation(int64(i), "", "", nil)
+		_, err := client.CreateSimulation(int64(i), "", "", nil, "")
 		if err != nil {
 			b.Fatalf("CreateSimulation failed: %v", err)
 		}
@@ -35,7 +35,7 @@ func BenchmarkClient_Tick(b *testing.B) {
 	client := NewClient(srv.URL)
 
 	// Create simulation and start sprint
-	resp, err := client.CreateSimulation(42, "", "", nil)
+	resp, err := client.CreateSimulation(42, "", "", nil, "")
 	if err != nil {
 		b.Fatalf("CreateSimulation failed: %v", err)
 	}
@@ -62,7 +62,7 @@ func BenchmarkClient_Assign(b *testing.B) {
 	client := NewClient(srv.URL)
 
 	// Create simulation
-	resp, err := client.CreateSimulation(42, "", "", nil)
+	resp, err := client.CreateSimulation(42, "", "", nil, "")
 	if err != nil {
 		b.Fatalf("CreateSimulation failed: %v", err)
 	}

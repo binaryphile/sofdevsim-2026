@@ -12,6 +12,7 @@ import (
 	"github.com/binaryphile/fluentfp/slice"
 	"github.com/binaryphile/sofdevsim-2026/internal/api"
 	"github.com/binaryphile/sofdevsim-2026/internal/events"
+	"github.com/binaryphile/sofdevsim-2026/internal/model"
 	"github.com/binaryphile/sofdevsim-2026/internal/office"
 	"github.com/binaryphile/sofdevsim-2026/internal/registry"
 	tea "github.com/charmbracelet/bubbletea"
@@ -91,7 +92,7 @@ func TestSprintEndsWhenDurationReached(t *testing.T) {
 // TestNewAppWithRegistry_SubscribesToEvents verifies TUI subscribes to event store.
 func TestNewAppWithRegistry_SubscribesToEvents(t *testing.T) {
 	reg := registry.NewSimRegistry()
-	app := NewAppWithRegistry(42, reg, "", nil)
+	app := NewAppWithRegistry(42, reg, "", nil, model.ReleaseModePush)
 	eng, _ := app.mode.GetLeft()
 
 	// TUI should have a subscription channel
@@ -113,7 +114,7 @@ func TestNewAppWithRegistry_SubscribesToEvents(t *testing.T) {
 // Tests ALL SimInstance fields at initialization (Khorikov: test boundary conditions).
 func TestNewAppWithRegistry_RegistryHasPopulatedState(t *testing.T) {
 	reg := registry.NewSimRegistry()
-	_ = NewAppWithRegistry(42, reg, "", nil)
+	_ = NewAppWithRegistry(42, reg, "", nil, model.ReleaseModePush)
 
 	// API queries the registry - should see TUI's populated simulation
 	inst, ok := reg.GetInstanceOption("sim-42").Get()
@@ -149,7 +150,7 @@ func TestNewAppWithRegistry_RegistryHasPopulatedState(t *testing.T) {
 // Integration test: TUI creates simulation, HTTP endpoint returns it with all developers.
 func TestNewAppWithRegistry_HTTPCanSeeTUISimulation(t *testing.T) {
 	reg := api.NewSimRegistry()
-	_ = NewAppWithRegistry(42, reg.SimRegistry, "", nil)
+	_ = NewAppWithRegistry(42, reg.SimRegistry, "", nil, model.ReleaseModePush)
 
 	// Start HTTP server with shared registry
 	router := api.NewRouter(reg)
@@ -201,7 +202,7 @@ func TestNewAppWithSeed_ProjectionHasInitialState(t *testing.T) {
 // to the local projection, updates office animations, and sets status messages.
 func TestTUI_ReceivesExternalEvents(t *testing.T) {
 	reg := registry.NewSimRegistry()
-	app := NewAppWithRegistry(42, reg, "", nil)
+	app := NewAppWithRegistry(42, reg, "", nil, model.ReleaseModePush)
 
 	// drainAndApply reads all buffered events from subscription and applies them via handler.
 	// Returns the last event type seen, or "" if no events.
@@ -306,7 +307,7 @@ func TestTUI_ReceivesExternalEvents(t *testing.T) {
 // subscription are deduplicated and recorded as EventDeduplicated input events.
 func TestTUI_SelfEventDedup_RecordsInputEvent(t *testing.T) {
 	reg := registry.NewSimRegistry()
-	app := NewAppWithRegistry(42, reg, "", nil)
+	app := NewAppWithRegistry(42, reg, "", nil, model.ReleaseModePush)
 
 	// TUI starts sprint locally (self-event: TUI is the writer)
 	eng, _ := app.mode.GetLeft()
@@ -349,7 +350,7 @@ func TestTUI_SelfEventDedup_RecordsInputEvent(t *testing.T) {
 // behind the engine's back so engine's expected version is stale.
 func TestTUI_TickConflict_RecordsInputEvent(t *testing.T) {
 	reg := registry.NewSimRegistry()
-	app := NewAppWithRegistry(42, reg, "", nil)
+	app := NewAppWithRegistry(42, reg, "", nil, model.ReleaseModePush)
 
 	// Start sprint so Tick() will emit events (and hit the store)
 	eng, _ := app.mode.GetLeft()
@@ -389,7 +390,7 @@ func TestApp_UsesHTTPClient(t *testing.T) {
 	client := NewClient(srv.URL)
 
 	// Create simulation via HTTP
-	createResp, err := client.CreateSimulation(42, "dora-strict", "", nil)
+	createResp, err := client.CreateSimulation(42, "dora-strict", "", nil, "")
 	if err != nil {
 		t.Fatalf("CreateSimulation failed: %v", err)
 	}
@@ -438,7 +439,7 @@ func TestApp_DisablesWhileInFlight(t *testing.T) {
 	defer srv.Close()
 
 	client := NewClient(srv.URL)
-	createResp, err := client.CreateSimulation(42, "dora-strict", "", nil)
+	createResp, err := client.CreateSimulation(42, "dora-strict", "", nil, "")
 	if err != nil {
 		t.Fatalf("CreateSimulation failed: %v", err)
 	}
@@ -472,7 +473,7 @@ func TestApp_HasClientMode(t *testing.T) {
 	defer srv.Close()
 
 	client := NewClient(srv.URL)
-	createResp, err := client.CreateSimulation(42, "dora-strict", "", nil)
+	createResp, err := client.CreateSimulation(42, "dora-strict", "", nil, "")
 	if err != nil {
 		t.Fatalf("CreateSimulation failed: %v", err)
 	}
@@ -509,7 +510,7 @@ func TestApp_UC19TriggerIntegration(t *testing.T) {
 	defer srv.Close()
 
 	client := NewClient(srv.URL)
-	createResp, err := client.CreateSimulation(42, "dora-strict", "", nil)
+	createResp, err := client.CreateSimulation(42, "dora-strict", "", nil, "")
 	if err != nil {
 		t.Fatalf("CreateSimulation failed: %v", err)
 	}
@@ -579,7 +580,7 @@ func TestApp_UC20TriggerIntegration(t *testing.T) {
 	defer srv.Close()
 
 	client := NewClient(srv.URL)
-	createResp, err := client.CreateSimulation(42, "dora-strict", "", nil)
+	createResp, err := client.CreateSimulation(42, "dora-strict", "", nil, "")
 	if err != nil {
 		t.Fatalf("CreateSimulation failed: %v", err)
 	}
@@ -637,7 +638,7 @@ func TestApp_RecordsInputEvents_ClientMode(t *testing.T) {
 	defer srv.Close()
 
 	client := NewClient(srv.URL)
-	createResp, err := client.CreateSimulation(42, "dora-strict", "", nil)
+	createResp, err := client.CreateSimulation(42, "dora-strict", "", nil, "")
 	if err != nil {
 		t.Fatalf("CreateSimulation failed: %v", err)
 	}
@@ -668,7 +669,7 @@ func TestApp_UC21TriggerIntegration(t *testing.T) {
 	defer srv.Close()
 
 	client := NewClient(srv.URL)
-	createResp, err := client.CreateSimulation(42, "dora-strict", "", nil)
+	createResp, err := client.CreateSimulation(42, "dora-strict", "", nil, "")
 	if err != nil {
 		t.Fatalf("CreateSimulation failed: %v", err)
 	}
@@ -720,7 +721,7 @@ func TestApp_UC22TriggerIntegration(t *testing.T) {
 	defer srv.Close()
 
 	client := NewClient(srv.URL)
-	createResp, err := client.CreateSimulation(42, "dora-strict", "", nil)
+	createResp, err := client.CreateSimulation(42, "dora-strict", "", nil, "")
 	if err != nil {
 		t.Fatalf("CreateSimulation failed: %v", err)
 	}
@@ -789,7 +790,7 @@ func TestApp_UC23TriggerIntegration(t *testing.T) {
 	defer srv.Close()
 
 	client := NewClient(srv.URL)
-	createResp, err := client.CreateSimulation(42, "dora-strict", "", nil)
+	createResp, err := client.CreateSimulation(42, "dora-strict", "", nil, "")
 	if err != nil {
 		t.Fatalf("CreateSimulation failed: %v", err)
 	}
@@ -973,7 +974,7 @@ func TestWorkflow_SprintCycle_ClientMode(t *testing.T) {
 	defer srv.Close()
 
 	client := NewClient(srv.URL)
-	createResp, err := client.CreateSimulation(42, "dora-strict", "", nil)
+	createResp, err := client.CreateSimulation(42, "dora-strict", "", nil, "")
 	if err != nil {
 		t.Fatalf("CreateSimulation failed: %v", err)
 	}
@@ -1065,7 +1066,7 @@ func TestWorkflow_PolicyComparison(t *testing.T) {
 // UC35: Claude queries /office endpoint to see TUI animation state.
 func TestTUI_SyncsOfficeToRegistry(t *testing.T) {
 	reg := registry.NewSimRegistry()
-	app := NewAppWithRegistry(42, reg, "", nil)
+	app := NewAppWithRegistry(42, reg, "", nil, model.ReleaseModePush)
 
 	// Start sprint and assign ticket
 	eng, _ := app.mode.GetLeft()
@@ -1103,7 +1104,7 @@ func TestTUI_SyncsOfficeToRegistry(t *testing.T) {
 // Tests that transitions recorded during tick are synced to registry.
 func TestTUI_SyncsOfficeOnTick(t *testing.T) {
 	reg := registry.NewSimRegistry()
-	app := NewAppWithRegistry(42, reg, "", nil)
+	app := NewAppWithRegistry(42, reg, "", nil, model.ReleaseModePush)
 
 	// Start sprint and assign ticket
 	eng, _ := app.mode.GetLeft()
@@ -1144,7 +1145,7 @@ func TestTUI_SyncsOfficeOnTick(t *testing.T) {
 // TestTUI_SyncsOfficeOnSprintEnd verifies DevEnteredConference syncs when sprint ends.
 func TestTUI_SyncsOfficeOnSprintEnd(t *testing.T) {
 	reg := registry.NewSimRegistry()
-	app := NewAppWithRegistry(42, reg, "", nil)
+	app := NewAppWithRegistry(42, reg, "", nil, model.ReleaseModePush)
 
 	// Start sprint and assign ticket
 	eng, _ := app.mode.GetLeft()

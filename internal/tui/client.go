@@ -39,6 +39,8 @@ type CreateSimulationRequest struct {
 	// (Research, Sizing, Planning, Implement, Verify, "CI/CD" or "CICD",
 	// Review). nil/omitted → unlimited (regression-safe).
 	PhaseWIPConfig map[string]int `json:"phaseWIPConfig,omitempty"`
+	// UC39: release mode; "push" (default) or "demand". Empty/omitted → push.
+	ReleaseMode string `json:"releaseMode,omitempty"`
 }
 
 // TicketState mirrors api.TicketState for client-side decoding.
@@ -144,12 +146,14 @@ type CreateSimulationResponse struct {
 // UC37: scenarioName selects the backlog mix profile (default "healthy" preserves
 // pre-UC37 behaviour for callers passing ""). Pass one of the 9 registered scenarios.
 // UC38: phaseWIPConfig nil/empty preserves regression-safe unlimited defaults.
-func (c Client) CreateSimulation(seed int64, policy, scenarioName string, phaseWIPConfig map[string]int) (*CreateSimulationResponse, error) {
+// UC39: releaseMode "" defaults to "push" (regression-safe per ParseReleaseMode).
+func (c Client) CreateSimulation(seed int64, policy, scenarioName string, phaseWIPConfig map[string]int, releaseMode string) (*CreateSimulationResponse, error) {
 	body := CreateSimulationRequest{
 		Seed:           seed,
 		Policy:         policy,
 		ScenarioName:   scenarioName,
 		PhaseWIPConfig: phaseWIPConfig,
+		ReleaseMode:    releaseMode,
 	}
 	jsonBody, err := json.Marshal(body)
 	if err != nil {

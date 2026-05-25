@@ -135,7 +135,7 @@ type httpResultMsg struct {
 // If seed is 0, uses current time for randomness.
 // Deprecated: Use NewAppWithRegistry for shared simulation access.
 func NewAppWithSeed(seed int64) *App {
-	return NewAppWithRegistry(seed, nil, "", nil) // nil = standalone mode + unlimited WIP
+	return NewAppWithRegistry(seed, nil, "", nil, model.ReleaseModePush) // nil = standalone mode + unlimited WIP + push mode default
 }
 
 // NewAppWithRegistry creates a new App that shares simulations via the registry.
@@ -152,7 +152,12 @@ func NewAppWithSeed(seed int64) *App {
 // Decision D); validation is performed upstream (registry.CreateSimulation
 // or main.go CLI parse). The map flows into SimConfig.PhaseWIPConfig and
 // reaches the projection via the SimulationCreated event payload.
-func NewAppWithRegistry(seed int64, reg *registry.SimRegistry, scenarioName string, phaseWIPConfig map[model.WorkflowPhase]int) *App {
+//
+// UC39: releaseMode ReleaseModePush zero-value = regression-safe (current
+// commit-then-flow behavior). ReleaseModeDemand activates the release
+// controller per the UC39 state machine. Immutable per simulation in UC39;
+// UC40 may add a runtime toggle.
+func NewAppWithRegistry(seed int64, reg *registry.SimRegistry, scenarioName string, phaseWIPConfig map[model.WorkflowPhase]int, releaseMode model.ReleaseMode) *App {
 	if seed == 0 {
 		seed = time.Now().UnixNano()
 	}
@@ -182,6 +187,7 @@ func NewAppWithRegistry(seed int64, reg *registry.SimRegistry, scenarioName stri
 		SprintLength:   sim.SprintLength,
 		Seed:           sim.Seed,
 		PhaseWIPConfig: phaseWIPConfig, // UC38: nil → unlimited via PhaseWIPCap
+		ReleaseMode:    releaseMode,    // UC39: ReleaseModePush zero-value = regression-safe
 	}))
 
 	// Add default team via engine (emits DeveloperAdded events)
