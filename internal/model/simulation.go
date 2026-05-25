@@ -57,6 +57,25 @@ type Simulation struct {
 	// Immutable per UC38 (Data layer per FP unified ACD); UC40 may convert to event-sourced.
 	PhaseWIPConfig map[WorkflowPhase]int
 
+	// UC39: release mode (push|demand). Zero-value ReleaseModePush = regression-safe;
+	// pre-v3 SimulationCreated events decode here. Immutable per UC39 (Data layer);
+	// UC40 may add a ReleaseModeChanged event for runtime toggle.
+	ReleaseMode ReleaseMode
+	// WarmupActive is true at sim creation when ReleaseMode==Demand; flipped to
+	// false by the WarmupExited event when the analyzer locks a constraint.
+	WarmupActive bool
+	// WarmupFailed is flipped to true by the WarmupTimedOut event when warmup
+	// exceeds N=5 sprints; terminal for the sim's lifetime — sim then behaves
+	// like push (StartSprint continues bulk-commit; controller no-ops) per
+	// UC39 ext §2a "Stay in push mode; surface diagnostic".
+	WarmupFailed bool
+	// MaxBacklogDrip caps how many backlog tickets the demand controller may
+	// admit per tick under fully-green conditions (Penetration=0). Default 1
+	// (set explicitly in NewSimulation AND projection per UC38 CICDSlots-fix
+	// precedent — zero-value 0 would route through the headroom formula as a
+	// permanent throttle).
+	MaxBacklogDrip int
+
 	// Assignment cursor (persistent round-robin state)
 	AssignCursor int // index of last assigned dev, advances on each assignment
 
@@ -129,6 +148,7 @@ func NewSimulation(id string, policy SizingPolicy, seed int64) Simulation {
 		SprintLength:      10, // 2-week sprints
 		BufferPct:         0.2,
 		ExperienceConfig:  DefaultExperienceConfig(),
+		MaxBacklogDrip:    1, // UC39: default 1 (one ticket per tick when fully green)
 		Seed:              seed,
 	}
 }

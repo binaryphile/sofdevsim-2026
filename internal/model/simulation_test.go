@@ -152,3 +152,53 @@ func TestSimulation_PhaseWIPCount(t *testing.T) {
 		}
 	}
 }
+
+// UC39 (#15445): scalar/enum fields (ReleaseMode, WarmupActive,
+// WarmupFailed, MaxBacklogDrip) are trivially preserved by Clone's
+// value-copy semantics. Test documents the contract explicitly so a
+// future refactor that switches Clone to selective field-copying can't
+// silently drop them.
+func TestSimulation_Clone_ReleaseModeFields_Preserve(t *testing.T) {
+	s := NewSimulation("sim-uc39", PolicyNone, 99)
+	s.ReleaseMode = ReleaseModeDemand
+	s.WarmupActive = true
+	s.WarmupFailed = false
+	s.MaxBacklogDrip = 3 // non-default to detect zero-value short-circuits
+
+	c := s.Clone()
+
+	if c.ReleaseMode != ReleaseModeDemand {
+		t.Errorf("clone.ReleaseMode = %v; want ReleaseModeDemand", c.ReleaseMode)
+	}
+	if !c.WarmupActive {
+		t.Errorf("clone.WarmupActive = false; want true")
+	}
+	if c.WarmupFailed {
+		t.Errorf("clone.WarmupFailed = true; want false")
+	}
+	if c.MaxBacklogDrip != 3 {
+		t.Errorf("clone.MaxBacklogDrip = %d; want 3", c.MaxBacklogDrip)
+	}
+
+	// Mutate clone; source must not observe (value-copy invariant).
+	c.WarmupActive = false
+	c.ReleaseMode = ReleaseModePush
+	if !s.WarmupActive || s.ReleaseMode != ReleaseModeDemand {
+		t.Errorf("source observed mutation of clone: WarmupActive=%v ReleaseMode=%v",
+			s.WarmupActive, s.ReleaseMode)
+	}
+}
+
+func TestNewSimulation_MaxBacklogDripDefault(t *testing.T) {
+	s := NewSimulation("sim", PolicyNone, 0)
+	if s.MaxBacklogDrip != 1 {
+		t.Errorf("NewSimulation MaxBacklogDrip = %d; want 1 (UC38 CICDSlots-default precedent)",
+			s.MaxBacklogDrip)
+	}
+	if s.ReleaseMode != ReleaseModePush {
+		t.Errorf("NewSimulation ReleaseMode = %v; want ReleaseModePush (zero-value)", s.ReleaseMode)
+	}
+	if s.WarmupActive {
+		t.Error("NewSimulation WarmupActive = true; want false (only true when projection sees ReleaseMode==Demand)")
+	}
+}
