@@ -108,6 +108,20 @@ BenchmarkRunSprint-8                 618132     2396 ns/op
 BenchmarkFindActiveTicketIndex-8    7302486      175 ns/op
 ```
 
+### Baseline (2026-05-24, 4-core machine, pre-UC37)
+
+Recorded on a 4-core machine before UC37 code work. Numbers below are not directly comparable to the 8-core baseline above due to hardware shift (7-9× slower per core; same Go workload). Establishes a 4-core pre-impl reference for measuring UC37's induced delta (expected < 5% — per-ticket `Type` field + map lookup in `CalculatePhaseEffort` keeps big-O unchanged).
+
+```
+BenchmarkTick-4                       10000   139383 ns/op   10970 B/op   7 allocs/op
+BenchmarkTick_LargeSimulation-4       10000   169443 ns/op   10970 B/op   7 allocs/op
+BenchmarkRunSprint-4                  61770    21032 ns/op     260 B/op   5 allocs/op
+BenchmarkFindActiveTicketIndex-4    1000000     1193 ns/op       0 B/op   0 allocs/op
+BenchmarkVarianceCalculate-4          32220    51991 ns/op    5376 B/op   1 allocs/op
+```
+
+Post-UC37 numbers re-measured at cycle #15442 completion-gate.
+
 ## Persistence
 
 | Key | Action |

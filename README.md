@@ -134,11 +134,38 @@ go run cmd/sofdevsim/main.go
 |------|---------|-------------|
 | `--seed` | 0 | Random seed for reproducibility (0 = use current time) |
 | `--api-port` | 8080 | HTTP API port |
+| `--mix` | `healthy` | Backlog mix profile (see "Backlog Mix Profiles" below) |
 
 **Example:** Run with fixed seed for reproducible results:
 ```bash
 go run cmd/sofdevsim/main.go --seed 42
 ```
+
+## Backlog Mix Profiles
+
+The `--mix` flag selects a named backlog generation profile. Mix profiles control how the simulation's initial backlog is composed across ticket types (UC37: heterogeneous ticket types). Each ticket type has a different phase-effort distribution, so changing the mix can shift the system's bottleneck phase.
+
+| Profile | Ticket types | Use for |
+|---|---|---|
+| `healthy` (default) | all Feature | Today's baseline — homogeneous backlog, regression-safe default |
+| `overloaded` | all Feature | Existing: high WIP stress, all-Feature |
+| `uncertain` | all Feature | Existing: high Low-understanding variance, all-Feature |
+| `mixed` | all Feature | Existing: varied understanding/estimate/priority, all-Feature (name predates UC37) |
+| `uc37-default` | 60% Feature / 25% Bug / 10% Spike / 5% Migration | Demonstrates a moderately mixed backlog with Implement-dominant aggregate |
+| `bug-heavy` | 30% F / 50% Bug / 5% Spike / 10% Migration / 5% Infra | Bug-fix-heavy quarter |
+| `migration-quarter` | 30% F / 15% B / 5% Spike / 45% Migration / 5% Infra | Migration-heavy quarter (Verify-shifting) |
+| `infra-push` | 35% F / 15% B / 5% Spike / 10% Migration / 35% Infra | Infra/platform-heavy quarter (CI/CD-shifting) |
+| `research-shop` | 5% F / 5% B / 85% Spike / 0% Migration / 5% Infra | Heavy-research-mode shop (Research-dominant aggregate; useful contrast to uc37-default) |
+
+**Example:** Run a comparison between contrasting mixes:
+```bash
+go run cmd/sofdevsim/main.go --seed 42 --mix uc37-default
+go run cmd/sofdevsim/main.go --seed 42 --mix research-shop
+```
+
+Unknown mix names are rejected at startup with a diagnostic listing registered scenarios. Mix profile selection is also available via the REST API: `POST /simulations` accepts an optional `scenarioName` field (default `healthy`).
+
+See `docs/design.md` §"Heterogeneous Ticket Types (UC37)" for per-type phase-effort distributions and the design rationale.
 
 ## HTTP API
 
