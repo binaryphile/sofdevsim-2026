@@ -351,7 +351,7 @@ func TestAllConstructors_ReturnExpectedVersion(t *testing.T) {
 		version int
 	}
 	events := []versionedEvent{
-		{NewSimulationCreated("s", 0, SimConfig{}), 1},
+		{NewSimulationCreated("s", 0, SimConfig{}), 2}, // UC38 bumped 1→2
 		{NewSprintStarted("s", 0, 1, 2.0), 1},
 		{NewSprintEnded("s", 0, 1), 1},
 		{NewTicked("s", 0), 1},
@@ -491,5 +491,69 @@ func TestTicketCreated_GobBackwardCompat_PreV2DecodesAsFeature(t *testing.T) {
 	}
 	if v2.Understanding != model.HighUnderstanding {
 		t.Errorf("v2.Understanding = %v, want HighUnderstanding", v2.Understanding)
+	}
+}
+
+// SimulationCreated v2 must decode pre-v2 (PhaseWIPConfig-less) gob-
+// encoded events with PhaseWIPConfig == nil (gob zero-value, projection
+// treats as unlimited). Mirrors the UC37 TicketCreated pattern above.
+func TestSimulationCreated_GobBackwardCompat_PreV2DecodesAsUnlimited(t *testing.T) {
+	// v1-shape SimConfig (PhaseWIPConfig-less) inline so we can simulate
+	// pre-UC38 gob bytes.
+	type simConfigV1 struct {
+		TeamSize     int
+		SprintLength int
+		Seed         int64
+		Policy       model.SizingPolicy
+		BufferPct    float64
+	}
+	type simulationCreatedV1 struct {
+		Header
+		Config simConfigV1
+	}
+
+	v1 := simulationCreatedV1{
+		Header: Header{
+			ID:         "evt-sim-1",
+			SimID:      "sim-legacy",
+			Type:       "SimulationCreated",
+			OccurredAt: 0,
+			DetectedAt: time.Now(),
+			Version:    1,
+		},
+		Config: simConfigV1{
+			TeamSize:     6,
+			SprintLength: 10,
+			Seed:         42,
+			Policy:       model.PolicyTameFlowCognitive,
+			BufferPct:    0.2,
+		},
+	}
+
+	var buf bytes.Buffer
+	if err := gob.NewEncoder(&buf).Encode(v1); err != nil {
+		t.Fatalf("encode v1: %v", err)
+	}
+
+	var v2 SimulationCreated
+	if err := gob.NewDecoder(&buf).Decode(&v2); err != nil {
+		t.Fatalf("decode v1-bytes into v2: %v", err)
+	}
+
+	// Pre-v2 events MUST decode with PhaseWIPConfig == nil (gob zero-value
+	// for a missing map field).
+	if v2.Config.PhaseWIPConfig != nil {
+		t.Errorf("v2.Config.PhaseWIPConfig = %v, want nil (regression-safe gob zero-value); UC38 backward-compat contract violated",
+			v2.Config.PhaseWIPConfig)
+	}
+	// Sanity: other fields round-trip intact.
+	if v2.Config.TeamSize != 6 {
+		t.Errorf("v2.Config.TeamSize = %d, want 6 (other fields must round-trip)", v2.Config.TeamSize)
+	}
+	if v2.Config.Policy != model.PolicyTameFlowCognitive {
+		t.Errorf("v2.Config.Policy = %v, want PolicyTameFlowCognitive", v2.Config.Policy)
+	}
+	if v2.Config.Seed != 42 {
+		t.Errorf("v2.Config.Seed = %d, want 42", v2.Config.Seed)
 	}
 }

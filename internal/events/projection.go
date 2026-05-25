@@ -64,6 +64,9 @@ func (p Projection) Apply(evt Event) Projection {
 			OpenIncidents:      make([]model.Incident, 0),
 			ResolvedIncidents:  make([]model.Incident, 0),
 			CurrentSprintOption: model.NoSprint,
+			// UC38: PhaseWIPConfig carried via SimulationCreated payload (Decision D).
+			// Pre-v2 events decode with nil → unlimited via PhaseWIPCap.
+			PhaseWIPConfig: e.Config.PhaseWIPConfig,
 		}
 
 	case Ticked:

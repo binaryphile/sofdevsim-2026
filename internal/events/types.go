@@ -165,6 +165,10 @@ type SimConfig struct {
 	Seed         int64
 	Policy       model.SizingPolicy // Sizing policy for ticket decomposition
 	BufferPct    float64            // Buffer percentage (default 0.2 = 20%)
+	// UC38: per-phase WIP caps. Nil = unlimited everywhere (regression-safe).
+	// Pre-UC38 (Version 1) SimulationCreated events decode with PhaseWIPConfig
+	// = nil via gob zero-value; projection treats nil as unlimited.
+	PhaseWIPConfig map[model.WorkflowPhase]int
 }
 
 // SimulationCreated is emitted when a simulation is created.
@@ -174,6 +178,9 @@ type SimulationCreated struct {
 }
 
 // NewSimulationCreated creates a SimulationCreated event with proper header.
+// Version 2 (UC38 #15443) carries SimConfig.PhaseWIPConfig. Pre-v2 events
+// decode with PhaseWIPConfig = nil (gob zero-value, projection treats as
+// unlimited); no upcaster needed per CLAUDE.md "add fields freely".
 func NewSimulationCreated(simID string, tick int, config SimConfig) SimulationCreated {
 	return SimulationCreated{
 		Header: Header{
@@ -182,7 +189,7 @@ func NewSimulationCreated(simID string, tick int, config SimConfig) SimulationCr
 			Type:       "SimulationCreated",
 			OccurredAt: tick,
 			DetectedAt: time.Now(),
-			Version:    1,
+			Version:    2,
 		},
 		Config: config,
 	}

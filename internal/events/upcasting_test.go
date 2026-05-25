@@ -23,8 +23,11 @@ func TestUpcaster_Apply_NoTransform(t *testing.T) {
 
 func TestUpcaster_Apply_WithTransform(t *testing.T) {
 	// Create custom Upcaster with transform that modifies event
-	// Apply event, assert transformation occurred
+	// Apply event, assert transformation occurred.
+	// NewSimulationCreated emits Version=2 (UC38); force Version=1 here so
+	// the v1→v2 transform under test fires.
 	originalEvt := events.NewSimulationCreated("sim-1", 0, events.SimConfig{Seed: 42})
+	originalEvt.Header.Version = 1
 
 	// Transform that changes the seed to 99 and bumps version to 2
 	// transformSimCreated modifies SimulationCreated seed to 99.
@@ -65,8 +68,10 @@ func TestUpcaster_Apply_VersionedKey(t *testing.T) {
 		"SimulationCreated:v1": transformV1ToV2,
 	})
 
-	// Create v1 event (Version: 1)
+	// Construct a v1 event. NewSimulationCreated emits v2 post-UC38; we
+	// force v1 here to exercise the versioned-key dispatch under test.
 	evt := events.NewSimulationCreated("sim-1", 0, events.SimConfig{Seed: 42})
+	evt.Header.Version = 1
 
 	result := upcaster.Apply(evt)
 
@@ -104,7 +109,9 @@ func TestUpcaster_Apply_CycleDetection(t *testing.T) {
 		"SimulationCreated:v2": v2ToV1,
 	})
 
+	// Force v1 — NewSimulationCreated emits v2 post-UC38.
 	evt := events.NewSimulationCreated("sim-1", 0, events.SimConfig{Seed: 42})
+	evt.Header.Version = 1
 
 	// This should panic due to cycle
 	_ = upcaster.Apply(evt)
