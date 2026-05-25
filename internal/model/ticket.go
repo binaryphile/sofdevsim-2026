@@ -11,6 +11,7 @@ type Ticket struct {
 	// Sizing discriminants (the tension we're testing)
 	EstimatedDays      float64            // DORA's discriminant
 	UnderstandingLevel UnderstandingLevel // TameFlow's discriminant
+	Type               TicketType         // UC37: shape of work; drives per-phase effort distribution
 
 	// Realization
 	ActualDays      float64
@@ -106,16 +107,61 @@ func (t Ticket) IsChild() bool {
 // GetEstimatedDays returns the estimated days for FluentFP ToFloat64 operations.
 func (t Ticket) GetEstimatedDays() float64 { return t.EstimatedDays }
 
-// PhaseEffortPct defines how effort is distributed across phases (sums to 1.0)
-var PhaseEffortPct = map[WorkflowPhase]float64{
-	PhaseResearch:  0.05, // 5% - quick for understood work, longer for unknown
-	PhaseSizing:    0.02, // 2% - estimation overhead
-	PhasePlanning:  0.03, // 3% - planning overhead
-	PhaseImplement: 0.55, // 55% - bulk of work
-	PhaseVerify:    0.20, // 20% - testing
-	PhaseCICD:      0.05, // 5% - CI/CD pipeline time
-	PhaseReview:    0.10, // 10% - code review
+// TypePhaseEffortPct defines per-type phase-effort distributions. Each row sums to 1.0.
+// Done is implicit 0 across all types. Per UC37 (see docs/design.md §"Heterogeneous
+// Ticket Types"); per-type rationale documented there.
+var TypePhaseEffortPct = map[TicketType]map[WorkflowPhase]float64{
+	TicketTypeFeature: {
+		PhaseResearch:  0.05,
+		PhaseSizing:    0.02,
+		PhasePlanning:  0.03,
+		PhaseImplement: 0.55,
+		PhaseVerify:    0.20,
+		PhaseCICD:      0.05,
+		PhaseReview:    0.10,
+	},
+	TicketTypeBug: {
+		PhaseResearch:  0.10,
+		PhaseSizing:    0.05,
+		PhasePlanning:  0.00, // bugs bypass Planning (root cause already known)
+		PhaseImplement: 0.35,
+		PhaseVerify:    0.30, // heavier — regression coverage dominates
+		PhaseCICD:      0.05,
+		PhaseReview:    0.15,
+	},
+	TicketTypeSpike: {
+		PhaseResearch:  0.55, // research-heavy (the whole point)
+		PhaseSizing:    0.05,
+		PhasePlanning:  0.05,
+		PhaseImplement: 0.25, // throwaway prototype
+		PhaseVerify:    0.05,
+		PhaseCICD:      0.00, // spikes don't deploy
+		PhaseReview:    0.05,
+	},
+	TicketTypeMigration: {
+		PhaseResearch:  0.05,
+		PhaseSizing:    0.05,
+		PhasePlanning:  0.10, // cross-system coordination bumps Planning
+		PhaseImplement: 0.30,
+		PhaseVerify:    0.35, // lingers in Verify — data-shape correctness
+		PhaseCICD:      0.05,
+		PhaseReview:    0.10,
+	},
+	TicketTypeInfra: {
+		PhaseResearch:  0.10,
+		PhaseSizing:    0.02,
+		PhasePlanning:  0.08, // rollout sequencing matters
+		PhaseImplement: 0.30,
+		PhaseVerify:    0.20,
+		PhaseCICD:      0.20, // heavy CI/CD — infra changes are pipeline-shaped
+		PhaseReview:    0.10,
+	},
 }
+
+// PhaseEffortPct is a backward-compat alias pointing to the Feature distribution.
+// Preserved so downstream consumers (CSV export's PhaseEffortDistribution map; any
+// test reading the global directly) work unchanged after UC37.
+var PhaseEffortPct = TypePhaseEffortPct[TicketTypeFeature]
 
 // UnderstandingPhaseMultiplier adjusts phase effort based on understanding
 var UnderstandingPhaseMultiplier = map[UnderstandingLevel]map[WorkflowPhase]float64{
@@ -136,9 +182,19 @@ var UnderstandingPhaseMultiplier = map[UnderstandingLevel]map[WorkflowPhase]floa
 	},
 }
 
-// CalculatePhaseEffort returns the effort required for a specific phase
+// CalculatePhaseEffort returns the effort required for a specific phase, looking up
+// the per-type distribution then applying the understanding-level multiplier on
+// Research/Implement/Verify. Defensive fallback: unrecognised Type values fall back
+// to the Feature distribution rather than silently zero-ing phase effort.
 func (t Ticket) CalculatePhaseEffort(phase WorkflowPhase) float64 {
-	basePct, ok := PhaseEffortPct[phase]
+	typeDist, ok := TypePhaseEffortPct[t.Type]
+	if !ok {
+		// Defensive fallback (UC37 plan §commit 5): unrecognised Type → Feature distribution.
+		// Protects against external-source corruption where Type could be out-of-range.
+		typeDist = TypePhaseEffortPct[TicketTypeFeature]
+	}
+
+	basePct, ok := typeDist[phase]
 	if !ok {
 		return 0
 	}
