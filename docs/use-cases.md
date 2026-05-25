@@ -1562,10 +1562,11 @@ This use case requires event sourcing architecture:
 - UC37 in effect: heterogeneous ticket mix is producing differentiated per-phase load
 - Assignment policy honours WIP gating before matching idle developers to queues
 - CI/CD capacity is enforced via the same cap-enforcement path as the other phases
+- Cap configuration validated at simulation startup — invalid configs (zero, negative, below mentor-pair minimum, or conflicting with the aggregate WIP control) are rejected before sim creation completes
 
 **Postconditions (Guarantees):**
 
-- *Success:* Manager can observe — via the queue-depth and active-work panels — that no phase displays more concurrent active tickets than its configured cap; that tickets accumulate at upstream phase boundaries when downstream is at its cap (head-of-line blocking); and that CI/CD admission rate is determined by the configured slot count, observable independent of developer idle/busy state
+- *Success:* Manager can observe — via the queue-depth and active-work panels — that no phase displays more concurrent active tickets than its configured cap; that tickets accumulate at upstream phase boundaries when downstream is at its cap (head-of-line blocking); and that CI/CD admission rate is determined by the configured slot count, observable independent of developer idle/busy state. Specifically: (a) the new **Phase Queues panel** in the Execution view displays each phase's current depth vs cap (e.g., "Implement: 3/4"); (b) when a phase is at cap, the next-tick active-work assignment count for that phase does not exceed the cap
 - *Failure:* Misconfigured caps (zero, negative, or below the mentor-pair minimum of 2) are rejected at simulation startup with an explanatory diagnostic; simulation does not start
 - *Minimal:* With caps set to "unlimited" for every phase, simulation behaviour is observably equivalent to today's sprint-commit-bounded model
 
@@ -1580,8 +1581,8 @@ This use case requires event sourcing architecture:
 
 **Extensions:**
 
-- 1a. *Cap below mentor-pair minimum (= 2 for Implement under mentoring):* Rejected with diagnostic
-- 3a. *Aggregate rope-style WIP control and per-phase caps disagree:* Per-phase cap is the floor; the aggregate control acts as an additional ceiling on the Implement→Review span
+- 1a. *Cap below mentor-pair minimum (= 2 for Implement under mentoring):* Rejected with a typed diagnostic identifying the failing phase, the cap value, and the rule that was violated
+- 3a. *Aggregate rope-style WIP control and per-phase caps both apply:* assignment proceeds only when BOTH constraints would be satisfied. (When the per-phase cap and the rope ceiling disagree on the Implement→Review span, the tighter constraint wins.)
 - 4a. *CI/CD cap = 0:* Rejected at startup (would deadlock the system)
 - 5a. *Cap change creates a new constraint that the TOC analyzer hasn't seen long enough:* Analyzer waits out its hysteresis window before re-classifying
 
