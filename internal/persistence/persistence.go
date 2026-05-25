@@ -21,6 +21,7 @@ func init() {
 	gob.Register(model.FeverStatus(0))
 	gob.Register(model.Severity(0))
 	gob.Register(model.EventType(0))
+	gob.Register(model.TicketType(0)) // UC37: heterogeneous ticket types
 
 	// Register struct types
 	gob.Register(PersistableSimulation{}) // Gob-safe version of model.Simulation

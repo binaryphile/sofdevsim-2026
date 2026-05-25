@@ -143,3 +143,20 @@ const (
 func (p Priority) String() string {
 	return [...]string{"Low", "Normal", "High", "Critical"}[p]
 }
+
+// TicketType classifies tickets by the shape of work they describe.
+// Each type has its own per-phase effort distribution (see model.TypePhaseEffortPct).
+// Zero value is TicketTypeFeature so pre-UC37 data decodes regression-safe.
+type TicketType int
+
+const (
+	TicketTypeFeature   TicketType = iota // standard product change; zero-value default
+	TicketTypeBug                         // root-cause hunt + regression coverage; skips Planning
+	TicketTypeSpike                       // research-heavy investigation; no deploy
+	TicketTypeMigration                   // data-shape correctness; lingers in Verify
+	TicketTypeInfra                       // pipeline-shaped change; heavy CI/CD
+)
+
+func (t TicketType) String() string {
+	return [...]string{"Feature", "Bug", "Spike", "Migration", "Infra"}[t]
+}
