@@ -67,6 +67,12 @@ func (p Projection) Apply(evt Event) Projection {
 			// UC38: PhaseWIPConfig carried via SimulationCreated payload (Decision D).
 			// Pre-v2 events decode with nil → unlimited via PhaseWIPCap.
 			PhaseWIPConfig: e.Config.PhaseWIPConfig,
+			// UC38 closes the "CICDSlots declared but never enforced" gap from parent
+			// epic Phase 1: projection-built sims default to the same CI/CD slot count
+			// as NewSimulation (2). Pre-UC38, projection-built sims had CICDSlots = 0
+			// and the cap was dead; now PhaseWIPCap(PhaseCICD) flows through this
+			// default unless PhaseWIPConfig overrides.
+			CICDSlots: 2,
 		}
 
 	case Ticked:

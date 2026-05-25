@@ -124,22 +124,25 @@ func TestSimulation_PhaseWIPCap_Precedence(t *testing.T) {
 
 func TestSimulation_PhaseWIPCount(t *testing.T) {
 	s := NewSimulation("sim", PolicyNone, 0)
+	// Two assigned + one queued (AssignedTo "") in Implement; one assigned
+	// in Verify. Counter must return assigned-only — queued ticket T4
+	// MUST NOT count (it would deadlock the cap gate it's waiting on).
 	s.ActiveTickets = []Ticket{
-		{ID: "T1", Phase: PhaseImplement},
-		{ID: "T2", Phase: PhaseImplement},
-		{ID: "T3", Phase: PhaseVerify},
+		{ID: "T1", Phase: PhaseImplement, AssignedTo: "dev-a"},
+		{ID: "T2", Phase: PhaseImplement, AssignedTo: "dev-b"},
+		{ID: "T3", Phase: PhaseVerify, AssignedTo: "dev-c"},
+		{ID: "T4", Phase: PhaseImplement, AssignedTo: ""}, // queued
 	}
 	s.PhaseQueues = map[WorkflowPhase][]string{
-		PhaseImplement: {"T4", "T5"},
-		PhaseVerify:    {"T6"},
+		PhaseImplement: {"T4"},
 	}
 
 	tests := []struct {
 		phase WorkflowPhase
 		want  int
 	}{
-		{PhaseImplement, 4}, // 2 active + 2 queued
-		{PhaseVerify, 2},    // 1 active + 1 queued
+		{PhaseImplement, 2}, // T1, T2 assigned; T4 queued (not counted)
+		{PhaseVerify, 1},    // T3 assigned
 		{PhaseCICD, 0},
 		{PhaseReview, 0},
 	}

@@ -316,6 +316,8 @@ Per-type rationale:
 2. Phase is `PhaseCICD` AND no explicit entry → fall back to `Simulation.CICDSlots` (default 2).
 3. Otherwise → `math.MaxInt` (unlimited).
 
+**Cap counter semantics**. `Simulation.PhaseWIPCount(phase)` counts tickets currently **assigned to a developer** in the phase (`t.Phase == phase && t.AssignedTo != ""`). Queued tickets (in `PhaseQueues` with `AssignedTo == ""`) DO NOT count — they ARE the head-of-line blocking surface the cap creates. Counting them would deadlock the gate (a full queue at cap would forever block its own drain). The TUI Phase Queues panel displays `depth/cap` where depth is total in-phase (assigned + queued); the **cap gate** uses assigned-only.
+
 **Sentinel errors** (per Go dev guide §8; co-located with the validator in `internal/model/phase_wip.go`):
 
 | Sentinel | Trigger |

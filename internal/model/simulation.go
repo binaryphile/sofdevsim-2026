@@ -200,16 +200,23 @@ func (s Simulation) PhaseWIPCap(phase WorkflowPhase) int {
 	return math.MaxInt
 }
 
-// PhaseWIPCount counts tickets currently active or queued in the phase
-// (used by UC38's cap-check gate in engine.assignFromQueues).
+// PhaseWIPCount counts tickets currently assigned to a developer in the
+// given phase — the "in-flight work" cap target for UC38's assignment-
+// time gate in engine.assignFromQueues. Queued tickets (in PhaseQueues
+// with AssignedTo == "") DO NOT count: they ARE the head-of-line
+// blocking surface the cap creates. Counting them would deadlock the
+// gate (a full queue at cap would forever block its own drain).
+//
+// Note: queued tickets are also in ActiveTickets (with t.Phase set to
+// the queued phase, AssignedTo cleared); the AssignedTo filter is the
+// discriminator. See events/projection.go:278 (TicketQueued case).
 func (s Simulation) PhaseWIPCount(phase WorkflowPhase) int {
 	count := 0
 	for _, t := range s.ActiveTickets { // justified:SM
-		if t.Phase == phase {
+		if t.Phase == phase && t.AssignedTo != "" {
 			count++
 		}
 	}
-	count += len(s.PhaseQueues[phase])
 	return count
 }
 

@@ -417,6 +417,15 @@ func (e Engine) assignFromQueues() (Engine, []model.Event, error) {
 				}
 				continue // retry with repaired queue
 			}
+			// UC38 per-phase WIP cap check (Decision A; both-must-allow semantics).
+			// CICDSlots flows in as the PhaseCICD fallback via PhaseWIPCap precedence,
+			// closing the "declared but never enforced" gap (#15441 parent epic Phase 1).
+			// The aggregate rope check remains at advancePhaseEmitOnly:352 — both
+			// constraints must hold for a ticket to enter; the rope side is reused
+			// from the existing phase-transition path without duplication here.
+			if state.PhaseWIPCount(phase) >= state.PhaseWIPCap(phase) {
+				break // cap-blocked; head-of-line blocking observable in Phase Queues panel
+			}
 			// Delegate dev selection to injected assignment policy
 			result := e.assignPol.SelectDev(state, ticketID, phase)
 			if result.DevID == "" {
