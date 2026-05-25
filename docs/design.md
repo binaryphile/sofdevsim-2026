@@ -305,6 +305,78 @@ Per-type rationale:
 
 ---
 
+### Per-Phase WIP Caps (UC38)
+
+**Status**: implemented in cycle #15443 (contract #17761, parent epic #15441).
+
+**Schema**: `Simulation.PhaseWIPConfig map[WorkflowPhase]int`. Immutable per simulation under UC38 (Data layer per FP unified guide ACD separation). `SimConfig.PhaseWIPConfig` carries the same map at sim creation via the `SimulationCreated` event payload (Version bumped 1→2). Nil zero-value = "unlimited" for every non-CI/CD phase (gob backward-compat — pre-UC38 saves decode with no surprise).
+
+**Cap precedence** (read via `Simulation.PhaseWIPCap(phase WorkflowPhase) int`):
+1. Explicit `PhaseWIPConfig[phase]` entry — wins.
+2. Phase is `PhaseCICD` AND no explicit entry → fall back to `Simulation.CICDSlots` (default 2).
+3. Otherwise → `math.MaxInt` (unlimited).
+
+**Sentinel errors** (per Go dev guide §8; co-located with the validator in `internal/model/phase_wip.go`):
+
+| Sentinel | Trigger |
+|---|---|
+| `ErrCapZero` | Any cap = 0 — would deadlock that phase |
+| `ErrCapNegative` | Any cap < 0 — semantic error |
+| `ErrCapBelowMentorMin` | `PhaseImplement` cap < 2 — mentor-pair minimum (a mentored junior dev needs the mentor concurrently) |
+| `ErrCapConflict` | Per-phase cap on any phase in Implement..Review span exceeds `RopeConfig.MaxWIP` when `RopeConfig.Enabled` — impossible to satisfy both simultaneously |
+
+Callers MUST use `errors.Is()` for differentiation; string-matching the message is forbidden per Go dev guide §8 (UC37 closeout absorbed the same anti-pattern at 9c3cd5e).
+
+**`ValidatePhaseWIPConfig(cfg, rope) error`** is a pure Calculation (Decision C ACD): returns the first-violation sentinel wrapped with `fmt.Errorf("%w: phase=%s cap=%d", ErrCapXxx, phase, cap)` for operator diagnostics. Table-driven unit tests cover all 4 violation classes + happy paths.
+
+**Default WIP profiles**:
+
+| Profile | Research | Sizing | Planning | Implement | Verify | CI/CD | Review | Use case |
+|---|---:|---:|---:|---:|---:|---:|---:|---|
+| `uncapped` (default) | nil | nil | nil | nil | nil | **2 (via CICDSlots)** | nil | Most-regression-safe; nil entry = unlimited via `PhaseWIPCap`. CI/CD effective cap is 2 because `PhaseWIPCap(PhaseCICD)` falls back to `CICDSlots` when no explicit entry |
+| `balanced` | nil | nil | nil | 4 | 2 | 1 | 2 | Demonstrates head-of-line blocking under heterogeneous mix; CI/CD=1 (explicit, overrides CICDSlots fallback) is the tightest cap |
+
+**Enforcement — two checkpoints, "both must allow" semantics**:
+
+The "both per-phase cap AND aggregate rope must allow" outcome is achieved by TWO checks at TWO sites — not a single combined check:
+
+1. **NEW** (`assignFromQueues:411`, UC38): per-phase cap check before `SelectDev`:
+   ```
+   if state.PhaseWIPCount(phase) >= state.PhaseWIPCap(phase):
+       break  // cap-blocked; head-of-line blocking observable in Phase Queues panel
+   ```
+2. **EXISTING** (`advancePhaseEmitOnly:352`, unchanged): rope check before phase transition into Implement→Review:
+   ```
+   if state.RopeConfig.Enabled && state.DownstreamWIP() >= state.RopeConfig.MaxWIP:
+       // emit TicketRopeHeld; ticket enters RopeQueue
+   ```
+
+Initial assignment to a phase triggers the phase-transition path, so the existing rope check covers the rope side without duplication in `assignFromQueues`. UC38's implementation surface is therefore just the `assignFromQueues` addition; the rope side is reused as-is.
+
+**CICDSlots wiring** is the one non-regression-safe aspect of UC38. Pre-UC38 sims declared `CICDSlots` but never enforced it. Post-UC38, `PhaseWIPCap(PhaseCICD)` falls back to `CICDSlots` (default 2), so CI/CD throughput is bound to ≤ 2 concurrent tickets. For typical mixes (CI/CD phase effort ≈ 5% of total) this is invisible; for CI/CD-bound pathological runs it surfaces as observable head-of-line blocking on the CI/CD queue. The change is intentional — closes the "declared but never enforced" gap surfaced in parent epic Phase 1.
+
+**Direct-CICDSlots-reader migration note**: post-UC38, the canonical "what is the CI/CD cap" reader is `PhaseWIPCap(PhaseCICD)`. Direct reads of `Simulation.CICDSlots` outside `PhaseWIPCap` become legacy. Phase 1 survey found no consumers beyond the declaration + `CICDInUse` increment/decrement events; UC38 doesn't migrate any non-existent readers. Future TUI panels or exports that display "CICDSlots: 2" SHOULD migrate to `PhaseWIPCap(PhaseCICD)` so the override-by-`PhaseWIPConfig` precedence rule is honoured uniformly.
+
+**Operator surface** (CLI + REST):
+- CLI: `--phase-wip <phase=cap,...>` (e.g., `--phase-wip Implement=4,Verify=2,CICD=1,Review=2`) and `--phase-wip-profile <name>` (`uncapped` / `balanced`). Phase-name parser accepts canonical `WorkflowPhase.String()` output AND the slash-free `CICD` alias for `CI/CD`; case-insensitive. Unknown phase names rejected at parse time.
+- REST: `POST /simulations` body accepts optional `phaseWIPConfig` JSON field (object form `{"Implement": 4, ...}`).
+- Validation is **single-pass**: `registry.CreateSimulation` calls `ValidatePhaseWIPConfig` once after CLI parser produces the map; the CLI parser does syntax-only checking (k=v,k=v form), deferring semantic validation to the registry for friendly-error consistency across CLI + REST.
+
+**HTTP status code addition**: per Decision B (Go dev §8 Error Translation), the 4 sentinel errors map to **HTTP 422 Unprocessable Entity** in `api/handlers.go` ("semantically valid JSON, domain-rule violation"). This introduces 422 as a new status code — pre-UC38 handlers used 400/409/500 only. Documented here for future handler authors: prefer 422 over 400 when the JSON is structurally valid but violates a domain invariant.
+
+**TUI Phase Queues panel**: `ExecutionVM.PhaseQueueRows []PhaseQueueRow` carries per-phase `{phase, depth, cap}`; rendered in the Execution view as a panel near the Fever Chart (e.g., `Implement: 3/4 [######....]`). Lipgloss styling matches existing panels.
+
+**CSV export**: `sprints.csv` gains `phase_wip_caps` (JSON-serialized cap config; one row per sprint) + `phase_avg_wip` (JSON-serialized per-phase avg WIP across the sprint) columns, appended after `avg_wip`.
+
+**Test surface**:
+- `ValidatePhaseWIPConfig` — table-driven over all 4 sentinel cases + happy paths; `errors.Is` per sentinel (Decision A Khorikov Domain heavy).
+- `Simulation.Clone()` deep-copy of `PhaseWIPConfig` — `TestSimulation_Clone_PhaseWIPConfig_DeepCopy` covers nil-source-nil-clone AND non-nil-source-independent-clone semantics.
+- `SimulationCreated` v1→v2 backward-compat — `TestSimulationCreated_GobBackwardCompat_PreV2DecodesAsUnlimited` mirrors UC37's `TestTicketCreated_GobBackwardCompat_PreV2DecodesAsFeature` pattern.
+- `assignFromQueues` cap-check integration — `assignment_wip_test.go` table-driven over cap-blocked/rope-blocked/both-blocked combinations.
+- TWO integration tests in `engine_integration_test.go`: `TestPhaseWIPCap_EnforcesCapAtAssignment` (seed=42, Implement cap=2, manual `AssignTicket` round-robin per UC37 lesson — RunSprint's auto-assignment doesn't pull from `CommittedTickets`; asserts no phase exceeds cap + head-of-line blocking observable) AND `TestPhaseWIPCap_StartupRejectsMisconfig` (table-driven 4 sentinel cases).
+
+---
+
 ## Key Algorithms
 
 ### Variance Model (Core Hypothesis)
