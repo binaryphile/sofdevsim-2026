@@ -35,6 +35,10 @@ type CreateSimulationRequest struct {
 	Seed         int64  `json:"seed"`
 	Policy       string `json:"policy,omitempty"`
 	ScenarioName string `json:"scenarioName,omitempty"` // UC37: backlog mix profile (default "healthy")
+	// UC38: per-phase WIP caps; string keys for canonical phase names
+	// (Research, Sizing, Planning, Implement, Verify, "CI/CD" or "CICD",
+	// Review). nil/omitted → unlimited (regression-safe).
+	PhaseWIPConfig map[string]int `json:"phaseWIPConfig,omitempty"`
 }
 
 // TicketState mirrors api.TicketState for client-side decoding.
@@ -139,8 +143,14 @@ type CreateSimulationResponse struct {
 // CreateSimulation creates a new simulation via HTTP API.
 // UC37: scenarioName selects the backlog mix profile (default "healthy" preserves
 // pre-UC37 behaviour for callers passing ""). Pass one of the 9 registered scenarios.
-func (c Client) CreateSimulation(seed int64, policy, scenarioName string) (*CreateSimulationResponse, error) {
-	body := CreateSimulationRequest{Seed: seed, Policy: policy, ScenarioName: scenarioName}
+// UC38: phaseWIPConfig nil/empty preserves regression-safe unlimited defaults.
+func (c Client) CreateSimulation(seed int64, policy, scenarioName string, phaseWIPConfig map[string]int) (*CreateSimulationResponse, error) {
+	body := CreateSimulationRequest{
+		Seed:           seed,
+		Policy:         policy,
+		ScenarioName:   scenarioName,
+		PhaseWIPConfig: phaseWIPConfig,
+	}
 	jsonBody, err := json.Marshal(body)
 	if err != nil {
 		return nil, fmt.Errorf("marshal request: %w", err)

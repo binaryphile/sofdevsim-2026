@@ -135,7 +135,7 @@ type httpResultMsg struct {
 // If seed is 0, uses current time for randomness.
 // Deprecated: Use NewAppWithRegistry for shared simulation access.
 func NewAppWithSeed(seed int64) *App {
-	return NewAppWithRegistry(seed, nil, "") // nil = standalone mode
+	return NewAppWithRegistry(seed, nil, "", nil) // nil = standalone mode + unlimited WIP
 }
 
 // NewAppWithRegistry creates a new App that shares simulations via the registry.
@@ -147,7 +147,12 @@ func NewAppWithSeed(seed int64) *App {
 // registered scenarios for typed backlogs. Unknown name → log + fall back to
 // healthy (this constructor doesn't return an error for backward compat; the
 // CLI flag in main.go validates upfront).
-func NewAppWithRegistry(seed int64, reg *registry.SimRegistry, scenarioName string) *App {
+//
+// UC38: phaseWIPConfig nil/empty → unlimited everywhere (regression-safe per
+// Decision D); validation is performed upstream (registry.CreateSimulation
+// or main.go CLI parse). The map flows into SimConfig.PhaseWIPConfig and
+// reaches the projection via the SimulationCreated event payload.
+func NewAppWithRegistry(seed int64, reg *registry.SimRegistry, scenarioName string, phaseWIPConfig map[model.WorkflowPhase]int) *App {
 	if seed == 0 {
 		seed = time.Now().UnixNano()
 	}
@@ -173,9 +178,10 @@ func NewAppWithRegistry(seed int64, reg *registry.SimRegistry, scenarioName stri
 
 	eng = engine.NewEngineWithStore(sim.Seed, store)
 	eng = must.Get(eng.EmitCreated(sim.ID, sim.CurrentTick, events.SimConfig{
-		TeamSize:     6, // Will add 6 developers below
-		SprintLength: sim.SprintLength,
-		Seed:         sim.Seed,
+		TeamSize:       6, // Will add 6 developers below
+		SprintLength:   sim.SprintLength,
+		Seed:           sim.Seed,
+		PhaseWIPConfig: phaseWIPConfig, // UC38: nil → unlimited via PhaseWIPCap
 	}))
 
 	// Add default team via engine (emits DeveloperAdded events)

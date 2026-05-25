@@ -7,11 +7,14 @@ import (
 	"net/http"
 	"os"
 	"sort"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/binaryphile/sofdevsim-2026/internal/api"
 	"github.com/binaryphile/sofdevsim-2026/internal/engine"
 	"github.com/binaryphile/sofdevsim-2026/internal/lesson"
+	"github.com/binaryphile/sofdevsim-2026/internal/model"
 	"github.com/binaryphile/sofdevsim-2026/internal/tui"
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -24,6 +27,8 @@ func main() {
 	lessonName := flag.String("lesson", "", "Run interactive lesson (e.g., buffer-crisis)")
 	proverPath := flag.String("prover-path", "", "Path to zk-event-proofs project (default: ~/projects/zk-event-proofs)")
 	mix := flag.String("mix", "healthy", "Backlog mix profile (UC37): healthy|overloaded|uncertain|mixed|uc37-default|bug-heavy|migration-quarter|infra-push|research-shop")
+	phaseWIP := flag.String("phase-wip", "", "Per-phase WIP caps (UC38): comma-separated phase=cap, e.g. 'Implement=4,Verify=2,CICD=1,Review=2'. Empty = unlimited (regression-safe)")
+	phaseWIPProfile := flag.String("phase-wip-profile", "", "Bundled phase-WIP profile (UC38): uncapped|balanced. Mutually exclusive with --phase-wip when both nonempty")
 	flag.Parse()
 
 	// UC37: validate --mix upfront (registry will also reject unknown names, but
@@ -35,6 +40,19 @@ func main() {
 		}
 		sort.Strings(names)
 		fmt.Fprintf(os.Stderr, "Unknown --mix scenario %q. Registered: %v\n", *mix, names)
+		os.Exit(1)
+	}
+
+	// UC38: parse --phase-wip / --phase-wip-profile. Syntax-only validation
+	// here; semantic validation (ErrCapZero/Negative/BelowMentorMin/Conflict)
+	// happens in registry.CreateSimulation (single-pass per Decision B).
+	if *phaseWIP != "" && *phaseWIPProfile != "" {
+		fmt.Fprintln(os.Stderr, "--phase-wip and --phase-wip-profile are mutually exclusive")
+		os.Exit(1)
+	}
+	phaseWIPConfig, err := parsePhaseWIPFlags(*phaseWIP, *phaseWIPProfile)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
 		os.Exit(1)
 	}
 
@@ -91,7 +109,7 @@ func main() {
 		// HTTP client mode: create simulation via API
 		client := tui.NewClient(baseURL)
 
-		resp, err := client.CreateSimulation(*seed, "dora-strict", *mix)
+		resp, err := client.CreateSimulation(*seed, "dora-strict", *mix, phaseWIPConfigStringKeys(phaseWIPConfig))
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Failed to create simulation: %v\n", err)
 			os.Exit(1)
@@ -104,7 +122,7 @@ func main() {
 			// No server started, create standalone registry
 			registry = api.NewSimRegistry()
 		}
-		app = tui.NewAppWithRegistry(*seed, registry.SimRegistry, *mix)
+		app = tui.NewAppWithRegistry(*seed, registry.SimRegistry, *mix, phaseWIPConfig)
 	}
 
 	app.EnableOpeningAnimation()
@@ -138,4 +156,101 @@ func serverRunning(baseURL string) bool {
 	}
 
 	return health.Service == "sofdevsim"
+}
+
+// UC38 #15443: --phase-wip / --phase-wip-profile parsing. Syntax-only;
+// semantic validation flows through registry.CreateSimulation +
+// model.ValidatePhaseWIPConfig (single-pass per Decision B).
+
+// phaseWIPProfiles holds the two bundled cap profiles documented in
+// README.md and design.md §"Per-Phase WIP Caps".
+var phaseWIPProfiles = map[string]map[model.WorkflowPhase]int{
+	"uncapped": nil, // nil = unlimited; CI/CD still bounded by CICDSlots fallback
+	"balanced": {
+		model.PhaseImplement: 4,
+		model.PhaseVerify:    2,
+		model.PhaseCICD:      1,
+		model.PhaseReview:    2,
+	},
+}
+
+// parsePhaseWIPFlags resolves the --phase-wip / --phase-wip-profile pair.
+// Mutual exclusivity is checked by the caller (main); this function
+// translates the resolved input into the domain map. Empty inputs return
+// nil (unlimited; regression-safe).
+func parsePhaseWIPFlags(rawList, profileName string) (map[model.WorkflowPhase]int, error) {
+	if profileName != "" {
+		cfg, ok := phaseWIPProfiles[profileName]
+		if !ok {
+			names := make([]string, 0, len(phaseWIPProfiles))
+			for n := range phaseWIPProfiles {
+				names = append(names, n)
+			}
+			sort.Strings(names)
+			return nil, fmt.Errorf("unknown --phase-wip-profile %q (registered: %v)", profileName, names)
+		}
+		return cfg, nil
+	}
+	if rawList == "" {
+		return nil, nil
+	}
+	out := make(map[model.WorkflowPhase]int)
+	for _, kv := range strings.Split(rawList, ",") {
+		kv = strings.TrimSpace(kv)
+		if kv == "" {
+			continue
+		}
+		i := strings.IndexByte(kv, '=')
+		if i < 0 {
+			return nil, fmt.Errorf("--phase-wip: invalid syntax %q (want phase=cap)", kv)
+		}
+		key := strings.TrimSpace(kv[:i])
+		val := strings.TrimSpace(kv[i+1:])
+		phase, ok := parsePhaseName(key)
+		if !ok {
+			return nil, fmt.Errorf("--phase-wip: unknown phase %q (valid: Research, Sizing, Planning, Implement, Verify, CI/CD or CICD, Review)", key)
+		}
+		cap, err := strconv.Atoi(val)
+		if err != nil {
+			return nil, fmt.Errorf("--phase-wip: invalid integer %q for phase %q", val, key)
+		}
+		out[phase] = cap
+	}
+	return out, nil
+}
+
+// parsePhaseName maps an operator-supplied phase string to WorkflowPhase.
+// Case-insensitive; accepts both "CI/CD" and "CICD" for the CI/CD phase.
+// Mirrors api.parsePhaseName so CLI + REST share the same vocabulary.
+func parsePhaseName(s string) (model.WorkflowPhase, bool) {
+	switch strings.ToUpper(s) {
+	case "RESEARCH":
+		return model.PhaseResearch, true
+	case "SIZING":
+		return model.PhaseSizing, true
+	case "PLANNING":
+		return model.PhasePlanning, true
+	case "IMPLEMENT":
+		return model.PhaseImplement, true
+	case "VERIFY":
+		return model.PhaseVerify, true
+	case "CI/CD", "CICD":
+		return model.PhaseCICD, true
+	case "REVIEW":
+		return model.PhaseReview, true
+	}
+	return 0, false
+}
+
+// phaseWIPConfigStringKeys converts the domain-typed cap config into the
+// string-keyed wire form Client.CreateSimulation expects.
+func phaseWIPConfigStringKeys(cfg map[model.WorkflowPhase]int) map[string]int {
+	if len(cfg) == 0 {
+		return nil
+	}
+	out := make(map[string]int, len(cfg))
+	for k, v := range cfg {
+		out[k.String()] = v
+	}
+	return out
 }
