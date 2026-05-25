@@ -152,6 +152,18 @@ BenchmarkRunSprint-4                     44959    28512 ns/op     266 B/op   5 a
 
 Post-UC39 numbers will be re-measured at cycle #15445 completion-gate.
 
+### Baseline (2026-05-25, 4-core machine, post-UC39)
+
+Recorded at cycle #15445 completion-gate. Same 4-core machine. UC39's per-tick release-controller call + TOC.Update added small constant work. Allocs went from 7 → 10 per Tick (TOC.Update intermediate allocations); wall-clock numbers reflect ambient machine load (BenchmarkTick ratio ~2.2× vs pre-UC39 is consistent with ambient variability across multiple runs).
+
+```
+BenchmarkTick-4                       7492   368486 ns/op   11115 B/op   10 allocs/op
+BenchmarkTick_LargeSimulation-4      10000   280489 ns/op   11114 B/op   10 allocs/op
+BenchmarkRunSprint-4                 20400    65979 ns/op     267 B/op    5 allocs/op
+```
+
+Post-UC40 numbers will be re-measured at cycle #15446 completion-gate.
+
 ## Persistence
 
 | Key | Action |
