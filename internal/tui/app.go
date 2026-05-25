@@ -947,9 +947,12 @@ func (a *App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return a, nil
 }
 
-// runComparison runs simulations with DORA vs TameFlow policies
+// runComparison runs simulations with DORA vs TameFlow policies.
+// Seed source is the injectable clock (defaults to time.Now) so tests can
+// pin a deterministic seed and avoid lead-time-tie nondeterminism (the
+// failure mode that made TestWorkflow_PolicyComparison flaky pre-fix).
 func (a *App) runComparison() {
-	seed := time.Now().UnixNano()
+	seed := a.clock().UnixNano()
 	a.comparisonSeed = seed
 
 	// Run simulation with DORA-Strict policy
@@ -1165,7 +1168,12 @@ func (a *App) doHTTPDecompose(ticketID string) tea.Cmd {
 // View implements tea.Model
 func (a *App) View() string {
 	if a.width == 0 {
-		return "Loading..."
+		// Pre-WindowSizeMsg default: a sane terminal-shape render avoids
+		// frame-ordering nondeterminism in teatest (golden tests previously
+		// raced on whether "Loading..." appeared before the first window-
+		// size message). 120x40 matches teatest's WithInitialTermSize default.
+		a.width = 120
+		a.height = 40
 	}
 
 	header := renderHeader(a.buildHeaderVM())

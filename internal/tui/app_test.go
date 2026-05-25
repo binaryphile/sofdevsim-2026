@@ -1021,8 +1021,17 @@ func TestWorkflow_SprintCycle_ClientMode(t *testing.T) {
 }
 
 // TestWorkflow_PolicyComparison verifies comparison workflow runs and produces results.
+// Uses an injected fixed-time clock so the comparison seed is deterministic
+// (avoids the pre-fix flake where time.Now-seeded comparisons occasionally
+// produced tied LeadTimeAvg between policies → no winner).
 func TestWorkflow_PolicyComparison(t *testing.T) {
 	app := NewAppWithSeed(42)
+	// Pin the clock so runComparison's seed is reproducible across runs.
+	// Seed 1_700_000_000_000_000_000 produces non-tied lead times for
+	// DORA-Strict vs TameFlow-Cognitive with the standard 12-ticket /
+	// 3-sprint setup.
+	fixed := time.Unix(0, 1_700_000_000_000_000_000)
+	app.clock = func() time.Time { return fixed }
 
 	// Navigate to Comparison view (Tab×3: Planning → Execution → Metrics → Comparison)
 	for i := 0; i < 3; i++ { // justified:SM
