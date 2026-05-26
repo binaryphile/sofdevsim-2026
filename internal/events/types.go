@@ -1620,3 +1620,62 @@ func (e WarmupTimedOut) WithCausedBy(eventID string) WarmupTimedOut {
 	e.Header.CausedByID = eventID
 	return e
 }
+
+// InvestmentApplied is emitted by Engine.SpendInvestment when the
+// operator (or batch/LLM policy) purchases a capacity-changing
+// investment between sprints per UC40. Single event per spend —
+// projection handler dispatches by Option to apply both the capacity
+// change AND the Budget debit atomically (per /i pass 1 atomicity
+// fix; eliminates dual-event partial-state-corruption risk). For
+// InvestHire, the projection handler reuses the same logic as
+// DeveloperAdded inline (via shared appendDeveloperFromInvestment
+// helper) — NOT a paired DeveloperAdded emission. UC40 #15446.
+type InvestmentApplied struct {
+	Header
+	// Option identifies which of the 4 investments was purchased.
+	Option model.InvestmentOption
+	// Cost is the Budget debit amount (matches InvestmentOptionCost[Option]
+	// at emission time; carried in the event for audit-trail clarity).
+	Cost int
+	// TargetPhase is the phase the investment targets (e.g., PhaseReview
+	// for ReviewTool; PhaseCICD for CICDSlot). PhaseBacklog (zero-value)
+	// for Hire (no specific phase target). Informational; not used by
+	// the projection handler in UC40.
+	TargetPhase model.WorkflowPhase
+}
+
+// NewInvestmentApplied creates an InvestmentApplied event with proper header.
+func NewInvestmentApplied(simID string, tick int, option model.InvestmentOption, cost int, targetPhase model.WorkflowPhase) InvestmentApplied {
+	return InvestmentApplied{
+		Header: Header{
+			ID:         nextEventID("InvestmentApplied"),
+			SimID:      simID,
+			Type:       "InvestmentApplied",
+			OccurredAt: tick,
+			DetectedAt: time.Now(),
+			Version:    1,
+		},
+		Option:      option,
+		Cost:        cost,
+		TargetPhase: targetPhase,
+	}
+}
+
+// WithTrace returns a copy with tracing fields set for fluent chaining.
+func (e InvestmentApplied) WithTrace(traceID, spanID, parentSpanID string) InvestmentApplied {
+	e.Header.Trace = traceID
+	e.Header.Span = spanID
+	e.Header.ParentSpan = parentSpanID
+	return e
+}
+
+// withTrace implements Event interface for polymorphic tracing.
+func (e InvestmentApplied) withTrace(traceID, spanID, parentSpanID string) Event {
+	return e.WithTrace(traceID, spanID, parentSpanID)
+}
+
+// WithCausedBy returns a copy with causation link to parent event.
+func (e InvestmentApplied) WithCausedBy(eventID string) InvestmentApplied {
+	e.Header.CausedByID = eventID
+	return e
+}

@@ -374,6 +374,7 @@ func TestAllConstructors_ReturnExpectedVersion(t *testing.T) {
 		{NewScopeCreepOccurred("s", 0, "t", 1.0, 1.0), 1},
 		{NewMentorPaired("s", 0, "m", "n", "t", model.PhaseImplement), 1},
 		{NewMentorReleased("s", 0, "m", "n", "t", model.PhaseImplement), 1},
+		{NewInvestmentApplied("s", 0, model.InvestHire, 5, model.PhaseBacklog), 1}, // UC40
 	}
 
 	for _, ve := range events { // justified:AS

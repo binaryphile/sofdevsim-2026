@@ -1,6 +1,7 @@
 package events
 
 import (
+	"fmt"
 	"sort"
 	"time"
 
@@ -83,6 +84,17 @@ func (p Projection) Apply(evt Event) Projection {
 			// MaxBacklogDrip default 1 set explicitly here (NewSimulation also sets
 			// it). Zero-value 0 would deadlock the controller via floor(0)=0.
 			MaxBacklogDrip: 1,
+			// UC40 closes the same dual-default class for the 4 investment-
+			// window fields. Zero-values would break the game loop (Budget=0
+			// blocks all investments; multipliers=0 crash via multiply-by-zero;
+			// NextDeveloperID=0 collides with dev-N convention). Same fix
+			// pattern as UC38 CICDSlots-default (a2c8dab) + UC39 MaxBacklogDrip
+			// (c939e58). All 4 also set in NewSimulation (constructor + projection
+			// stay in sync).
+			Budget:                10,
+			ReviewVelocityBonus:   1.0,
+			VerifyVarianceDamping: 1.0,
+			NextDeveloperID:       7, // default team is dev-1..dev-6
 		}
 
 	case Ticked:
@@ -109,6 +121,35 @@ func (p Projection) Apply(evt Event) Projection {
 			Velocity:        e.Velocity,
 			PhaseExperience: e.PhaseExperience,
 		})
+
+	case InvestmentApplied:
+		// UC40: single event per spend; dispatch by Option to apply BOTH
+		// the capacity change AND Budget debit atomically (per /i pass 1
+		// atomicity fix; eliminates dual-event partial-state-corruption
+		// risk). Hire's path reuses the same Developer-append logic as
+		// the DeveloperAdded case inline.
+		next.sim.Budget -= e.Cost
+		switch e.Option {
+		case model.InvestHire:
+			// Auto-generate dev-N from NextDeveloperID counter; default
+			// 7 means first-Hire produces dev-7 (default team uses
+			// dev-1..dev-6). NextDeveloperID is collision-free across
+			// sim restarts via gob persistence.
+			devID := fmt.Sprintf("dev-%d", next.sim.NextDeveloperID)
+			next.sim.NextDeveloperID++
+			next.sim.Developers = append(next.sim.Developers, model.Developer{
+				ID:              devID,
+				Name:            devID, // operator-friendly default name; can be renamed via UI later
+				Velocity:        1.0,
+				PhaseExperience: [8]model.ExperienceLevel{}, // all zero = ExperienceMedium per enum default
+			})
+		case model.InvestCICDSlot:
+			next.sim.CICDSlots++
+		case model.InvestReviewTool:
+			next.sim.ReviewVelocityBonus *= 1.2
+		case model.InvestVerifyPaydown:
+			next.sim.VerifyVarianceDamping *= 0.8
+		}
 
 	case TicketCreated:
 		// UC37: e.Type carries the ticket type. For pre-v2 events the field is

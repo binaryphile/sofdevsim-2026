@@ -1300,3 +1300,95 @@ func TestProjection_Apply_WarmupExited_Idempotent(t *testing.T) {
 		t.Errorf("idempotency: second WarmupExited should leave WarmupActive=false; got true")
 	}
 }
+
+// UC40 (#15446): InvestmentApplied projection-handler tests.
+// 4 option dispatches; assert Budget debit + targeted capacity change +
+// NextDeveloperID increment for Hire.
+
+func TestProjection_Apply_InvestmentApplied_Hire_AppendsDevAndDebitsBudget(t *testing.T) {
+	proj := events.NewProjection()
+	proj = proj.Apply(events.NewSimulationCreated("sim", 0, events.SimConfig{Seed: 42}))
+	// Sanity: defaults set
+	if proj.State().Budget != 10 || proj.State().NextDeveloperID != 7 {
+		t.Fatalf("setup: Budget=%d NextDeveloperID=%d (want 10/7)",
+			proj.State().Budget, proj.State().NextDeveloperID)
+	}
+	devCountBefore := len(proj.State().Developers)
+
+	proj = proj.Apply(events.NewInvestmentApplied("sim", 5, model.InvestHire, 5, model.PhaseBacklog))
+
+	st := proj.State()
+	if st.Budget != 5 {
+		t.Errorf("Budget = %d; want 5 (10 - 5)", st.Budget)
+	}
+	if len(st.Developers) != devCountBefore+1 {
+		t.Errorf("Developers count = %d; want %d (+1 from Hire)",
+			len(st.Developers), devCountBefore+1)
+	}
+	newDev := st.Developers[len(st.Developers)-1]
+	if newDev.ID != "dev-7" {
+		t.Errorf("new dev ID = %q; want \"dev-7\" (NextDeveloperID was 7)", newDev.ID)
+	}
+	if newDev.Velocity != 1.0 {
+		t.Errorf("new dev Velocity = %v; want 1.0 (default)", newDev.Velocity)
+	}
+	if st.NextDeveloperID != 8 {
+		t.Errorf("NextDeveloperID = %d; want 8 (incremented after Hire)", st.NextDeveloperID)
+	}
+}
+
+func TestProjection_Apply_InvestmentApplied_CICDSlot_IncrementsAndDebits(t *testing.T) {
+	proj := events.NewProjection()
+	proj = proj.Apply(events.NewSimulationCreated("sim", 0, events.SimConfig{Seed: 42}))
+	// Sanity: default CICDSlots = 2 from UC38 projection-default
+	cicdBefore := proj.State().CICDSlots
+
+	proj = proj.Apply(events.NewInvestmentApplied("sim", 5, model.InvestCICDSlot, 3, model.PhaseCICD))
+
+	st := proj.State()
+	if st.Budget != 7 {
+		t.Errorf("Budget = %d; want 7 (10 - 3)", st.Budget)
+	}
+	if st.CICDSlots != cicdBefore+1 {
+		t.Errorf("CICDSlots = %d; want %d (+1)", st.CICDSlots, cicdBefore+1)
+	}
+}
+
+func TestProjection_Apply_InvestmentApplied_ReviewTool_MultipliesVelocityBonus(t *testing.T) {
+	proj := events.NewProjection()
+	proj = proj.Apply(events.NewSimulationCreated("sim", 0, events.SimConfig{Seed: 42}))
+
+	proj = proj.Apply(events.NewInvestmentApplied("sim", 5, model.InvestReviewTool, 2, model.PhaseReview))
+
+	st := proj.State()
+	if st.Budget != 8 {
+		t.Errorf("Budget = %d; want 8 (10 - 2)", st.Budget)
+	}
+	if st.ReviewVelocityBonus != 1.2 {
+		t.Errorf("ReviewVelocityBonus = %v; want 1.2 (1.0 × 1.2)", st.ReviewVelocityBonus)
+	}
+
+	// Stacking: a second ReviewTool investment multiplies again.
+	proj = proj.Apply(events.NewInvestmentApplied("sim", 10, model.InvestReviewTool, 2, model.PhaseReview))
+	st = proj.State()
+	want := 1.0 * 1.2 * 1.2 // 1.44
+	if st.ReviewVelocityBonus != want {
+		t.Errorf("after 2× ReviewTool: ReviewVelocityBonus = %v; want %v (multiplicative stacking)",
+			st.ReviewVelocityBonus, want)
+	}
+}
+
+func TestProjection_Apply_InvestmentApplied_VerifyPaydown_DampensVariance(t *testing.T) {
+	proj := events.NewProjection()
+	proj = proj.Apply(events.NewSimulationCreated("sim", 0, events.SimConfig{Seed: 42}))
+
+	proj = proj.Apply(events.NewInvestmentApplied("sim", 5, model.InvestVerifyPaydown, 2, model.PhaseVerify))
+
+	st := proj.State()
+	if st.Budget != 8 {
+		t.Errorf("Budget = %d; want 8 (10 - 2)", st.Budget)
+	}
+	if st.VerifyVarianceDamping != 0.8 {
+		t.Errorf("VerifyVarianceDamping = %v; want 0.8 (1.0 × 0.8)", st.VerifyVarianceDamping)
+	}
+}
