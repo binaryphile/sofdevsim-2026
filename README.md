@@ -299,6 +299,20 @@ The API follows HATEOAS - responses include `_links` showing available actions b
 
 See [docs/design.md](docs/design.md) for full API documentation.
 
+### Same-process co-tenancy (TUI + REST)
+
+When the TUI and REST API run in the same process (default mode), the TUI auto-tick yields to REST writers per UC10's single-writer principle. **Observable state**: when a REST writer has been observed during the session, the TUI header renders a `[READ-ONLY]` badge and keeps rendering it until process restart. The badge is the load-bearing operational signal:
+
+- **Badge visible** → auto-tick is suppressed; TUI is consuming the event stream as a projection. Safe to issue REST writes; the TUI will reflect changes.
+- **Badge absent** → no REST writer has been observed in this session. TUI auto-tick still active.
+
+**Limitations:**
+
+- The badge-latched state is **one-way** — once `[READ-ONLY]` appears, the TUI remains read-only until process restart (deliberate per UC10's conservative read of "TUI becomes a read-only projection"). Restart the TUI process to recover the writer role.
+- Interactive TUI keypress mutation actions (`s`/start-sprint, `a`/assign, `d`/decompose, `p`/policy, `1-4`/invest) call `must.Get` on engine writes and **CAN panic if they race a REST write**. The badge does NOT prevent keypress races; an operator pressing `s` moments after a REST write may still panic. See the follow-up task on the `must.Get` keypress panic-risk class.
+
+**Resize artifacts**: If the TUI's rendering appears corrupted after an interactive `tmux split-window` mid-session (partial redraw, blank rows), press **Ctrl+L** to force a full redraw (UC34 workaround). The root cause is environmental (tmux + alt-screen + SIGWINCH interaction); scripted `tmux resize-window` does NOT reproduce the symptom.
+
 ## Tutorial
 
 For a hands-on walkthrough with checkpoints, see [docs/tutorial.md](docs/tutorial.md).
@@ -330,6 +344,7 @@ Press **Tab** to switch between views:
 | **c** | Run policy comparison | All |
 | **e** | Export data to CSV | All (after sprints complete) |
 | **j/k** or **↑/↓** | Navigate backlog | Planning |
+| **Ctrl+L** | Force full screen redraw (UC34 workaround) | All |
 | **q** | Quit | All |
 
 ### Typical Workflow
