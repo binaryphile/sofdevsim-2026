@@ -240,7 +240,7 @@ The TOC operating model described above (aggregate `RopeConfig`/`DownstreamWIP()
 | UC37 heterogeneous ticket types (#15442) | **shipped** — see §"Heterogeneous Ticket Types" below | Ticket flow is now per-type — phase-effort distribution differs per type; `currentTick - PhaseEnteredTick` aggregation now has a type-dimension breakdown when needed; constraint identification continues to operate on aggregated per-phase dwell |
 | UC38 per-phase WIP caps (#15443) | **shipped** — see §"Per-Phase WIP Caps (UC38)" below | Aggregate `RopeConfig` is joined by a per-phase WIP configuration; the existing `CICDSlots` field is now wired into this enforcement path; constraint may shift to cap-starved phases |
 | UC39 demand-driven release (#15445) | **shipped** — see §"Demand-Driven Release (UC39)" below | Push-mode default joined by a pull-mode controller gated on constraint-buffer penetration; release rate becomes a function of constraint throughput, not sprint commit |
-| UC40 investment moves (#15446) | planned | Sprint-boundary investment events become a new event class; capacity dimensions (developer count, CI/CD slot count, per-phase tooling multipliers, per-phase variance multipliers) become event-sourced rather than initialisation-fixed |
+| UC40 investment moves (#15446) | **shipped** — see §"Investment Moves (UC40)" below | Sprint-boundary investment events become a new event class (`InvestmentApplied`); capacity dimensions (developer count, CI/CD slot count, Review-tooling velocity bonus, Verify-variance damping) are mutated via event-replay rather than initialisation-fixed; `Budget` becomes mutable aggregate state |
 
 See `docs/roadmap.md` Phase 5 for the sequencing rationale and child-cycle enumeration.
 
@@ -473,6 +473,83 @@ Push mode preserved byte-identical via the zero-value default. The demand-mode-s
 - `WarmupExited` + `WarmupTimedOut` projection handlers — assert post-event sim state.
 - `runReleaseController` — table-driven over 7 scenarios (push: no-op; demand-warmup-running: no-op; demand-warmup-exit-fires: WarmupExited + TicketCommitted same tick; demand-warmup-timeout: WarmupTimedOut + no TicketCommitted; demand-postwarmup-green: TicketCommitted count = admit headroom; demand-postwarmup-red: 0 TicketCommitted + red-zone reason; ErrAnalyzerNotReady defensive guard).
 - TWO integration tests in `engine_integration_test.go`: `TestDemandMode_LowersAvgWIPVsPush` (seed=42 + uc37-default mix + 3 sprints + ReleaseMode={Push, Demand} same seed; assert demand AvgWIP < push AvgWIP × 0.9) AND `TestDemandMode_WarmupFallsBackToPushIfNoConstraint` (degenerate mix; assert warmup timeout fires + effective-push fallback + `errors.Is(err, ErrWarmupTimeout)`).
+
+---
+
+### Investment Moves (UC40)
+
+**Status**: implemented in cycle #15446 (contract #18518, parent epic #15441 — UC40 is the **final** child cycle in the Factorio dynamics program; UC37+UC38+UC39+UC40 all closed).
+
+**Schema**: 4 new fields on `Simulation`:
+- `Budget int` (default 10; mutable aggregate state — distinct from UC38 `PhaseWIPConfig` and UC39 `ReleaseMode` which are immutable config)
+- `ReviewVelocityBonus float64` (default 1.0; multiplicative; capacity multiplier applied to Review-phase velocity)
+- `VerifyVarianceDamping float64` (default 1.0; multiplicative; lower = less variance; capacity multiplier applied to Verify-phase variance)
+- `NextDeveloperID int` (default 7; default team uses dev-1..dev-6; Hire's projection handler reads + increments to assign collision-free IDs)
+
+All defaults set in BOTH `NewSimulation` AND projection's `SimulationCreated` handler per the UC38 CICDSlots-default + UC39 MaxBacklogDrip-default precedent — zero-value 0 would block all investments OR crash via multiply-by-zero. Additive-field convention per CLAUDE.md "add fields freely" — `SimulationCreated` event Version NOT bumped (defaults applied on pre-UC40 event replay).
+
+`(Simulation) IsInvestmentWindowOpen() bool`: returns `true` when `CurrentSprintOption.IsNone() AND SprintNumber > 0`. Window opens at `SprintEnded` and closes at the next `SprintStarted`.
+
+**Investment options + costs** (locked per Phase 1b Decision A):
+
+| Option | Enum | Cost | Effect |
+|---|---|---:|---|
+| Hire developer | `InvestHire` | 5 | Projection handler appends a `Developer` with auto-generated ID `dev-N` (from `NextDeveloperID`, default velocity 1.0) inline via shared `appendDeveloper` helper + debits Budget by 5. Single event, atomic |
+| Buy CI/CD slot | `InvestCICDSlot` | 3 | `sim.CICDSlots += 1` (works with UC38's CICDSlots-as-PhaseWIPCap-fallback wiring) + debits Budget by 3 |
+| Upgrade Review tooling | `InvestReviewTool` | 2 | `sim.ReviewVelocityBonus *= 1.2` (multiplicative; stacks across investments — 3× → 1.728) + debits Budget by 2 |
+| Pay down Verify tech debt | `InvestVerifyPaydown` | 2 | `sim.VerifyVarianceDamping *= 0.8` (multiplicative; lower = less variance; stacks) + debits Budget by 2 |
+
+**Single-event-per-spend atomicity** (per /i pass 1 fix): ALL 4 options emit a **single** `InvestmentApplied` event whose projection handler dispatches by Option to apply BOTH the capacity change AND the Budget debit atomically. Hire's path reuses the existing `DeveloperAdded` projection logic via a shared `appendDeveloper(sim, id)` helper — not the `DeveloperAdded` event itself. This preserves the spirit of Phase 1b Decision (Hire reuses DeveloperAdded's known-good logic) while avoiding a dual-event partial-state-corruption failure mode. Operators get a uniform audit trail via `era query type = "InvestmentApplied"`.
+
+**Sentinel errors** (per Go dev §8; co-located in `internal/model/investment.go`):
+
+| Sentinel | Trigger |
+|---|---|
+| `ErrInsufficientBudget` | `SpendInvestment` called when `InvestmentOptionCost[option] > sim.Budget`; HTTP 422 |
+| `ErrInvalidInvestment` | `ParseInvestmentOption("garbage")` — unknown option name; HTTP 422 |
+| `ErrInvestmentWindowClosed` | `SpendInvestment` called when `IsInvestmentWindowOpen() == false` (mid-sprint OR before first sprint); HTTP 409 (state conflict) |
+
+Callers MUST use `errors.Is`; never string-match.
+
+**Investment-window state machine**:
+
+```
+sim created                                       ──▶ SprintNumber=0; window CLOSED (no sprint yet)
+                                                        │
+StartSprint emitted ──▶ window CLOSED (sprint active)
+                                                        │
+sprint completes (Tick at EndDay) ──▶ SprintEnded emitted ──▶ window OPEN (SprintNumber=N>0)
+                                                        │
+operator spends investment ──▶ event applied; budget debited; capacity changed
+                                                        │
+StartSprint for sprint N+1 ──▶ window CLOSED again
+```
+
+**Capacity multiplier wiring**: `ReviewVelocityBonus` multiplies the velocity calc when `ticket.Phase == PhaseReview`; `VerifyVarianceDamping` multiplies the variance value when `ticket.Phase == PhaseVerify`. Default 1.0 preserves pre-UC40 behavior byte-identically (regression-safe).
+
+**Operator surface** (CLI + REST + TUI):
+- REST: `POST /simulations/{id}/investments` body `{"option": "hire|cicd-slot|review-tool|verify-paydown"}`. Returns updated state on 201; HTTP 422 for `ErrInsufficientBudget` + `ErrInvalidInvestment`; HTTP 409 for `ErrInvestmentWindowClosed`.
+- TUI: When investment window open, the Execution view body renders inline numbered options `[1]Hire($5) [2]CICDSlot($3) [3]ReviewTool($2) [4]VerifyPaydown($2)` (grayed when unaffordable). Number keys 1-4 spend the corresponding option; 's' starts next sprint (closes window). No modal — fits existing view-based TUI pattern (per /i pass 1 simplification).
+- Header: "Budget: $N" always visible alongside Mode + Policy.
+
+**CSV export**: `sprints.csv` gains `budget_remaining` (int) + `investment_applied` (string; option name OR "none") columns appended after UC39's `buffer_penetration`.
+
+**Test surface** (Decisions A + B):
+- `ParseInvestmentOption` — table-driven over canonical names + case-variants + garbage; `errors.Is(ErrInvalidInvestment)` per failure case.
+- `ShouldAffordInvestment` — table-driven over Budget {0, 1, 2, 3, 5, 10} × all 4 options (24 cases).
+- `AvailableOptions` — table-driven over same Budget axis; deterministic enum-order assertion.
+- `Simulation.IsInvestmentWindowOpen` — table-driven over 4 states (pre-first-sprint / sprint-active / sprint-ended / sprint-restarted).
+- `Simulation.Clone()` — TestSimulation_Clone_Budget_Preserve covers Budget + ReviewVelocityBonus + VerifyVarianceDamping + NextDeveloperID.
+- `InvestmentApplied` projection handler — table-driven over 4 option dispatches + assert Budget debit + targeted capacity change + NextDeveloperID increment for Hire.
+- `runReleaseController`-parallel `Engine.SpendInvestment` — table-driven over 6 scenarios (window-closed → ErrInvestmentWindowClosed; insufficient → ErrInsufficientBudget; 4 happy paths per option).
+- Capacity multiplier wiring tests: `TestReviewVelocityBonus_AppliesToReviewPhase` + `TestVerifyVarianceDamping_AppliesToVerifyPhase` (identity at default 1.0; effect at non-1.0).
+- TWO integration tests in `engine_integration_test.go`: `TestInvestmentSpend_HappyPath` (full sprint + invest CICDSlot + next sprint + assert capacity changed + budget debited) AND `TestInvestmentSpend_RejectsInsufficientBudget` (Budget=2 + Hire(cost 5) → ErrInsufficientBudget + state unchanged).
+
+**Deferred to follow-up cycles** (per /i pass 1 scope-bounding):
+- `InvestmentPolicy` interface for batch/LLM mode (UC40 ext §5a) → tracked as fu1 task #18516.
+- `HasElevationWithoutExploitation` lesson predicate (UC40 ext §3a) → tracked as fu2 task #18517. Requires cross-sprint `LastSprintConstraintPhase` field + investment-occurred-this-cycle flag, out of UC40 core scope.
+
+UC40 closes the **Factorio dynamics program** (parent epic #15441): UC37 + UC38 + UC39 + UC40 all shipped; the 5FS EXPLOIT/ELEVATE game loop is now playable end-to-end.
 
 ---
 
