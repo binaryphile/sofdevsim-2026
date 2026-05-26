@@ -1445,6 +1445,28 @@ When the API drives the simulation (UC10), the TUI does not unpause auto-tick on
 **Projection idempotency:**
 `Projection.Apply()` tracks processed event IDs. When a consumer receives an event it already applied locally (a "self-event"), Apply returns the unchanged projection. This eliminates the need for ownership coordination — any consumer can safely apply any event without double-counting.
 
+#### TUI co-tenancy single-writer enforcement
+
+Mechanism that implements the UC10 single-writer principle in the TUI (was specification-only before this cycle; now mechanically enforced in `internal/tui/app.go`).
+
+**Flag**: `App.coTenantWriteObserved bool` — monotonic, persistent-once-set. Set to `true` in the `eventMsg` handler the first time `ApplyEvent` advances `ProjectionVersion` (the "external event" branch, after the existing self-event early-return at `app.go` lines 399-404). Never reset (recovery requires process restart per UC10 conservative reading).
+
+**Self-event protection** is incidental to the projection-version invariant, NOT a principled origin-marker: a self-write's local-engine mutation advances the projection BEFORE `eventSub` delivers the bounced-back event, so `ApplyEvent` on the bounced event finds versions already match and returns no-op. The flag-setting code is in the version-advanced branch, never reached for self-events. **A future async-local-apply projection change would invalidate this protection** and would require an explicit origin-marker; documented here so future maintainers can spot the dependency.
+
+**Suppression**: `tickMsg` handler early-returns BEFORE the `Tick()` write when `coTenantWriteObserved && !paused`. Schedules `a.tickCmd()` so polling continues and projection updates still render — only the engine WRITE is suppressed. UC10's "TUI becomes a read-only projection" contract becomes mechanically enforced.
+
+**Observable signal**: `TickAttempted{Failed{Category: Conflict, Reason: "co-tenant writer observed; TUI read-only per UC10"}}` recorded EXACTLY ONCE at the transition (the `eventMsg` site where the flag flips false→true), NOT on every subsequent `tickMsg`. Per-tick recording would flood `state.ErrorMessage` (`internal/tui/uiprojection.go:40-41` reads last `TickAttempted`'s `Reason` into `ErrorMessage` on every state re-derivation; `tickCmd` fires every ~250ms; the result would be a permanent error banner repainting at tick rate).
+
+**Operator-visible runtime indicator**: TUI header renders a `[READ-ONLY]` badge whenever `coTenantWriteObserved` is true. The badge is the load-bearing observable — badge-visible = auto-tick suppressed, badge-absent = no external writer observed yet in this session. `HeaderVM.ReadOnlyMode bool` carries the state; `renderHeader` appends the badge styled with `MutedStyle.Bold` after the existing Mode/Policy labels.
+
+**Residual risk (deferred to follow-up)**: Interactive TUI keypress mutation actions (`s/start-sprint`, `a/assign`, `d/decompose`, `p/policy`, `1-4/invest`) call `must.Get` on engine writes (`app.go:655`, `:704`, `:753`, `:792`) and CAN panic if they race a REST write. The auto-tick suppression does NOT protect keypress paths. The `[READ-ONLY]` badge is the operator's signal that auto-tick is suppressed; it is NOT a promise of keypress safety.
+
+#### UC34 resize redraw — workaround (Phase 3a investigation outcome)
+
+User-reported symptom: post-resize partial redraw (only animation-delta rows visible, surrounding rows blank) during interactive `tmux split-window` mid-TUI-session. Investigation finding: NOT reproducible via teatest (pseudo-terminal isolated from tmux); NOT reproducible via scripted `tmux resize-window` (proper SIGWINCH path); appears specific to interactive `tmux split-window` creating a new pane during a running TUI session. Root cause is upstream (tmux + alt-screen + SIGWINCH interaction); no in-TUI code defect localized.
+
+**Workaround (criterion 5 outcome (a) FIX LANDED)**: `Ctrl+L` force-redraw key. Handler returns `tea.ClearScreen` which issues ANSI `EraseEntireScreen` + `CursorHomePosition` and resets bubbletea's renderer diff cache via `repaint()`. The next `View()` output paints from scratch, recovering from any divergence between the renderer's tracked state and the actual terminal state. UC34 Extension 2b documents the symptom + workaround for operators.
+
 **Observability via input events:**
 All three event-sourcing boundary conditions are recorded as input events in the TUI's `UIProjection`:
 
