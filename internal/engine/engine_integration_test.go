@@ -1555,3 +1555,127 @@ func TestDemandMode_WarmupFallsBackToPushIfNoConstraint(t *testing.T) {
 		t.Errorf("ErrWarmupTimeout sentinel sanity check failed")
 	}
 }
+
+// UC40 #15446 integration test 1: end-to-end investment flow per
+// Postconditions/Success contract. Run 1 sprint to completion, spend
+// CICDSlot in the between-sprint window, start next sprint, assert
+// sim.CICDSlots increased by 1 + sim.Budget decreased by 3.
+func TestInvestmentSpend_HappyPath(t *testing.T) {
+	const seed = int64(42)
+
+	store := events.NewMemoryStore()
+	eng := engine.NewEngineWithStore(seed, store)
+	var err error
+	eng, err = eng.EmitCreated("inv-int-happy", 0, events.SimConfig{
+		TeamSize:     6,
+		SprintLength: 10,
+		Seed:         seed,
+		Policy:       model.PolicyNone,
+	})
+	if err != nil {
+		t.Fatalf("EmitCreated: %v", err)
+	}
+	// Default team (6 devs) for realistic sim setup.
+	for _, id := range []string{"dev-1", "dev-2", "dev-3", "dev-4", "dev-5", "dev-6"} { // justified:SM
+		eng, _ = eng.AddDeveloper(id, id, 1.0)
+	}
+	// uc37-default mix backlog (12 tickets).
+	gen := engine.Scenarios["uc37-default"]
+	tickets := gen.Generate(rand.New(rand.NewSource(seed)), 12)
+	for _, tk := range tickets { // justified:SM
+		eng, _ = eng.AddTicket(tk)
+	}
+
+	// Sprint 1: run to completion.
+	eng, _, _ = eng.RunSprint()
+	if eng.Sim().IsInvestmentWindowOpen() != true {
+		t.Fatalf("investment window should be open post-sprint-1; got SprintNumber=%d active=%v",
+			eng.Sim().SprintNumber, eng.Sim().CurrentSprintOption.IsOk())
+	}
+
+	// Sanity: pre-spend state
+	budgetBefore := eng.Sim().Budget
+	cicdSlotsBefore := eng.Sim().CICDSlots
+	if budgetBefore != 10 {
+		t.Fatalf("Budget pre-spend = %d; want 10 (default)", budgetBefore)
+	}
+
+	// SPEND: CICDSlot (cost 3)
+	eng, err = eng.SpendInvestment(model.InvestCICDSlot)
+	if err != nil {
+		t.Fatalf("SpendInvestment(CICDSlot): %v", err)
+	}
+
+	// Assert per UC40 Postconditions/Success: budget decreased + capacity changed
+	st := eng.Sim()
+	if st.Budget != budgetBefore-3 {
+		t.Errorf("Budget = %d; want %d (-3 cost)", st.Budget, budgetBefore-3)
+	}
+	if st.CICDSlots != cicdSlotsBefore+1 {
+		t.Errorf("CICDSlots = %d; want %d (+1)", st.CICDSlots, cicdSlotsBefore+1)
+	}
+	if st.LastInvestmentApplied != "cicd-slot" {
+		t.Errorf("LastInvestmentApplied = %q; want \"cicd-slot\"", st.LastInvestmentApplied)
+	}
+
+	// Sprint 2 starts cleanly with the elevated capacity.
+	eng, _, _ = eng.RunSprint()
+	if eng.Sim().CICDSlots != cicdSlotsBefore+1 {
+		t.Errorf("CICDSlots post-sprint-2 = %d; want %d (capacity change persists across sprint boundary)",
+			eng.Sim().CICDSlots, cicdSlotsBefore+1)
+	}
+}
+
+// UC40 #15446 integration test 2: insufficient-budget rejection per
+// UC40 ext §1a. Manually set Budget=2, attempt to spend Hire (cost 5),
+// assert errors.Is(err, ErrInsufficientBudget) + sim state unchanged.
+func TestInvestmentSpend_RejectsInsufficientBudget(t *testing.T) {
+	const seed = int64(42)
+
+	store := events.NewMemoryStore()
+	eng := engine.NewEngineWithStore(seed, store)
+	var err error
+	eng, err = eng.EmitCreated("inv-int-reject", 0, events.SimConfig{
+		Seed:   seed,
+		Policy: model.PolicyNone,
+	})
+	if err != nil {
+		t.Fatalf("EmitCreated: %v", err)
+	}
+	eng, _ = eng.AddDeveloper("d1", "d1", 1.0)
+	// Start + end sprint to open the window.
+	eng, _ = eng.EmitForTest(events.NewSprintStarted("inv-int-reject", 0, 1, 2.0))
+	eng, _ = eng.EmitForTest(events.NewSprintEnded("inv-int-reject", 10, 1))
+	if !eng.Sim().IsInvestmentWindowOpen() {
+		t.Fatalf("setup: window should be open")
+	}
+	// Drain Budget to 2 by spending 8 worth of investments
+	// (CICDSlot=3 + ReviewTool=2 + ReviewTool=2 = 7; one more 1 won't fit any option).
+	// Simpler: drain via direct InvestmentApplied emissions with synthetic costs.
+	eng, _ = eng.EmitForTest(events.NewInvestmentApplied("inv-int-reject", 11, model.InvestReviewTool, 8, model.PhaseReview))
+	if eng.Sim().Budget != 2 {
+		t.Fatalf("setup: Budget should be 2 after manual drain; got %d", eng.Sim().Budget)
+	}
+
+	cicdBefore := eng.Sim().CICDSlots
+	devsBefore := len(eng.Sim().Developers)
+
+	// ATTEMPT: Hire (cost 5; insufficient with Budget=2)
+	_, err = eng.SpendInvestment(model.InvestHire)
+	if !errors.Is(err, model.ErrInsufficientBudget) {
+		t.Errorf("err = %v; want errors.Is(err, ErrInsufficientBudget)", err)
+	}
+
+	// Assert state unchanged
+	st := eng.Sim()
+	if st.Budget != 2 {
+		t.Errorf("Budget = %d; want 2 unchanged (rejection should not modify state)", st.Budget)
+	}
+	if st.CICDSlots != cicdBefore {
+		t.Errorf("CICDSlots changed (%d → %d); should be unchanged on rejection", cicdBefore, st.CICDSlots)
+	}
+	if len(st.Developers) != devsBefore {
+		t.Errorf("Developers count changed (%d → %d); should be unchanged on rejection",
+			devsBefore, len(st.Developers))
+	}
+}
