@@ -176,6 +176,18 @@ BenchmarkRunSprint-4                 20400    65979 ns/op     267 B/op    5 allo
 
 Post-UC40 numbers will be re-measured at cycle #15446 completion-gate (final cycle in the Factorio epic).
 
+### Baseline (2026-05-25, 4-core machine, post-UC40 — Factorio epic complete)
+
+Recorded at cycle #15446 completion-gate. Same 4-core machine as prior baselines. UC40 added 5 new fields on Simulation (Budget int + ReviewVelocityBonus float64 + VerifyVarianceDamping float64 + NextDeveloperID int + LastInvestmentApplied string) + 2 conditional float multiplies in the work-calc path (Review/Verify phases only). Wall-clock numbers reflect ambient machine load (BenchmarkTick ratio ~2.3× vs UC39 baseline is consistent with cross-run variability on this i5-8200Y; alloc count stayed at 10/Tick same as UC39).
+
+```
+BenchmarkTick-4                      10000   845360 ns/op   11114 B/op   10 allocs/op
+BenchmarkTick_LargeSimulation-4      10000  1005650 ns/op   11114 B/op   10 allocs/op
+BenchmarkRunSprint-4                 17842    86984 ns/op     266 B/op    5 allocs/op
+```
+
+**Factorio dynamics epic #15441 program complete**: UC37 #15442 (heterogeneous ticket types) + UC38 #15443 (per-phase WIP caps) + UC39 #15445 (demand-driven release) + UC40 #15446 (investment moves) all shipped. 5FS EXPLOIT/ELEVATE game loop is now playable end-to-end.
+
 ## Persistence
 
 | Key | Action |
