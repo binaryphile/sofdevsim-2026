@@ -569,10 +569,10 @@ None (self-contained simulation, no external services)
 
 This use case requires event sourcing architecture:
 - Single event stream per simulation with optimistic concurrency
-- Single-writer principle: API is the primary writer in shared mode; TUI becomes a read-only projection (does not auto-tick on external SprintStarted)
+- Single-writer principle (IMPLEMENTED — `internal/tui/app.go` `coTenantWriteObserved` flag, design.md "TUI co-tenancy single-writer enforcement"): API is the primary writer in shared mode; TUI becomes a read-only projection (does not auto-tick on external SprintStarted). The TUI observes external writers via its existing `eventSub` ProjectionVersion-advance branch; the first external event flips `coTenantWriteObserved`, after which `tickMsg` auto-tick is suppressed silently. The flag is monotonic — once set, remains set for the rest of the process lifetime (recovery requires TUI restart). The operator-observable indicator is the `[READ-ONLY]` badge in the TUI header (renders when `coTenantWriteObserved` is true). Interactive keypress mutation actions (s/start-sprint, a/assign, d/decompose, p/policy, 1-4/invest) are NOT yet protected — they still race REST writes and can panic via `must.Get`; see follow-up task on the `must.Get` keypress panic-risk class.
 - TUI and API both subscribe to events; each maintains projection of current state
 - Events are the source of truth
-- Concurrency conflicts are recorded as input events (`TickAttempted{Failed{Conflict}}`), not panics
+- Concurrency conflicts are recorded as input events (`TickAttempted{Failed{Conflict}}`), not panics. The auto-tick suppression records `TickAttempted{Failed{Conflict, Reason: "co-tenant writer observed; TUI read-only per UC10"}}` EXACTLY ONCE on the transition (not on every subsequent tick, which would flood the UI's `ErrorMessage` state).
 
 ---
 
@@ -1411,6 +1411,7 @@ This use case requires event sourcing architecture:
 **Extensions:**
 
 - 2a. *Terminal too narrow:* System displays "Terminal too narrow" fallback
+- 2b. *Interactive tmux pane split during a running TUI session:* Bubbletea's renderer state can diverge from the actual terminal state when a new tmux pane is created mid-session (tmux's SIGWINCH propagation through alt-screen mode is environment-specific). Symptom: partial redraw artifacts (e.g., only animation-delta rows render, surrounding rows blank). Subsequent `tmux resize-window` operations do NOT recover the renderer cache. **Workaround**: press `Ctrl+L` — the TUI handles it as a force-redraw (sends `tea.ClearScreen` which issues ANSI EraseEntireScreen + CursorHomePosition and resets bubbletea's diff cache via `repaint()`). The next frame paints from scratch. Phase 3a investigation: teatest cannot reproduce the symptom (its pseudo-terminal isolates from tmux); scripted `tmux resize-window` cannot reproduce it (it goes through proper SIGWINCH path); only interactive `tmux split-window` mid-session triggers the divergence. Root cause is upstream (tmux+alt-screen+SIGWINCH interaction); the in-TUI `Ctrl+L` hotkey is the operator-facing recovery affordance.
 
 ---
 
