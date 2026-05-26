@@ -76,6 +76,16 @@ type Simulation struct {
 	// permanent throttle).
 	MaxBacklogDrip int
 
+	// UC40: between-sprint investment-window state. All 4 fields default at
+	// NewSimulation AND projection per UC38/UC39 default-fix precedent — zero-
+	// values would break the game loop (Budget=0 blocks all investments;
+	// multipliers=0 crash via multiply-by-zero; NextDeveloperID=0 collides
+	// with dev-N convention).
+	Budget                int     // starting budget; mutable aggregate state (CQRS-ES Decision E); default 10
+	ReviewVelocityBonus   float64 // multiplicative velocity bonus for Review-phase tickets; default 1.0 (no-op identity)
+	VerifyVarianceDamping float64 // multiplicative variance damping for Verify-phase tickets; default 1.0; lower = less variance
+	NextDeveloperID       int     // auto-incremented developer-ID counter for InvestHire; default 7 (default team uses dev-1..dev-6)
+
 	// Assignment cursor (persistent round-robin state)
 	AssignCursor int // index of last assigned dev, advances on each assignment
 
@@ -149,7 +159,12 @@ func NewSimulation(id string, policy SizingPolicy, seed int64) Simulation {
 		BufferPct:         0.2,
 		ExperienceConfig:  DefaultExperienceConfig(),
 		MaxBacklogDrip:    1, // UC39: default 1 (one ticket per tick when fully green)
-		Seed:              seed,
+		// UC40: investment-window defaults (also set in projection per UC38/UC39 fix precedent)
+		Budget:                10,
+		ReviewVelocityBonus:   1.0,
+		VerifyVarianceDamping: 1.0,
+		NextDeveloperID:       7, // default team is dev-1..dev-6
+		Seed:                  seed,
 	}
 }
 
@@ -243,6 +258,14 @@ func (s Simulation) PhaseWIPCount(phase WorkflowPhase) int {
 // MentorKey returns the map key for TicketMentors lookup.
 func MentorKey(ticketID string, phase WorkflowPhase) string {
 	return ticketID + ":" + phase.String()
+}
+
+// IsInvestmentWindowOpen returns true when the between-sprint
+// investment window is open per UC40: the simulation has completed at
+// least one sprint AND no sprint is currently active. Window opens at
+// SprintEnded and closes at the next SprintStarted.
+func (s Simulation) IsInvestmentWindowOpen() bool {
+	return !s.CurrentSprintOption.IsOk() && s.SprintNumber > 0
 }
 
 // IsMentoring returns true if the developer is currently mentoring someone. O(1).
