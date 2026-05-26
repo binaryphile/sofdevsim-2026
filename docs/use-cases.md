@@ -1641,7 +1641,7 @@ This use case requires event sourcing architecture:
 
 ### UC40: Spend Investment Budget at Sprint Boundary
 
-> **Phase 5 planned — not yet implemented.** This UC describes a roadmap-planned capability; see `docs/roadmap.md` Phase 5. Mechanism details (event-schema, capacity-change semantics, budget bookkeeping) live in `docs/design.md` once the implementing child cycle lands.
+> **Phase 5 shipped in cycle #15446** (contract #18518). Final child cycle of the Factorio dynamics program (parent epic #15441 — UC37+UC38+UC39+UC40 all closed). Mechanism details (event-schema, capacity-change semantics, budget bookkeeping) live in `docs/design.md` §"Investment Moves (UC40)".
 
 **Primary Actor:** Manager (or LLM agent in batch mode)
 
