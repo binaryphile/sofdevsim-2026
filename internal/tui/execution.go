@@ -27,7 +27,33 @@ func renderExecution(vm ExecutionVM) string {
 	bottomRight := BoxStyle.Width(colWidth).Render(events)
 	bottom := lipgloss.JoinHorizontal(lipgloss.Top, bottomLeft, bottomCenter, bottomRight)
 
-	return lipgloss.JoinVertical(lipgloss.Left, top, middle, bottom, office)
+	// UC40: investment window panel — full-width row between bottom and office
+	// when window open. Inline-rendered (no modal) per /i pass 1 F3.
+	parts := []string{top, middle, bottom}
+	if vm.InvestmentWindowOpen {
+		invest := BoxStyle.Width(vm.Width - 2).Render(renderInvestmentWindow(vm.Budget, vm.InvestmentOptions))
+		parts = append(parts, invest)
+	}
+	parts = append(parts, office)
+	return lipgloss.JoinVertical(lipgloss.Left, parts...)
+}
+
+// renderInvestmentWindow renders the UC40 Investment Window panel:
+// "Investment Window — Budget: $N | [1]Hire($5) [2]CICDSlot($3) ..."
+// Unaffordable options are grayed via MutedStyle. Numbers double as
+// hot keys (1-4) for spending the option per the TUI Update handler.
+func renderInvestmentWindow(budget int, opts []InvestmentOptionVM) string {
+	title := TitleStyle.Render(fmt.Sprintf("Investment Window — Budget: $%d (press 1-4 to spend; 's' to start next sprint)", budget))
+	formatOption := func(o InvestmentOptionVM) string {
+		text := fmt.Sprintf("[%d]%s", o.Number, o.Label)
+		if !o.Affordable {
+			return MutedStyle.Render(text)
+		}
+		return text
+	}
+	parts := slice.From(opts).ToString(formatOption)
+	content := strings.Join(parts, "  ")
+	return lipgloss.JoinVertical(lipgloss.Left, title, content)
 }
 
 // Calculation: []PhaseQueueRow → string (UC38 Phase Queues panel).

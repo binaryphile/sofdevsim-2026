@@ -656,6 +656,36 @@ func (a *App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		a.mode = either.Left[EngineMode, ClientMode](eng)
 		return a, nil
 
+	case "1", "2", "3", "4":
+		// UC40: investment-window number-key handler — only fires when the
+		// investment window is open (between sprints, after sprint 1+). Maps
+		// 1..4 to the 4 options in canonical enum order.
+		eng, isEng := a.mode.GetLeft()
+		if !isEng {
+			return a, nil // client mode: defer (REST already exposes /investments)
+		}
+		sim := eng.Engine.Sim()
+		if !sim.IsInvestmentWindowOpen() {
+			return a, nil // window closed → numbers are no-op (previously unbound)
+		}
+		opts := model.AllInvestmentOptions()
+		idx := int(msg.String()[0] - '1') // "1"→0, "2"→1, "3"→2, "4"→3
+		if idx < 0 || idx >= len(opts) {
+			return a, nil
+		}
+		newEng, err := eng.Engine.SpendInvestment(opts[idx])
+		if err != nil {
+			a.statusMessage = fmt.Sprintf("Investment rejected: %v", err)
+			a.statusExpiry = time.Now().Add(3 * time.Second)
+			return a, nil
+		}
+		eng.Engine = newEng
+		a.mode = either.Left[EngineMode, ClientMode](eng)
+		a.statusMessage = fmt.Sprintf("Invested in %s ($%d); remaining budget $%d",
+			opts[idx].String(), model.InvestmentOptionCost[opts[idx]], newEng.Sim().Budget)
+		a.statusExpiry = time.Now().Add(3 * time.Second)
+		return a, nil
+
 	case "s":
 		// Start sprint (from planning view)
 		if _, isClient := a.mode.Get(); isClient {
@@ -1253,7 +1283,7 @@ func renderHeader(vm HeaderVM) string {
 		status = "RUNNING"
 	}
 
-	right := MutedStyle.Render(fmt.Sprintf("%s | %s | %s | Day %d | Backlog: %d | Done: %d | Seed %d", policyStr, releaseModeIndicator(vm), status, vm.CurrentTick, vm.BacklogCount, vm.CompletedCount, vm.Seed))
+	right := MutedStyle.Render(fmt.Sprintf("%s | %s | Budget: $%d | %s | Day %d | Backlog: %d | Done: %d | Seed %d", policyStr, releaseModeIndicator(vm), vm.Budget, status, vm.CurrentTick, vm.BacklogCount, vm.CompletedCount, vm.Seed))
 
 	return BoxStyle.Width(vm.Width - 2).Render(
 		lipgloss.JoinHorizontal(lipgloss.Top, tabs, "  ", right),

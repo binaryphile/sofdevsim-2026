@@ -18,6 +18,12 @@ type HeaderVM struct {
 	ReleaseMode  string // canonical "push" or "demand"
 	WarmupActive bool
 	WarmupFailed bool
+	// UC40: between-sprint investment state. Budget rendered as "Budget: $N"
+	// alongside Mode + Policy whenever the window is open OR closed (always
+	// visible). InvestmentWindowOpen drives whether ExecutionVM renders the
+	// numbered-options panel.
+	Budget               int
+	InvestmentWindowOpen bool
 }
 
 // HelpVM — data for the help bar.
@@ -89,8 +95,26 @@ type ExecutionVM struct {
 	OfficeState  OfficeState
 	DevNames     []string
 	PhaseQueues  []PhaseQueueRow // UC38: per-phase queue depth vs cap
-	Width        int
-	Height       int
+	// UC40: investment-window state for the in-body inline panel. When
+	// InvestmentWindowOpen=true, the view renders numbered options
+	// [1]…[4]. InvestmentOptions contains all 4 options in canonical
+	// enum order with per-option Affordable flag (operator hint;
+	// unaffordable options grayed in render but still numbered).
+	InvestmentWindowOpen bool
+	Budget               int
+	InvestmentOptions    []InvestmentOptionVM
+	Width                int
+	Height               int
+}
+
+// InvestmentOptionVM — one row in the UC40 Investment Window panel.
+// Number is the 1-based hot-key position (1..4). Label is the operator-
+// facing display string ("Hire (\$5)" etc.). Affordable=false grays the
+// row (operator hint).
+type InvestmentOptionVM struct {
+	Number     int
+	Label      string
+	Affordable bool
 }
 
 // PhaseQueueRow — one row in the UC38 Phase Queues panel.

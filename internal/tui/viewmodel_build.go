@@ -17,14 +17,16 @@ func (a *App) buildHeaderVM() HeaderVM {
 		func(eng EngineMode) HeaderVM {
 			sim := eng.Engine.Sim()
 			return HeaderVM{
-				Policy:         sim.SizingPolicy.String(),
-				CurrentTick:    sim.CurrentTick,
-				BacklogCount:   len(sim.Backlog),
-				CompletedCount: len(sim.CompletedTickets),
-				Seed:           sim.Seed,
-				ReleaseMode:    sim.ReleaseMode.String(), // UC39
-				WarmupActive:   sim.WarmupActive,
-				WarmupFailed:   sim.WarmupFailed,
+				Policy:               sim.SizingPolicy.String(),
+				CurrentTick:          sim.CurrentTick,
+				BacklogCount:         len(sim.Backlog),
+				CompletedCount:       len(sim.CompletedTickets),
+				Seed:                 sim.Seed,
+				ReleaseMode:          sim.ReleaseMode.String(), // UC39
+				WarmupActive:         sim.WarmupActive,
+				WarmupFailed:         sim.WarmupFailed,
+				Budget:               sim.Budget,                  // UC40
+				InvestmentWindowOpen: sim.IsInvestmentWindowOpen(), // UC40
 			}
 		},
 		func(_ ClientMode) HeaderVM {
@@ -34,9 +36,9 @@ func (a *App) buildHeaderVM() HeaderVM {
 				BacklogCount:   a.state.BacklogCount,
 				CompletedCount: a.state.CompletedTicketCount,
 				Seed:           a.state.Seed,
-				// Client mode: state doesn't carry UC39 mode info; default
-				// to push for now (REST resource exposure deferred to a
-				// future polish cycle if operators need it).
+				// Client mode: state doesn't carry UC39/UC40 info; defaults
+				// (push + Budget=0) acceptable — REST resource exposure
+				// deferred to a future polish cycle if operators need it.
 				ReleaseMode: "push",
 			}
 		},
@@ -111,17 +113,47 @@ func (a *App) buildPlanningVM() PlanningVM {
 
 // Calculation: App → ExecutionVM
 func (a *App) buildExecutionVM() ExecutionVM {
+	open, budget, opts := a.buildInvestmentVM()
 	return ExecutionVM{
-		Sprint:      a.buildSprintProgressVM(),
-		ActiveWork:  a.buildActiveWorkVM(),
-		Fever:       a.buildFeverVM(),
-		Events:      a.buildEventsVM(),
-		OfficeState: a.officeProjection.State(),
-		DevNames:    a.getDeveloperNames(),
-		PhaseQueues: a.buildPhaseQueueRows(),
-		Width:       a.width,
-		Height:      a.height,
+		Sprint:               a.buildSprintProgressVM(),
+		ActiveWork:           a.buildActiveWorkVM(),
+		Fever:                a.buildFeverVM(),
+		Events:               a.buildEventsVM(),
+		OfficeState:          a.officeProjection.State(),
+		DevNames:             a.getDeveloperNames(),
+		PhaseQueues:          a.buildPhaseQueueRows(),
+		InvestmentWindowOpen: open,    // UC40
+		Budget:               budget,  // UC40
+		InvestmentOptions:    opts,    // UC40
+		Width:                a.width,
+		Height:               a.height,
 	}
+}
+
+// Calculation: App → (windowOpen, budget, options).
+// UC40 Investment Window panel data: when the sim's investment window is
+// open, returns the operator's current Budget + all 4 options annotated
+// with affordability. Returns (false, 0, nil) in client mode (REST surface
+// doesn't carry investment-window state yet — deferred polish).
+func (a *App) buildInvestmentVM() (open bool, budget int, opts []InvestmentOptionVM) {
+	eng, ok := a.mode.GetLeft()
+	if !ok {
+		return false, 0, nil
+	}
+	sim := eng.Engine.Sim()
+	open = sim.IsInvestmentWindowOpen()
+	budget = sim.Budget
+	all := model.AllInvestmentOptions()
+	opts = make([]InvestmentOptionVM, len(all))
+	for i, o := range all { // justified:IX
+		cost := model.InvestmentOptionCost[o]
+		opts[i] = InvestmentOptionVM{
+			Number:     i + 1,
+			Label:      fmt.Sprintf("%s ($%d)", o.String(), cost),
+			Affordable: model.ShouldAffordInvestment(budget, o),
+		}
+	}
+	return open, budget, opts
 }
 
 // Calculation: App → []PhaseQueueRow.
