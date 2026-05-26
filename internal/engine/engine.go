@@ -255,10 +255,23 @@ func (e Engine) Tick() (Engine, []model.Event, error) {
 
 		ticket := state.ActiveTickets[ticketIdx]
 
-		// Calculate work done with variance and experience multiplier
+		// Calculate work done with variance and experience multiplier.
+		// UC40: per-phase capacity multipliers from prior investment moves:
+		//   - ReviewVelocityBonus multiplies velocity for PhaseReview tickets
+		//     (default 1.0 = identity; +1.2 per InvestReviewTool stacking)
+		//   - VerifyVarianceDamping multiplies the variance value for
+		//     PhaseVerify tickets (default 1.0 = identity; ×0.8 per
+		//     InvestVerifyPaydown stacking; lower = less variance from work)
 		variance := e.variance.Calculate(ticket, e.state().CurrentTick)
 		expMultiplier := experienceMultiplier(dev.PhaseExperience[ticket.Phase], ticket.ID, ticket.Phase, e.state())
-		workDone := dev.Velocity * variance * expMultiplier
+		velocity := dev.Velocity
+		if ticket.Phase == model.PhaseReview {
+			velocity *= e.state().ReviewVelocityBonus
+		}
+		if ticket.Phase == model.PhaseVerify {
+			variance *= e.state().VerifyVarianceDamping
+		}
+		workDone := velocity * variance * expMultiplier
 
 		// Emit WorkProgressed event FIRST - projection handler updates:
 		// - ticket.RemainingEffort -= workDone
