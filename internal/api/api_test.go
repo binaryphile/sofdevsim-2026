@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/binaryphile/sofdevsim-2026/internal/api"
+	"github.com/binaryphile/sofdevsim-2026/internal/events"
 	"github.com/binaryphile/sofdevsim-2026/internal/model"
 )
 
@@ -928,4 +929,95 @@ func TestHandleCreateSimulation_ReleaseMode_HTTP422(t *testing.T) {
 			}
 		})
 	}
+}
+
+// UC40 (#15446): POST /simulations/{id}/investments — 5-case HTTP
+// status-code mapping per plan §HTTP surface.
+func TestHandleSpendInvestment_HTTPMapping(t *testing.T) {
+	// setupOpenWindow creates a sim and fast-forwards to "investment
+	// window open" state by emitting SprintStarted + SprintEnded directly.
+	setupOpenWindow := func(t *testing.T) (*httptest.Server, api.SimRegistry, string) {
+		t.Helper()
+		registry := api.NewSimRegistry()
+		srv := httptest.NewServer(api.NewRouter(registry))
+		reqBody, _ := json.Marshal(map[string]any{"seed": 42})
+		resp, _ := http.Post(srv.URL+"/simulations", "application/json", bytes.NewReader(reqBody))
+		resp.Body.Close()
+		inst, ok := registry.GetInstanceOption("sim-42").Get()
+		if !ok {
+			srv.Close()
+			t.Fatal("sim-42 not in registry after create")
+		}
+		eng := inst.Engine
+		eng, _ = eng.EmitForTest(events.NewSprintStarted("sim-42", 0, 1, 2.0))
+		eng, _ = eng.EmitForTest(events.NewSprintEnded("sim-42", 10, 1))
+		inst.Engine = eng
+		registry.SetInstance("sim-42", inst)
+		return srv, registry, "sim-42"
+	}
+
+	t.Run("happy path: hire → 201", func(t *testing.T) {
+		srv, _, simID := setupOpenWindow(t)
+		defer srv.Close()
+		body, _ := json.Marshal(map[string]any{"option": "hire"})
+		resp, _ := http.Post(srv.URL+"/simulations/"+simID+"/investments", "application/json", bytes.NewReader(body))
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusCreated {
+			rbody, _ := io.ReadAll(resp.Body)
+			t.Errorf("status = %d; want 201; body=%s", resp.StatusCode, rbody)
+		}
+	})
+
+	t.Run("invalid option (garbage) → 422", func(t *testing.T) {
+		srv, _, simID := setupOpenWindow(t)
+		defer srv.Close()
+		body, _ := json.Marshal(map[string]any{"option": "garbage"})
+		resp, _ := http.Post(srv.URL+"/simulations/"+simID+"/investments", "application/json", bytes.NewReader(body))
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusUnprocessableEntity {
+			t.Errorf("status = %d; want 422 Unprocessable Entity", resp.StatusCode)
+		}
+		rbody, _ := io.ReadAll(resp.Body)
+		if !strings.Contains(string(rbody), "invalid investment option") {
+			t.Errorf("body missing 'invalid investment option'; got %s", rbody)
+		}
+	})
+
+	t.Run("invalid option (empty string) → 422", func(t *testing.T) {
+		srv, _, simID := setupOpenWindow(t)
+		defer srv.Close()
+		body, _ := json.Marshal(map[string]any{"option": ""})
+		resp, _ := http.Post(srv.URL+"/simulations/"+simID+"/investments", "application/json", bytes.NewReader(body))
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusUnprocessableEntity {
+			t.Errorf("status = %d; want 422 (empty is invalid; no default for investment)", resp.StatusCode)
+		}
+	})
+
+	t.Run("window closed (pre-first-sprint) → 409", func(t *testing.T) {
+		registry := api.NewSimRegistry()
+		srv := httptest.NewServer(api.NewRouter(registry))
+		defer srv.Close()
+		reqBody, _ := json.Marshal(map[string]any{"seed": 99})
+		http.Post(srv.URL+"/simulations", "application/json", bytes.NewReader(reqBody))
+		body, _ := json.Marshal(map[string]any{"option": "hire"})
+		resp, _ := http.Post(srv.URL+"/simulations/sim-99/investments", "application/json", bytes.NewReader(body))
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusConflict {
+			rbody, _ := io.ReadAll(resp.Body)
+			t.Errorf("status = %d; want 409 Conflict (window closed); body=%s", resp.StatusCode, rbody)
+		}
+	})
+
+	t.Run("sim not found → 404", func(t *testing.T) {
+		registry := api.NewSimRegistry()
+		srv := httptest.NewServer(api.NewRouter(registry))
+		defer srv.Close()
+		body, _ := json.Marshal(map[string]any{"option": "hire"})
+		resp, _ := http.Post(srv.URL+"/simulations/sim-nonexistent/investments", "application/json", bytes.NewReader(body))
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusNotFound {
+			t.Errorf("status = %d; want 404", resp.StatusCode)
+		}
+	})
 }

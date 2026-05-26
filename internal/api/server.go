@@ -26,6 +26,7 @@ func NewRouter(registry SimRegistry) http.Handler {
 	mux.HandleFunc("POST /simulations/{id}/tick", registry.HandleTick)
 	mux.HandleFunc("POST /simulations/{id}/assignments", registry.HandleAssignTicket)
 	mux.HandleFunc("POST /simulations/{id}/decompose", registry.HandleDecompose)
+	mux.HandleFunc("POST /simulations/{id}/investments", registry.HandleSpendInvestment) // UC40
 	mux.HandleFunc("GET /simulations/{id}/lessons", registry.HandleGetLessons)
 	mux.HandleFunc("GET /simulations/{id}/office", registry.HandleGetOffice)
 

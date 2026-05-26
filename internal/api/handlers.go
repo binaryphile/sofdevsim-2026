@@ -929,3 +929,58 @@ func (r SimRegistry) HandleGetOffice(w http.ResponseWriter, req *http.Request) {
 
 	writeJSON(w, http.StatusOK, response)
 }
+
+// SpendInvestmentRequest is the request body for POST /simulations/{id}/investments.
+// UC40 #15446.
+type SpendInvestmentRequest struct {
+	// Option is the operator-supplied kebab-case option name; must match
+	// one of "hire", "cicd-slot", "review-tool", "verify-paydown".
+	// ParseInvestmentOption is case-insensitive.
+	Option string `json:"option"`
+}
+
+// HandleSpendInvestment dispatches a between-sprint investment per UC40.
+// Returns 201 on success, 422 for ErrInsufficientBudget + ErrInvalidInvestment,
+// 409 for ErrInvestmentWindowClosed (state conflict), 404 if simulation doesn't
+// exist. UC40 #15446.
+func (r SimRegistry) HandleSpendInvestment(w http.ResponseWriter, req *http.Request) {
+	id := req.PathValue("id")
+
+	if _, ok := r.GetInstanceOption(id).Get(); !ok {
+		writeError(w, http.StatusNotFound, "simulation not found")
+		return
+	}
+
+	var body SpendInvestmentRequest
+	if err := decodeJSON(req, &body); err != nil {
+		respondDecodeError(w, err)
+		return
+	}
+
+	option, parseErr := model.ParseInvestmentOption(body.Option)
+	if parseErr != nil {
+		// ErrInvalidInvestment → HTTP 422 per Go dev §8 (domain-rule
+		// violation; reuses UC38's 422 introduction)
+		writeError(w, http.StatusUnprocessableEntity, parseErr.Error())
+		return
+	}
+
+	if err := r.SpendInvestment(id, option); err != nil {
+		// Sentinel-differentiated mapping per UC40 plan §HTTP surface:
+		if errors.Is(err, model.ErrInsufficientBudget) {
+			writeError(w, http.StatusUnprocessableEntity, err.Error())
+			return
+		}
+		if errors.Is(err, model.ErrInvestmentWindowClosed) {
+			// 409 conflict: sim state doesn't permit the action (vs 422 which
+			// means the request itself is semantically invalid)
+			writeError(w, http.StatusConflict, err.Error())
+			return
+		}
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	inst, _ := r.GetInstanceOption(id).Get()
+	respondWithSimulation(w, inst, http.StatusCreated)
+}

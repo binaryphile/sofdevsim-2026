@@ -234,3 +234,29 @@ type SimulationSummary struct {
 	ID           string
 	SprintActive bool
 }
+
+// SpendInvestment dispatches Engine.SpendInvestment for the named
+// simulation and persists the updated Engine back to the registry.
+// Returns ErrSimNotFound if the simulation doesn't exist; otherwise
+// returns the engine's error (ErrInvestmentWindowClosed,
+// ErrInsufficientBudget, or nil). UC40 #15446.
+func (r *SimRegistry) SpendInvestment(simID string, option model.InvestmentOption) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	inst, ok := r.instances[simID]
+	if !ok {
+		return ErrSimNotFound
+	}
+	newEng, err := inst.Engine.SpendInvestment(option)
+	if err != nil {
+		return err
+	}
+	inst.Engine = newEng
+	r.instances[simID] = inst
+	return nil
+}
+
+// ErrSimNotFound is returned by SpendInvestment when the simulation
+// ID is unknown. Distinct from the engine-layer sentinels (which
+// describe validation failures within an existing sim).
+var ErrSimNotFound = errors.New("simulation not found")
