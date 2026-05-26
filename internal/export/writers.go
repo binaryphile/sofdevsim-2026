@@ -129,7 +129,14 @@ func (e Exporter) writeSprints(outputDir string) (int, error) {
 			constraintPhase = e.tracker.TOC.ConstraintPhase.String()
 			bufferPenetration = fmt.Sprintf("%.2f", e.tracker.TOC.Buffer.Penetration)
 		}
-		row := formatSprintRow(sprint, ticketsStarted, ticketsCompleted, incidents, e.sim.PhaseWIPConfig, e.sim.ReleaseMode.String(), constraintPhase, bufferPenetration)
+		// UC40: budget_remaining + investment_applied. LastInvestmentApplied
+		// is empty when no investment has fired this sim; emit "none" for
+		// the CSV column instead of an empty string for operator clarity.
+		investmentApplied := e.sim.LastInvestmentApplied
+		if investmentApplied == "" {
+			investmentApplied = "none"
+		}
+		row := formatSprintRow(sprint, ticketsStarted, ticketsCompleted, incidents, e.sim.PhaseWIPConfig, e.sim.ReleaseMode.String(), constraintPhase, bufferPenetration, e.sim.Budget, investmentApplied)
 		if err := writer.Write(row); err != nil {
 			return count, err
 		}

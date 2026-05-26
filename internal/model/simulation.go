@@ -85,6 +85,7 @@ type Simulation struct {
 	ReviewVelocityBonus   float64 // multiplicative velocity bonus for Review-phase tickets; default 1.0 (no-op identity)
 	VerifyVarianceDamping float64 // multiplicative variance damping for Verify-phase tickets; default 1.0; lower = less variance
 	NextDeveloperID       int     // auto-incremented developer-ID counter for InvestHire; default 7 (default team uses dev-1..dev-6)
+	LastInvestmentApplied string  // most-recent InvestmentApplied option name ("hire"|"cicd-slot"|...); empty if no investment yet (CSV emits "none")
 
 	// Assignment cursor (persistent round-robin state)
 	AssignCursor int // index of last assigned dev, advances on each assignment

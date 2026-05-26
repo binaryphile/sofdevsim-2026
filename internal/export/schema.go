@@ -40,6 +40,12 @@ var (
 		// constraint buffer's penetration value [0,1] (or "null" if no
 		// constraint locked).
 		"release_mode", "constraint_phase", "buffer_penetration",
+		// UC40: investment-window state. budget_remaining is the sim's
+		// Budget value at sprint export time (int). investment_applied is
+		// the option name of the most-recent InvestmentApplied event since
+		// the last sprint started ("hire"|"cicd-slot"|"review-tool"|
+		// "verify-paydown"), or "none" if no investment occurred.
+		"budget_remaining", "investment_applied",
 	}
 
 	IncidentsHeader = []string{
@@ -134,8 +140,10 @@ func formatTicketRow(t model.Ticket, policy model.SizingPolicy, sprintNum int) [
 // level per-phase WIP averaging is deferred (schema reserves the column
 // for forward-compat). UC39 appends releaseMode + constraintPhase +
 // bufferPenetration columns; bufferPenetration emits "null" when no
-// constraint is locked.
-func formatSprintRow(s model.Sprint, ticketsStarted, ticketsCompleted, incidents int, phaseWIPConfig map[model.WorkflowPhase]int, releaseMode string, constraintPhase string, bufferPenetration string) []string {
+// constraint is locked. UC40 appends budgetRemaining + investmentApplied
+// columns; investmentApplied is "none" if no investment fired since the
+// last sprint.
+func formatSprintRow(s model.Sprint, ticketsStarted, ticketsCompleted, incidents int, phaseWIPConfig map[model.WorkflowPhase]int, releaseMode string, constraintPhase string, bufferPenetration string, budgetRemaining int, investmentApplied string) []string {
 	return []string{
 		strconv.Itoa(s.Number),
 		strconv.Itoa(s.DurationDays),
@@ -153,6 +161,8 @@ func formatSprintRow(s model.Sprint, ticketsStarted, ticketsCompleted, incidents
 		releaseMode,                              // UC39 release_mode
 		constraintPhase,                          // UC39 constraint_phase
 		bufferPenetration,                        // UC39 buffer_penetration
+		strconv.Itoa(budgetRemaining),            // UC40 budget_remaining
+		investmentApplied,                        // UC40 investment_applied
 	}
 }
 

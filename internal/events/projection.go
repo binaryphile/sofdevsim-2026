@@ -129,6 +129,9 @@ func (p Projection) Apply(evt Event) Projection {
 		// risk). Hire's path reuses the same Developer-append logic as
 		// the DeveloperAdded case inline.
 		next.sim.Budget -= e.Cost
+		// UC40 CSV export: track most-recent investment for the
+		// sprints.csv investment_applied column.
+		next.sim.LastInvestmentApplied = e.Option.String()
 		switch e.Option {
 		case model.InvestHire:
 			// Auto-generate dev-N from NextDeveloperID counter; default
