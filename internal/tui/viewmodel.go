@@ -24,6 +24,11 @@ type HeaderVM struct {
 	// numbered-options panel.
 	Budget               int
 	InvestmentWindowOpen bool
+	// UC10 single-writer co-tenancy: when true, header renders [READ-ONLY]
+	// badge. Set from a.coTenantWriteObserved in buildHeaderVM. Once true,
+	// stays true for the rest of the process lifetime (per UC10 conservative
+	// reading; recovery requires restart).
+	ReadOnlyMode bool
 }
 
 // HelpVM — data for the help bar.

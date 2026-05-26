@@ -27,6 +27,7 @@ func (a *App) buildHeaderVM() HeaderVM {
 				WarmupFailed:         sim.WarmupFailed,
 				Budget:               sim.Budget,                  // UC40
 				InvestmentWindowOpen: sim.IsInvestmentWindowOpen(), // UC40
+				ReadOnlyMode:         a.coTenantWriteObserved,     // UC10 single-writer enforcement
 			}
 		},
 		func(_ ClientMode) HeaderVM {

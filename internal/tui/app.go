@@ -113,6 +113,13 @@ type App struct {
 
 	// Randomness injection (defaults to rand.Float64, injectable for tests)
 	randFloat func() float64
+
+	// UC10 single-writer enforcement: persistent flag set the first time an
+	// external writer is observed via eventSub (i.e., ApplyEvent advances
+	// projection version). Once true, tickMsg suppresses auto-tick writes;
+	// header renders [READ-ONLY] badge. Monotonic: never reset (recovery
+	// requires process restart per UC10 conservative reading).
+	coTenantWriteObserved bool
 }
 
 // tickMsg is sent on each simulation tick (legacy engine mode)
@@ -403,6 +410,18 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, a.listenForEvents()
 		}
 
+		// UC10 single-writer enforcement: external event observed → suppress
+		// future auto-tick writes. Record one-shot transition signal; the
+		// header badge handles the persistent indicator (per /i N4-Real:
+		// per-tick recording would flood ErrorMessage via UIProjection.State).
+		if !a.coTenantWriteObserved {
+			a.coTenantWriteObserved = true
+			a.recordInputEvent(TickAttempted{Outcome: Failed{
+				Category: Conflict,
+				Reason:   "co-tenant writer observed; TUI read-only per UC10",
+			}})
+		}
+
 		// External event — derive office animations and update tracker
 		newSim := eng.Engine.Sim()
 
@@ -539,6 +558,12 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if !ok {
 			return a, nil
 		}
+		// UC10 single-writer enforcement: silent early-return when an external
+		// writer has been observed. Keep polling so projection updates render;
+		// the one-shot suppression event was recorded at the eventMsg site.
+		if a.coTenantWriteObserved && !a.paused {
+			return a, a.tickCmd()
+		}
 		if !a.paused && a.currentView == ViewExecution {
 			newEng, tickEvents, err := eng.Engine.Tick()
 			if err != nil {
@@ -592,6 +617,18 @@ func (a *App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "q", "ctrl+c":
 		return a, tea.Quit
+
+	case "ctrl+l":
+		// UC34 workaround: force full screen redraw. The standard terminal
+		// "refresh" hotkey. Required when bubbletea's renderer state diverges
+		// from the actual terminal state — most commonly after a tmux
+		// pane-split during a running TUI session (per Phase 3a investigation:
+		// teatest cannot reproduce the partial-redraw symptom; scripted tmux
+		// resize cannot reproduce it; but interactive tmux split-window can).
+		// tea.ClearScreen issues ANSI EraseEntireScreen + CursorHomePosition
+		// and resets the renderer's diff cache via repaint() — the next View()
+		// output paints from scratch.
+		return a, tea.ClearScreen
 
 	case "tab":
 		nextView := (a.currentView + 1) % 4
@@ -1284,6 +1321,11 @@ func renderHeader(vm HeaderVM) string {
 	}
 
 	right := MutedStyle.Render(fmt.Sprintf("%s | %s | Budget: $%d | %s | Day %d | Backlog: %d | Done: %d | Seed %d", policyStr, releaseModeIndicator(vm), vm.Budget, status, vm.CurrentTick, vm.BacklogCount, vm.CompletedCount, vm.Seed))
+	if vm.ReadOnlyMode {
+		// UC10 single-writer enforcement: badge after the right-side metadata
+		// when a co-tenant REST writer has been observed in this session.
+		right = lipgloss.JoinHorizontal(lipgloss.Top, right, "  ", MutedStyle.Bold(true).Render("[READ-ONLY]"))
+	}
 
 	return BoxStyle.Width(vm.Width - 2).Render(
 		lipgloss.JoinHorizontal(lipgloss.Top, tabs, "  ", right),
