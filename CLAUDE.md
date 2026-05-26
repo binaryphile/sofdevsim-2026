@@ -164,6 +164,18 @@ BenchmarkRunSprint-4                 20400    65979 ns/op     267 B/op    5 allo
 
 Post-UC40 numbers will be re-measured at cycle #15446 completion-gate.
 
+### Baseline (2026-05-25, 4-core machine, post-UC39 pre-UC40)
+
+Recorded immediately before UC40 implementation begins. Same 4-core machine. UC40 adds Budget int + 2 multiplier float64 fields + NextDeveloperID int (4 new fields) on Simulation; per-tick read of ReviewVelocityBonus/VerifyVarianceDamping in work-calc path adds 2 float multiplies. Expected delta < 5% (multiplications at default 1.0 are no-op identity; field reads are cache-friendly). Wall-clock numbers reflect ambient machine load.
+
+```
+BenchmarkTick-4                       7492   368486 ns/op   11115 B/op   10 allocs/op
+BenchmarkTick_LargeSimulation-4      10000   280489 ns/op   11114 B/op   10 allocs/op
+BenchmarkRunSprint-4                 20400    65979 ns/op     267 B/op    5 allocs/op
+```
+
+Post-UC40 numbers will be re-measured at cycle #15446 completion-gate (final cycle in the Factorio epic).
+
 ## Persistence
 
 | Key | Action |

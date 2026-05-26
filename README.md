@@ -239,6 +239,37 @@ Demand mode is also available via the REST API: `POST /simulations` accepts an o
 
 See `docs/design.md` §"Demand-Driven Release (UC39)" for the state machine, ShouldAdmit pseudocode, and warmup-exit-vs-timeout race resolution.
 
+## Investment Moves
+
+Between sprints, the operator spends a finite **Budget** on capacity-changing investments targeted at the analyzer-identified constraint (UC40: closes the 5FS EXPLOIT/ELEVATE game loop). The investment window opens automatically when a sprint ends; press 's' to start the next sprint (which closes the window).
+
+**Starting budget**: 10. **Per-option costs**:
+
+| Option | Cost | Effect |
+|---|---:|---|
+| `hire` (Hire developer) | 5 | Adds a new developer (auto-generated ID; default velocity 1.0) |
+| `cicd-slot` (Buy CI/CD slot) | 3 | Increments CI/CD pipeline-slot count (works with UC38's PhaseWIPCap fallback) |
+| `review-tool` (Upgrade Review tooling) | 2 | Multiplies Review-phase velocity by 1.2 (stacks across investments) |
+| `verify-paydown` (Pay down Verify tech debt) | 2 | Multiplies Verify-phase variance by 0.8 (stacks; lower = less variance) |
+
+**Budget: $N** is always visible in the TUI header alongside Mode and Policy.
+
+**TUI**: When the investment window is open, the Execution view body renders numbered options `[1]Hire($5) [2]CICDSlot($3) [3]ReviewTool($2) [4]VerifyPaydown($2)` (grayed when unaffordable). Press 1–4 to spend the corresponding option.
+
+**REST**: `POST /simulations/{id}/investments` with body `{"option": "hire|cicd-slot|review-tool|verify-paydown"}`. Returns updated sim state on success.
+
+Validation errors map to:
+
+| Sentinel | Trigger |
+|---|---|
+| `ErrInsufficientBudget` | Cost > remaining budget; HTTP 422 |
+| `ErrInvalidInvestment` | Unknown option name; HTTP 422 |
+| `ErrInvestmentWindowClosed` | Spend called mid-sprint OR before first sprint; HTTP 409 |
+
+**Atomicity**: each investment is a single `InvestmentApplied` event — budget debit + capacity change applied atomically in the projection handler. CSV `sprints.csv` exports `budget_remaining` + `investment_applied` columns per sprint.
+
+See `docs/design.md` §"Investment Moves (UC40)" for the state machine, options table, and 5FS-loop wiring.
+
 ## HTTP API
 
 The TUI and HTTP API share the same simulation state. Control the TUI's simulation programmatically via REST:
