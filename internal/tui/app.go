@@ -687,9 +687,25 @@ func (a *App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		// Engine mode - SetPolicy returns new engine (value semantics)
 		eng, _ := a.mode.GetLeft()
+		// UC10 single-writer enforcement: when [READ-ONLY] badge is visible,
+		// keypress mutations are gated. Closes the #18913 residual risk so
+		// the badge becomes a complete safety contract (no engine writes).
+		if a.coTenantWriteObserved {
+			a.statusMessage = "TUI [READ-ONLY] mode; restart to recover"
+			a.statusExpiry = time.Now().Add(3 * time.Second)
+			a.recordInputEvent(PolicySetAttempted{Outcome: Failed{Category: Conflict, Reason: "TUI [READ-ONLY] mode; restart to recover"}})
+			return a, nil
+		}
 		sim := eng.Engine.Sim()
 		newPolicy := (sim.SizingPolicy + 1) % 4
-		eng.Engine = must.Get(eng.Engine.SetPolicy(newPolicy))
+		newEngine, err := eng.Engine.SetPolicy(newPolicy)
+		if err != nil {
+			a.statusMessage = fmt.Sprintf("Action conflicted: %v", err)
+			a.statusExpiry = time.Now().Add(3 * time.Second)
+			a.recordInputEvent(PolicySetAttempted{Outcome: Failed{Category: Conflict, Reason: err.Error()}})
+			return a, nil
+		}
+		eng.Engine = newEngine
 		a.mode = either.Left[EngineMode, ClientMode](eng)
 		return a, nil
 
@@ -700,6 +716,14 @@ func (a *App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		eng, isEng := a.mode.GetLeft()
 		if !isEng {
 			return a, nil // client mode: defer (REST already exposes /investments)
+		}
+		// UC10 single-writer enforcement: status-message-only gate (no event —
+		// SpendInvestment has no Attempted event in the pre-cycle taxonomy;
+		// per #18913 Decision C, only 2 new events were added).
+		if a.coTenantWriteObserved {
+			a.statusMessage = "TUI [READ-ONLY] mode; restart to recover"
+			a.statusExpiry = time.Now().Add(3 * time.Second)
+			return a, nil
 		}
 		sim := eng.Engine.Sim()
 		if !sim.IsInvestmentWindowOpen() {
@@ -736,9 +760,23 @@ func (a *App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		// Engine mode - StartSprint returns new engine (value semantics)
 		eng, _ := a.mode.GetLeft()
+		// UC10 single-writer enforcement: keypress mutations gated when [READ-ONLY].
+		if a.coTenantWriteObserved {
+			a.statusMessage = "TUI [READ-ONLY] mode; restart to recover"
+			a.statusExpiry = time.Now().Add(3 * time.Second)
+			a.recordInputEvent(SprintStartAttempted{Outcome: Failed{Category: Conflict, Reason: "TUI [READ-ONLY] mode; restart to recover"}})
+			return a, nil
+		}
 		sim := eng.Engine.Sim()
 		if _, ok := sim.CurrentSprintOption.Get(); a.currentView == ViewPlanning && !ok {
-			eng.Engine = must.Get(eng.Engine.StartSprint())
+			newEngine, err := eng.Engine.StartSprint()
+			if err != nil {
+				a.statusMessage = fmt.Sprintf("Action conflicted: %v", err)
+				a.statusExpiry = time.Now().Add(3 * time.Second)
+				a.recordInputEvent(SprintStartAttempted{Outcome: Failed{Category: Conflict, Reason: err.Error()}})
+				return a, nil
+			}
+			eng.Engine = newEngine
 			a.mode = either.Left[EngineMode, ClientMode](eng)
 			a.currentView = ViewExecution
 			a.paused = false
@@ -780,6 +818,13 @@ func (a *App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		// Engine mode - AssignTicket returns new engine (value semantics)
 		eng, _ := a.mode.GetLeft()
+		// UC10 single-writer enforcement: keypress mutations gated when [READ-ONLY].
+		if a.coTenantWriteObserved {
+			a.statusMessage = "TUI [READ-ONLY] mode; restart to recover"
+			a.statusExpiry = time.Now().Add(3 * time.Second)
+			a.recordInputEvent(AssignmentAttempted{TicketID: ticketID, Outcome: Failed{Category: Conflict, Reason: "TUI [READ-ONLY] mode; restart to recover"}})
+			return a, nil
+		}
 		sim := eng.Engine.Sim()
 		if a.currentView == ViewPlanning && a.selected < len(sim.Backlog) {
 			ticket := sim.Backlog[a.selected]
@@ -787,7 +832,14 @@ func (a *App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			cubiclePositions := CubicleLayout(len(sim.Developers))
 			for devIdx, dev := range sim.Developers { // justified:CF
 				if dev.IsIdle() {
-					eng.Engine = must.Get(eng.Engine.AssignTicket(ticket.ID, dev.ID))
+					newEngine, err := eng.Engine.AssignTicket(ticket.ID, dev.ID)
+					if err != nil {
+						a.statusMessage = fmt.Sprintf("Action conflicted: %v", err)
+						a.statusExpiry = time.Now().Add(3 * time.Second)
+						a.recordInputEvent(AssignmentAttempted{TicketID: ticket.ID, Outcome: Failed{Category: Conflict, Reason: err.Error()}})
+						return a, nil
+					}
+					eng.Engine = newEngine
 					a.mode = either.Left[EngineMode, ClientMode](eng)
 					// Record office animation event: developer moves to cubicle
 					target := cubiclePositions[devIdx]
@@ -823,10 +875,24 @@ func (a *App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		// Engine mode - TryDecompose returns new engine (value semantics)
 		eng, _ := a.mode.GetLeft()
+		// UC10 single-writer enforcement: keypress mutations gated when [READ-ONLY].
+		if a.coTenantWriteObserved {
+			a.statusMessage = "TUI [READ-ONLY] mode; restart to recover"
+			a.statusExpiry = time.Now().Add(3 * time.Second)
+			a.recordInputEvent(DecomposeAttempted{TicketID: a.selectedTicketID(), Outcome: Failed{Category: Conflict, Reason: "TUI [READ-ONLY] mode; restart to recover"}})
+			return a, nil
+		}
 		sim := eng.Engine.Sim()
 		if a.currentView == ViewPlanning && a.selected < len(sim.Backlog) {
 			ticket := sim.Backlog[a.selected]
-			eng.Engine, _ = must.Get2(eng.Engine.TryDecompose(ticket.ID))
+			newEngine, _, err := eng.Engine.TryDecompose(ticket.ID)
+			if err != nil {
+				a.statusMessage = fmt.Sprintf("Action conflicted: %v", err)
+				a.statusExpiry = time.Now().Add(3 * time.Second)
+				a.recordInputEvent(DecomposeAttempted{TicketID: ticket.ID, Outcome: Failed{Category: Conflict, Reason: err.Error()}})
+				return a, nil
+			}
+			eng.Engine = newEngine
 			a.mode = either.Left[EngineMode, ClientMode](eng)
 		}
 		return a, nil

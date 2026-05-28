@@ -44,6 +44,10 @@ func (p UIProjection) State() UIState {
 			if _, ok := e.Outcome.(Succeeded); ok {
 				state.SelectedTicket = "" // Clear selection on success
 			}
+		case PolicySetAttempted:
+			state.ErrorMessage = errorFromOutcome(e.Outcome)
+		case DecomposeAttempted:
+			state.ErrorMessage = errorFromOutcome(e.Outcome)
 		}
 	}
 	return state

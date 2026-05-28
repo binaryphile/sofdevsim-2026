@@ -55,6 +55,15 @@ type AssignmentAttempted struct {
 	Outcome  Outcome
 }
 
+// Data: PolicySetAttempted records a sizing policy change attempt with its outcome.
+type PolicySetAttempted struct{ Outcome Outcome }
+
+// Data: DecomposeAttempted records a ticket decomposition attempt with its outcome.
+type DecomposeAttempted struct {
+	TicketID string
+	Outcome  Outcome
+}
+
 // Data: EventDeduplicated records when a self-event was received via subscription
 // and skipped (projection already applied it locally).
 type EventDeduplicated struct {
@@ -68,4 +77,6 @@ func (ViewSwitched) inputEvent()         {}
 func (LessonPanelToggled) inputEvent()   {}
 func (TicketSelected) inputEvent()       {}
 func (AssignmentAttempted) inputEvent()  {}
+func (PolicySetAttempted) inputEvent()   {}
+func (DecomposeAttempted) inputEvent()   {}
 func (EventDeduplicated) inputEvent()    {}
