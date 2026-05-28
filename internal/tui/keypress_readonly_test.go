@@ -78,11 +78,21 @@ func TestApp_KeypressMutations_ReadOnlyModeGate(t *testing.T) {
 			app.openingAnimation = false // bypass animation block
 			app.coTenantWriteObserved = true
 
+			// Gate-order-vs-precondition proof note (/grade IMPL R1 F3):
+			// NewAppWithSeed(42) leaves SprintNumber=0 → investment window
+			// CLOSED → the SpendInvestment precondition (IsInvestmentWindowOpen)
+			// would normally cause an early-return. The gate fires BEFORE
+			// that precondition check, so the SpendInvestment case in this
+			// test proves the gate runs first. If a future fixture change
+			// opens the investment window at construction time, this implicit
+			// proof would weaken; reassert by checking gate ordering directly.
+
 			eng, ok := app.mode.GetLeft()
 			if !ok {
 				t.Fatal("expected engine mode")
 			}
 			versionBefore := eng.Engine.ProjectionVersion()
+			eventsBefore := len(app.uiProjection.events)
 
 			_, _ = app.handleKey(tc.key)
 
@@ -98,20 +108,30 @@ func TestApp_KeypressMutations_ReadOnlyModeGate(t *testing.T) {
 				t.Errorf("%s: statusMessage missing [READ-ONLY] indicator, got: %q", tc.name, app.statusMessage)
 			}
 
-			// For event-recording actions: assert appropriate event recorded
-			// with Failed{Conflict} outcome whose Reason contains [READ-ONLY].
+			eventsAfter := app.uiProjection.events
+
+			// For event-recording actions: assert exactly ONE new event of
+			// the appropriate type was recorded with Failed{Conflict} outcome
+			// whose Reason contains [READ-ONLY].
 			if tc.expected.isType != nil {
-				events := app.uiProjection.events
-				if len(events) == 0 {
-					t.Fatalf("%s: no InputEvent recorded; expected the corresponding *Attempted event", tc.name)
+				if len(eventsAfter) != eventsBefore+1 {
+					t.Fatalf("%s: expected exactly 1 new InputEvent, got %d (before=%d, after=%d)",
+						tc.name, len(eventsAfter)-eventsBefore, eventsBefore, len(eventsAfter))
 				}
-				last := events[len(events)-1]
+				last := eventsAfter[len(eventsAfter)-1]
 				if !tc.expected.isType(last) {
 					t.Errorf("%s: last recorded event wrong type: %T", tc.name, last)
 				}
-				// Outcome inspection via type assertion on each known variant.
 				if !outcomeIsReadOnlyConflict(last) {
 					t.Errorf("%s: last event's Outcome not Failed{Conflict, contains [READ-ONLY]}: %+v", tc.name, last)
+				}
+			} else {
+				// SpendInvestment case: status-message-only path. Assert NO
+				// new InputEvent was recorded (/grade IMPL R1 F2 negative
+				// assertion — catches accidental future event emission drift).
+				if len(eventsAfter) != eventsBefore {
+					t.Errorf("%s: status-message-only path recorded %d new InputEvent(s); expected 0",
+						tc.name, len(eventsAfter)-eventsBefore)
 				}
 			}
 		})
