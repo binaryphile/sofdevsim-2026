@@ -309,7 +309,8 @@ When the TUI and REST API run in the same process (default mode), the TUI auto-t
 **Limitations:**
 
 - The badge-latched state is **one-way** — once `[READ-ONLY]` appears, the TUI remains read-only until process restart (deliberate per UC10's conservative read of "TUI becomes a read-only projection"). Restart the TUI process to recover the writer role.
-- Interactive TUI keypress mutation actions (`s`/start-sprint, `a`/assign, `d`/decompose, `p`/policy, `1-4`/invest) call `must.Get` on engine writes and **CAN panic if they race a REST write**. The badge does NOT prevent keypress races; an operator pressing `s` moments after a REST write may still panic. See the follow-up task on the `must.Get` keypress panic-risk class.
+
+**Complete safety contract** (closed via #18913): When the `[READ-ONLY]` badge is visible, ALL TUI mutation keypresses (`s`/start-sprint, `a`/assign, `d`/decompose, `p`/policy, `1`-`4`/invest) are gated — they record a status message + `*Attempted{Failed{Conflict}}` event but do NOT write to the engine. The badge is now a complete safety signal. SpendInvestment (`1`-`4`) uses status-message-only (no event); the other 4 actions record events in `app.uiProjection`.
 
 **Resize artifacts**: If the TUI's rendering appears corrupted after an interactive `tmux split-window` mid-session (partial redraw, blank rows), press **Ctrl+L** to force a full redraw (UC34 workaround). The root cause is environmental (tmux + alt-screen + SIGWINCH interaction); scripted `tmux resize-window` does NOT reproduce the symptom.
 
