@@ -238,3 +238,15 @@ func TestListSaves_ReturnsFiles(t *testing.T) {
 		t.Errorf("Found %d saves, want 3", len(saves))
 	}
 }
+
+// gob roundtrip regression test for UC40 fu2 (#18517) TOCState fields was
+// PLANNED but DROPPED during impl: investigation revealed Tracker.TOC is
+// NOT persisted at all by the current Save/Load implementation (Load at
+// internal/persistence/persistence.go:106-109 only restores DORA + Fever;
+// TOC stays nil). The plan's /i pass 2 finding ("Tracker participates in
+// gob save/load — unexported Prev* would zero-out on Load") was based on
+// incorrect premise; the actual TOC persistence story is "TOC isn't
+// persisted at all today". The Prev* fields stay exported anyway for
+// forward-compat IF TOC persistence is ever added (separate cycle).
+// Honest disclosure: this test class can't be written until TOC actually
+// roundtrips.

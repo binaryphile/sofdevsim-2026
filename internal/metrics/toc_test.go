@@ -203,3 +203,89 @@ func TestConstraintBuffer_Zones(t *testing.T) {
 		t.Errorf("no constraint: buffer phase should be 0, got %v", toc.Buffer.ConstraintPhase)
 	}
 }
+
+// TestTOCState_TransitionDetection — UC40 fu2 (#18517) cross-sprint
+// transition detection inside Update(). Verifies SprintStarted snapshot,
+// InvestmentApplied flag-set, SprintEnded flag-reset, and idempotency.
+func TestTOCState_TransitionDetection(t *testing.T) {
+	t.Run("SprintStarted_snapshots_constraint_phase", func(t *testing.T) {
+		toc := NewTOCState(TOCFlow, 10)
+		toc.ConstraintPhase = model.PhaseImplement // prior sprint identified Implement as constraint
+		toc.PrevSprintNumber = 0
+
+		sim := model.NewSimulation("test", model.PolicyNone, 42)
+		sim.SprintNumber = 1 // SprintStarted transition
+
+		toc.Update(sim)
+
+		if toc.LastSprintConstraintPhase != model.PhaseImplement {
+			t.Errorf("LastSprintConstraintPhase=%v, want %v", toc.LastSprintConstraintPhase, model.PhaseImplement)
+		}
+		if toc.PrevSprintNumber != 1 {
+			t.Errorf("PrevSprintNumber=%d, want 1", toc.PrevSprintNumber)
+		}
+	})
+
+	t.Run("InvestmentApplied_flips_flag_true", func(t *testing.T) {
+		toc := NewTOCState(TOCFlow, 10)
+		toc.PrevLastInvestment = "" // no prior investment
+		toc.InvestmentOccurredThisCycle = false
+
+		sim := model.NewSimulation("test", model.PolicyNone, 42)
+		sim.LastInvestmentApplied = "cicd-slot"
+
+		toc.Update(sim)
+
+		if !toc.InvestmentOccurredThisCycle {
+			t.Error("InvestmentOccurredThisCycle should be true after first investment")
+		}
+		if toc.PrevLastInvestment != "cicd-slot" {
+			t.Errorf("PrevLastInvestment=%q, want %q", toc.PrevLastInvestment, "cicd-slot")
+		}
+	})
+
+	t.Run("SprintEnded_resets_flag_false", func(t *testing.T) {
+		toc := NewTOCState(TOCFlow, 10)
+		toc.InvestmentOccurredThisCycle = true
+		toc.PrevSprintActive = true // prior tick had active sprint
+
+		sim := model.NewSimulation("test", model.PolicyNone, 42)
+		// sim.CurrentSprintOption.IsOk() defaults false (no active sprint)
+
+		toc.Update(sim)
+
+		if toc.InvestmentOccurredThisCycle {
+			t.Error("InvestmentOccurredThisCycle should be reset to false on SprintEnded")
+		}
+		if toc.PrevSprintActive {
+			t.Error("PrevSprintActive should be false after SprintEnded")
+		}
+	})
+
+	t.Run("Idempotency_on_no_op_update", func(t *testing.T) {
+		toc := NewTOCState(TOCFlow, 10)
+		toc.PrevSprintNumber = 5
+		toc.PrevSprintActive = false
+		toc.PrevLastInvestment = "review-tool"
+		toc.InvestmentOccurredThisCycle = true
+		toc.LastSprintConstraintPhase = model.PhaseVerify
+
+		sim := model.NewSimulation("test", model.PolicyNone, 42)
+		sim.SprintNumber = 5
+		sim.LastInvestmentApplied = "review-tool"
+		// CurrentSprintOption defaults to NoSprint (IsOk()=false), matches PrevSprintActive=false
+
+		// Two consecutive Update calls with same state.
+		toc.Update(sim)
+		afterFirst := *toc
+		toc.Update(sim)
+
+		// No transition should have fired on either call.
+		if toc.InvestmentOccurredThisCycle != afterFirst.InvestmentOccurredThisCycle {
+			t.Error("InvestmentOccurredThisCycle changed on no-op Update — not idempotent")
+		}
+		if toc.LastSprintConstraintPhase != afterFirst.LastSprintConstraintPhase {
+			t.Error("LastSprintConstraintPhase changed on no-op Update — not idempotent")
+		}
+	})
+}

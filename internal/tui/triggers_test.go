@@ -64,7 +64,7 @@ func TestBuildTriggerStateFromEngine(t *testing.T) {
 		{UnderstandingLevel: model.LowUnderstanding},
 	}
 
-	got := BuildTriggerStateFromEngine(sim, model.FeverRed, activeTickets, nil)
+	got := BuildTriggerStateFromEngine(sim, model.FeverRed, activeTickets, nil, nil)
 
 	if got.SprintCount != 3 {
 		t.Errorf("SprintCount = %d, want 3", got.SprintCount)

@@ -479,4 +479,48 @@ func findSubstring(s, substr string) bool {
 	return false
 }
 
+// TestSelect_ElevationWithoutExploitation — UC40 ext §3a (#18517).
+// Verifies the new Select case fires when the trigger is set AND the
+// lesson hasn't been seen; doesn't fire when constraint moved or no
+// investment occurred.
+func TestSelect_ElevationWithoutExploitation(t *testing.T) {
+	seenOrientation := State{SeenMap: map[LessonID]bool{Orientation: true}}
+
+	tests := []struct {
+		name     string
+		state    State
+		triggers TriggerState
+		wantID   LessonID
+	}{
+		{
+			name:     "fires when trigger set and lesson not seen",
+			state:    seenOrientation,
+			triggers: TriggerState{HasElevationWithoutExploitation: true},
+			wantID:   ElevationWithoutExploitation,
+		},
+		{
+			name:     "does NOT fire when constraint moved (trigger false)",
+			state:    seenOrientation,
+			triggers: TriggerState{HasElevationWithoutExploitation: false},
+			wantID:   Understanding, // falls through to default ViewPlanning lesson
+		},
+		{
+			name: "does NOT fire when lesson already seen (one-shot)",
+			state: State{
+				SeenMap: map[LessonID]bool{Orientation: true, ElevationWithoutExploitation: true},
+			},
+			triggers: TriggerState{HasElevationWithoutExploitation: true},
+			wantID:   Understanding,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := Select(ViewPlanning, tt.state, false, false, tt.triggers, ComparisonSummary{})
+			if got.ID != tt.wantID {
+				t.Errorf("Select().ID = %v, want %v", got.ID, tt.wantID)
+			}
+		})
+	}
+}
+
 // TestState_WithVisible - PRUNED per Khorikov: trivial setter, can't meaningfully fail

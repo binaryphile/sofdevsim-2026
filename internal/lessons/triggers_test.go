@@ -3,6 +3,7 @@ package lessons
 import (
 	"testing"
 
+	"github.com/binaryphile/sofdevsim-2026/internal/metrics"
 	"github.com/binaryphile/sofdevsim-2026/internal/model"
 )
 
@@ -46,6 +47,44 @@ func TestHasRedBufferWithLowTicketFromStrings(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := HasRedBufferWithLowTicketFromStrings(tt.isRed, tt.understandings); got != tt.want {
 				t.Errorf("HasRedBufferWithLowTicketFromStrings() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestHasElevationWithoutExploitation — UC40 ext §3a predicate (#18517).
+// Table-driven over the (flag × current-vs-snapshot) state space including
+// the boundary cases (nil toc, ConstraintPhase=0, LastSprintConstraintPhase=0).
+func TestHasElevationWithoutExploitation(t *testing.T) {
+	tests := []struct {
+		name string
+		toc  *metrics.TOCState
+		want bool
+	}{
+		{"nil toc returns false", nil, false},
+		{"flag false returns false",
+			&metrics.TOCState{InvestmentOccurredThisCycle: false, ConstraintPhase: model.PhaseImplement, LastSprintConstraintPhase: model.PhaseImplement},
+			false},
+		{"flag true + constraint unchanged returns TRUE",
+			&metrics.TOCState{InvestmentOccurredThisCycle: true, ConstraintPhase: model.PhaseImplement, LastSprintConstraintPhase: model.PhaseImplement},
+			true},
+		{"flag true + constraint moved returns false",
+			&metrics.TOCState{InvestmentOccurredThisCycle: true, ConstraintPhase: model.PhaseReview, LastSprintConstraintPhase: model.PhaseImplement},
+			false},
+		{"flag true + ConstraintPhase=0 (no constraint identified) returns false",
+			&metrics.TOCState{InvestmentOccurredThisCycle: true, ConstraintPhase: 0, LastSprintConstraintPhase: model.PhaseImplement},
+			false},
+		{"flag true + LastSprintConstraintPhase=0 (no prior constraint) returns false",
+			&metrics.TOCState{InvestmentOccurredThisCycle: true, ConstraintPhase: model.PhaseImplement, LastSprintConstraintPhase: 0},
+			false},
+		{"flag true + both 0 returns false",
+			&metrics.TOCState{InvestmentOccurredThisCycle: true, ConstraintPhase: 0, LastSprintConstraintPhase: 0},
+			false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := HasElevationWithoutExploitation(tt.toc); got != tt.want {
+				t.Errorf("HasElevationWithoutExploitation() = %v, want %v", got, tt.want)
 			}
 		})
 	}
