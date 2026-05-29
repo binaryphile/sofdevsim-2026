@@ -1686,7 +1686,7 @@ This use case requires event sourcing architecture:
 **Extensions:**
 
 - 1a. *Budget exhausted (no affordable options remain):* Investment window opens but the AvailableOptions menu is empty; the only operator action is 'start next sprint'. Sentinel `ErrInsufficientBudget` documents the boundary for batch/REST callers
-- 3a. *Manager elevates a non-constraint phase:* Allowed; lesson subsystem flags it as candidate for the "elevation without exploitation" teaching after the following sprint's data lands
+- 3a. *Manager elevates a non-constraint phase:* Allowed; lesson subsystem flags it as candidate for the "elevation without exploitation" teaching after the following sprint's data lands (IMPLEMENTED via #18517 — `ElevationWithoutExploitation` lesson + `HasElevationWithoutExploitation` predicate + `TOCState.LastSprintConstraintPhase`/`InvestmentOccurredThisCycle` cross-sprint snapshot mechanism; trigger fires when an investment was applied this cycle AND the constraint phase did not change)
 - 3b. *Manager pays down Verify tech debt but Verify isn't the constraint:* Allowed; variance reduction may pre-empt a future constraint shift after UC37 mix changes
 - 4a. *Investment event would create an impossible state* (e.g., upgrade Review tooling when no Review capacity exists): Rejected with diagnostic
 - 5a. *Batch/LLM mode (deferred to follow-up cycle per UC40 plan §Out of scope):* Investment chosen by future `InvestmentPolicy` interface; same event log, same postconditions. UC40 cycle ships only the human-operator TUI + REST POST endpoint surfaces; the `InvestmentPolicy` interface is acknowledged but scope-bounded to a tracked follow-up task
