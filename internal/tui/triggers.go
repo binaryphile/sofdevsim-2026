@@ -2,6 +2,7 @@ package tui
 
 import (
 	"github.com/binaryphile/sofdevsim-2026/internal/lessons"
+	"github.com/binaryphile/sofdevsim-2026/internal/metrics"
 	"github.com/binaryphile/sofdevsim-2026/internal/model"
 )
 
@@ -61,7 +62,7 @@ func (p TriggerProjection) MergeEventTriggers(hasRedBufferWithLowTicket, hasQueu
 // rather than replaying events. This is appropriate for lesson triggers which need
 // current state, not historical reconstruction. Full event sourcing exists in
 // internal/events/ for simulation state; this projection bridges to that model.
-func BuildTriggerStateFromEngine(sim model.Simulation, feverStatus model.FeverStatus, activeTickets, completedTickets []model.Ticket) TriggerState {
+func BuildTriggerStateFromEngine(sim model.Simulation, feverStatus model.FeverStatus, activeTickets, completedTickets []model.Ticket, tocState *metrics.TOCState) TriggerState {
 	// Build projection from simulation
 	projection := ProjectFromSimulation(sim)
 
@@ -70,6 +71,10 @@ func BuildTriggerStateFromEngine(sim model.Simulation, feverStatus model.FeverSt
 	hasQueueImbalance := lessons.HasQueueImbalance(activeTickets)
 	hasHighChildVariance := lessons.HasHighChildVariance(completedTickets)
 
-	// Merge projection state with event triggers
-	return projection.MergeEventTriggers(hasRedBufferWithLowTicket, hasQueueImbalance, hasHighChildVariance)
+	// Merge projection state with UC19/20/21 event triggers; layer the
+	// UC40 ext §3a (#18517) trigger on top — it reads from TOCState which
+	// is engine-mode-only (client mode lacks tracker visibility).
+	triggers := projection.MergeEventTriggers(hasRedBufferWithLowTicket, hasQueueImbalance, hasHighChildVariance)
+	triggers.HasElevationWithoutExploitation = lessons.HasElevationWithoutExploitation(tocState)
+	return triggers
 }

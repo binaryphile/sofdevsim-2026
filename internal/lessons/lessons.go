@@ -19,10 +19,11 @@ const (
 	ExploitFirst          LessonID = "exploit-first"          // UC21
 	FiveFocusing          LessonID = "five-focusing"          // UC22
 	ManagerTakeaways      LessonID = "manager-takeaways"      // UC23
+	ElevationWithoutExploitation LessonID = "elevation-without-exploitation" // UC40 ext §3a (#18517)
 )
 
 // TotalLessons is the number of unique teaching concepts.
-const TotalLessons = 13
+const TotalLessons = 14
 
 // Winner policy constants for ComparisonSummary.
 // Per Go Dev Guide: avoid magic strings.
@@ -107,10 +108,11 @@ const (
 // Triggers override view-based selection when their conditions are met.
 // Each trigger fires at most once per session (Select checks SeenMap).
 type TriggerState struct {
-	HasRedBufferWithLowTicket bool // UC19: buffer >66% consumed + LOW understanding ticket
-	HasQueueImbalance         bool // UC20: any phase queue > 2× average
-	HasHighChildVariance      bool // UC21: decomposed ticket child actual/estimate > 1.3
-	SprintCount               int  // UC22: 3+ sprints triggers FiveFocusing
+	HasRedBufferWithLowTicket       bool // UC19: buffer >66% consumed + LOW understanding ticket
+	HasQueueImbalance               bool // UC20: any phase queue > 2× average
+	HasHighChildVariance            bool // UC21: decomposed ticket child actual/estimate > 1.3
+	SprintCount                     int  // UC22: 3+ sprints triggers FiveFocusing
+	HasElevationWithoutExploitation bool // UC40 ext §3a (#18517): InvestmentApplied since last sprint AND ConstraintPhase didn't move
 }
 
 // Select chooses the appropriate lesson based on current context.
@@ -142,6 +144,13 @@ func Select(view ViewContext, state State, hasActiveSprint bool, hasComparisonRe
 	hasSeenSymptomLesson := state.SeenMap[ConstraintHunt] || state.SeenMap[ExploitFirst]
 	if triggers.SprintCount >= 3 && hasSeenSymptomLesson && !state.SeenMap[FiveFocusing] {
 		return FiveFocusingLesson()
+	}
+
+	// UC40 ext §3a (#18517): Elevation without exploitation. Fires when an
+	// investment was applied but the constraint didn't move. No additional
+	// prereq per Decision C (the investment scenario IS the teaching moment).
+	if triggers.HasElevationWithoutExploitation && !state.SeenMap[ElevationWithoutExploitation] {
+		return ElevationWithoutExploitationLesson()
 	}
 
 	// UC23: Manager Takeaways - dynamic synthesis with comparison metrics
@@ -480,6 +489,43 @@ That's why "just add more people" doesn't fix flow.`,
 			"Exploit = improve understanding first",
 			"Elevate = add capacity (last resort)",
 			"The constraint moves—keep looking",
+		},
+	}
+}
+
+// ElevationWithoutExploitationLesson returns the UC40 ext §3a teaching (#18517):
+// fires when an investment was applied but the constraint didn't move,
+// signaling that exploitation should have preceded elevation. Distinct
+// from ExploitFirstLesson (UC21 high-child-variance trigger) — this lesson
+// targets the post-investment scenario specifically.
+func ElevationWithoutExploitationLesson() Lesson {
+	return Lesson{
+		ID:    ElevationWithoutExploitation,
+		Title: "Exploit Before You Elevate",
+		Content: `You invested in capacity, but the constraint hasn't moved.
+
+THIS IS THE SIGNAL: the bottleneck wasn't the phase you elevated.
+
+Theory of Constraints prescribes 5 Focusing Steps:
+  1. Identify the constraint
+  2. EXPLOIT it (squeeze maximum throughput from existing capacity)
+  3. SUBORDINATE everything else to the constraint
+  4. ELEVATE the constraint (invest in more capacity)
+  5. Avoid inertia; restart at step 1
+
+You skipped exploitation. Investment ($) buys more capacity, but
+if the actual bottleneck is UNDERSTANDING (low-understanding tickets,
+rework loops, poor decomposition), more capacity just creates more
+queue depth at the same constraint.
+
+Try EXPLOITING first:
+  - Decompose low-understanding tickets (improves ability to estimate)
+  - Pair experienced devs with junior devs (mentorship)
+  - Watch the fever chart for understanding-induced variance`,
+		Tips: []string{
+			"Press 'd' to decompose a ticket",
+			"Mentor a low-understanding ticket",
+			"Check Metrics → Constraint analyzer to confirm the actual bottleneck",
 		},
 	}
 }

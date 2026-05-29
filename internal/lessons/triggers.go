@@ -56,3 +56,25 @@ func HasQueueImbalance(activeTickets []model.Ticket) bool {
 func HasHighChildVariance(completedTickets []model.Ticket) bool {
 	return metrics.HasHighChildVariance(completedTickets)
 }
+
+// HasElevationWithoutExploitation detects UC40 ext §3a trigger (#18517):
+// an investment was applied since the last sprint boundary AND the
+// constraint phase did not change since sprint start (signaling the
+// elevation didn't shift the bottleneck — exploitation should have
+// preceded). Pure calculation: *TOCState → bool.
+//
+// Boundary defense: returns false when toc is nil or either constraint
+// value is 0 (no constraint identified — pre-existing TOCState convention
+// per the field comment "0 = no constraint identified").
+func HasElevationWithoutExploitation(toc *metrics.TOCState) bool {
+	if toc == nil {
+		return false
+	}
+	if !toc.InvestmentOccurredThisCycle {
+		return false
+	}
+	if toc.ConstraintPhase == 0 || toc.LastSprintConstraintPhase == 0 {
+		return false
+	}
+	return toc.ConstraintPhase == toc.LastSprintConstraintPhase
+}

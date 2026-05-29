@@ -48,6 +48,25 @@ type TOCState struct {
 
 	// Constraint buffer visualization
 	Buffer ConstraintBuffer
+
+	// UC40 fu2 (#18517): cross-sprint snapshot for HasElevationWithoutExploitation.
+	// Snapshotted at SprintStarted (detected via SprintNumber change in Update);
+	// compared to current ConstraintPhase by the lesson predicate.
+	LastSprintConstraintPhase model.WorkflowPhase
+
+	// UC40 fu2 (#18517): investment-occurred flag for the current evaluation
+	// cycle. Set true when sim.LastInvestmentApplied changes value; reset to
+	// false on SprintEnded (carries through the follow-up sprint per Decision A).
+	InvestmentOccurredThisCycle bool
+
+	// Change-detection state — managed by Update(); do not modify externally.
+	// Exported for forward-compat: Tracker.TOC is NOT currently persisted by
+	// the Save/Load flow (only DORA + Fever round-trip; see internal/persistence
+	// persistence.go:106-109). If TOC persistence is added later, these fields
+	// will already be in the exported set and won't zero-out on Load.
+	PrevSprintNumber   int
+	PrevSprintActive   bool
+	PrevLastInvestment string
 }
 
 // ConstraintBuffer measures the protective buffer in front of the identified constraint.
@@ -99,6 +118,34 @@ func NewTOCState(mode TOCMode, windowSize int) *TOCState {
 
 // Update processes one tick of simulation state. Call from Tracker.Updated().
 func (s *TOCState) Update(sim model.Simulation) {
+	// UC40 fu2 (#18517): cross-sprint transition detection. Runs BEFORE the
+	// ConstraintPhase recompute so SprintStarted-snapshot captures the
+	// constraint value from the PRIOR sprint (the relevant comparison
+	// point for the elevation-vs-exploitation lesson predicate).
+	currSprintNumber := sim.SprintNumber
+	currSprintActive := sim.CurrentSprintOption.IsOk()
+	currLastInvestment := sim.LastInvestmentApplied
+
+	if currSprintNumber > s.PrevSprintNumber {
+		// SprintStarted: snapshot the constraint phase computed at end of
+		// prior cycle. This is the "constraint state just before this
+		// sprint began" baseline the predicate compares against.
+		s.LastSprintConstraintPhase = s.ConstraintPhase
+	}
+	if currLastInvestment != s.PrevLastInvestment && currLastInvestment != "" {
+		// InvestmentApplied: an investment occurred this evaluation cycle.
+		s.InvestmentOccurredThisCycle = true
+	}
+	if s.PrevSprintActive && !currSprintActive {
+		// SprintEnded: predicate had a full sprint to observe whether the
+		// constraint moved; reset the flag so a new investment window
+		// opens fresh.
+		s.InvestmentOccurredThisCycle = false
+	}
+	s.PrevSprintNumber = currSprintNumber
+	s.PrevSprintActive = currSprintActive
+	s.PrevLastInvestment = currLastInvestment
+
 	currSnap := NewPhaseSnapshot(sim)
 
 	// First tick: just record snapshot, no diff possible

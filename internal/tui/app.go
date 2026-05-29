@@ -1444,7 +1444,7 @@ func (a *App) refreshLesson() {
 			_, hasActive := sim.CurrentSprintOption.Get()
 			return lessonInputs{
 				hasActiveSprint: hasActive,
-				triggers:        BuildTriggerStateFromEngine(sim, eng.Tracker.Fever.Status, sim.ActiveTickets, sim.CompletedTickets),
+				triggers:        BuildTriggerStateFromEngine(sim, eng.Tracker.Fever.Status, sim.ActiveTickets, sim.CompletedTickets, eng.Tracker.TOC),
 			}
 		},
 		func(_ ClientMode) lessonInputs {
