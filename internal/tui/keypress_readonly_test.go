@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/binaryphile/fluentfp/either"
+	"github.com/binaryphile/fluentfp/must"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -135,6 +137,68 @@ func TestApp_KeypressMutations_ReadOnlyModeGate(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestApp_SpendInvestment_GateRunsBeforePrecondition mechanically proves
+// gate-before-precondition ordering for SpendInvestment by setting up the
+// would-allow-the-action state (investment window OPEN) and verifying the
+// gate STILL suppresses the engine write. Closes the test-fragility
+// concern flagged by /grade IMPL-final P7: the read-only-gate test's
+// SpendInvestment_1 case proves ordering only because NewAppWithSeed(42)
+// leaves the window closed; if a future fixture change opened the window
+// at construction time, that implicit proof would weaken. This test makes
+// the ordering proof EXPLICIT — window open + flag set + assert no engine
+// write proves the gate runs first regardless of precondition state.
+func TestApp_SpendInvestment_GateRunsBeforePrecondition(t *testing.T) {
+	app := NewAppWithSeed(42)
+	app.openingAnimation = false
+
+	// Setup: advance through one full sprint to open the investment window.
+	// Window opens when SprintNumber > 0 AND no active sprint.
+	eng, ok := app.mode.GetLeft()
+	if !ok {
+		t.Fatal("expected engine mode")
+	}
+	eng.Engine = must.Get(eng.Engine.StartSprint())
+	// Tick through sprint duration until it ends.
+	for i := 0; i < eng.Engine.Sim().SprintLength*2; i++ { // justified:CF
+		newEng, _, err := eng.Engine.Tick()
+		if err != nil {
+			t.Fatalf("tick %d failed: %v", i, err)
+		}
+		eng.Engine = newEng
+		if _, active := eng.Engine.Sim().CurrentSprintOption.Get(); !active {
+			break
+		}
+	}
+	app.mode = either.Left[EngineMode, ClientMode](eng)
+
+	engPost, _ := app.mode.GetLeft()
+	if !engPost.Engine.Sim().IsInvestmentWindowOpen() {
+		t.Fatal("setup precondition failed: investment window should be open after one sprint")
+	}
+
+	// Now set read-only AFTER establishing window-open precondition.
+	app.coTenantWriteObserved = true
+
+	versionBefore := engPost.Engine.ProjectionVersion()
+
+	// Send "1" — would normally invoke SpendInvestment if gate didn't fire.
+	_, _ = app.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("1")})
+
+	// Mechanical ordering proof: window IS open → precondition would allow
+	// the SpendInvestment call → but engine ProjectionVersion did NOT advance
+	// → the gate fired BEFORE the precondition check.
+	engAfter, _ := app.mode.GetLeft()
+	if engAfter.Engine.ProjectionVersion() != versionBefore {
+		t.Errorf("gate failed to run before precondition check: ProjectionVersion advanced from %d to %d with window open and coTenantWriteObserved=true",
+			versionBefore, engAfter.Engine.ProjectionVersion())
+	}
+
+	// Status message confirms gate (not precondition) handled the keypress.
+	if !strings.Contains(app.statusMessage, "[READ-ONLY]") {
+		t.Errorf("gate's [READ-ONLY] status message not set; got: %q", app.statusMessage)
 	}
 }
 
