@@ -547,7 +547,7 @@ StartSprint for sprint N+1 ──▶ window CLOSED again
 
 **Deferred to follow-up cycles** (per /i pass 1 scope-bounding):
 - `InvestmentPolicy` interface for batch/LLM mode (UC40 ext §5a) → tracked as fu1 task #18516.
-- `HasElevationWithoutExploitation` lesson predicate (UC40 ext §3a) → tracked as fu2 task #18517. Requires cross-sprint `LastSprintConstraintPhase` field + investment-occurred-this-cycle flag, out of UC40 core scope.
+- `HasElevationWithoutExploitation` lesson predicate (UC40 ext §3a) → **shipped via #18517 cycle**. Architectural note: the cross-sprint state lives in `metrics.TOCState` (not `Simulation` as originally specified in the task description) because `ConstraintPhase` lives in TOCState and the projection has no tracker access; semantic intent preserved via change-detection inside `TOC.Update(sim)`. Adds `LastSprintConstraintPhase` + `InvestmentOccurredThisCycle` + 3 exported `Prev*` change-detection fields; new `ElevationWithoutExploitation` lesson constant (`TotalLessons` 13 → 14).
 
 UC40 closes the **Factorio dynamics program** (parent epic #15441): UC37 + UC38 + UC39 + UC40 all shipped; the 5FS EXPLOIT/ELEVATE game loop is now playable end-to-end.
 
