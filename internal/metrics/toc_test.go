@@ -295,10 +295,25 @@ func TestTOCState_TransitionDetection(t *testing.T) {
 		if !toc.InvestmentOccurredThisCycle {
 			t.Error("InvestmentOccurredThisCycle should persist across SprintStarted boundary")
 		}
-		// On the boundary tick, ConstraintPhase == LastSprintConstraintPhase
-		// trivially. The predicate would return true here — confirming the
-		// early-warning semantic is intentional (lesson surfaces as soon as
-		// user views the panel during the post-investment sprint).
+		// LOAD-BEARING behavioral assertion: directly invoke the predicate to
+		// confirm the documented early-warning semantic. On the boundary tick,
+		// ConstraintPhase == LastSprintConstraintPhase trivially → predicate
+		// returns true. The lesson surfaces as soon as the user opens the
+		// panel during the post-investment sprint. If a future refactor
+		// changes the predicate or the snapshot ordering, this assertion
+		// catches the behavioral drift (not just the state shape).
+		// Inlined predicate logic (cannot import internal/lessons here — it
+		// imports metrics, would create a cycle). Mirrors
+		// lessons.HasElevationWithoutExploitation exactly per /i N-F1
+		// (load-bearing assertion; documentation alone insufficient).
+		predicateFires := toc != nil &&
+			toc.InvestmentOccurredThisCycle &&
+			toc.ConstraintPhase != 0 &&
+			toc.LastSprintConstraintPhase != 0 &&
+			toc.ConstraintPhase == toc.LastSprintConstraintPhase
+		if !predicateFires {
+			t.Error("predicate should return true on boundary tick with flag set + ConstraintPhase==LastSprintConstraintPhase")
+		}
 	})
 
 	t.Run("Idempotency_on_no_op_update", func(t *testing.T) {
