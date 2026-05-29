@@ -140,17 +140,31 @@ func TestApp_KeypressMutations_ReadOnlyModeGate(t *testing.T) {
 	}
 }
 
-// TestApp_SpendInvestment_GateRunsBeforePrecondition mechanically proves
-// gate-before-precondition ordering for SpendInvestment by setting up the
-// would-allow-the-action state (investment window OPEN) and verifying the
-// gate STILL suppresses the engine write. Closes the test-fragility
-// concern flagged by /grade IMPL-final P7: the read-only-gate test's
-// SpendInvestment_1 case proves ordering only because NewAppWithSeed(42)
-// leaves the window closed; if a future fixture change opened the window
-// at construction time, that implicit proof would weaken. This test makes
-// the ordering proof EXPLICIT — window open + flag set + assert no engine
-// write proves the gate runs first regardless of precondition state.
-func TestApp_SpendInvestment_GateRunsBeforePrecondition(t *testing.T) {
+// TestApp_SpendInvestment_GatedWithWindowOpen verifies the gate engages
+// even when the SpendInvestment precondition WOULD permit the action
+// (investment window OPEN). Together with the table-driven test's
+// SpendInvestment_1 case (which uses window CLOSED), this provides
+// complementary gate-coverage:
+//
+//   - SpendInvestment_1 (window CLOSED) — proves gate fires BEFORE the
+//     IsInvestmentWindowOpen precondition check, because statusMessage
+//     contains "[READ-ONLY]" rather than being empty. If the gate were
+//     placed AFTER the window-check, the precondition would short-circuit
+//     before the gate sets the status, and the assertion would fail.
+//
+//   - This test (window OPEN) — proves the gate STILL suppresses the
+//     engine write when the precondition would allow it. Insensitive to
+//     gate-vs-precondition ordering (both before and after work the same
+//     when precondition allows), but proves gate-before-engine-write.
+//
+// (Honest revision: the original commit f4e68ff claimed this test was a
+// "mechanical gate-before-precondition proof". That claim was incorrect —
+// the test would pass whether the gate is before or after the precondition,
+// since both placements suppress engine advance with window open. The
+// actual ordering proof lives in the SpendInvestment_1 fixture-dependent
+// case. This test's value is independent: it proves the gate works when
+// preconditions wouldn't short-circuit.)
+func TestApp_SpendInvestment_GatedWithWindowOpen(t *testing.T) {
 	app := NewAppWithSeed(42)
 	app.openingAnimation = false
 
@@ -187,12 +201,13 @@ func TestApp_SpendInvestment_GateRunsBeforePrecondition(t *testing.T) {
 	// Send "1" — would normally invoke SpendInvestment if gate didn't fire.
 	_, _ = app.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("1")})
 
-	// Mechanical ordering proof: window IS open → precondition would allow
-	// the SpendInvestment call → but engine ProjectionVersion did NOT advance
-	// → the gate fired BEFORE the precondition check.
+	// Gate-coverage with permissive precondition: window IS open → precondition
+	// would allow the SpendInvestment call → but the gate suppresses the
+	// engine write regardless. (This is gate-before-engine-write proof, NOT
+	// gate-before-precondition proof — see docstring above for distinction.)
 	engAfter, _ := app.mode.GetLeft()
 	if engAfter.Engine.ProjectionVersion() != versionBefore {
-		t.Errorf("gate failed to run before precondition check: ProjectionVersion advanced from %d to %d with window open and coTenantWriteObserved=true",
+		t.Errorf("gate failed to suppress engine write with window open: ProjectionVersion advanced from %d to %d",
 			versionBefore, engAfter.Engine.ProjectionVersion())
 	}
 
