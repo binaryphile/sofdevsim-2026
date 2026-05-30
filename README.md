@@ -272,7 +272,10 @@ See `docs/design.md` §"Investment Moves (UC40)" for the state machine, options 
 
 ## HTTP API
 
-The TUI and HTTP API share the same simulation state. Control the TUI's simulation programmatically via REST:
+The TUI and HTTP API share the same simulation state. Control the TUI's simulation programmatically via REST.
+
+Responses are `application/json` (post-#18915 fluentfp/web migration; previously `application/hal+json`). The HAL body shape with `_links` and `_embedded` is preserved — only the wire-level Content-Type header changed.
+
 
 ```bash
 # List simulations (find the TUI's simulation ID)
