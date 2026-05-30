@@ -2,7 +2,6 @@ package api
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -11,7 +10,9 @@ import (
 	"github.com/binaryphile/fluentfp/either"
 	"github.com/binaryphile/fluentfp/must"
 	"github.com/binaryphile/fluentfp/option"
+	"github.com/binaryphile/fluentfp/rslt"
 	"github.com/binaryphile/fluentfp/slice"
+	"github.com/binaryphile/fluentfp/web"
 	"github.com/binaryphile/sofdevsim-2026/internal/engine"
 	"github.com/binaryphile/sofdevsim-2026/internal/events"
 	"github.com/binaryphile/sofdevsim-2026/internal/lessons"
@@ -21,20 +22,6 @@ import (
 	"github.com/binaryphile/sofdevsim-2026/internal/registry"
 )
 
-// respondWithSimulation writes the HAL response for a simulation instance.
-// Query: builds read model from instance state.
-// Per CQRS Guide §Query Side: queries should be clearly separated from commands.
-// Note: Contains pure calculations (ToState, LinksFor) then Action (writeJSON) -
-// acceptable I/O boundary layer per FP Guide.
-func respondWithSimulation(w http.ResponseWriter, inst registry.SimInstance, status int) {
-	state := ToState(inst.Engine.Sim(), inst.Tracker)
-	response := HALResponse{
-		State: state,
-		Links: LinksFor(state),
-	}
-	writeJSON(w, status, response)
-}
-
 // HealthResponse is returned by the /health endpoint for service identification.
 type HealthResponse struct {
 	Service string `json:"service"`
@@ -42,7 +29,8 @@ type HealthResponse struct {
 }
 
 // handleHealth returns service identification for discovery.
-// TUI uses this to verify it's connecting to a sofdevsim server.
+// TUI uses this to verify it's connecting to a sofdevsim server. Stays as
+// stdlib http.HandlerFunc (no domain-error mapping; bypasses web.Adapt).
 func handleHealth(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
@@ -52,20 +40,6 @@ func handleHealth(w http.ResponseWriter, req *http.Request) {
 	})
 }
 
-// writeJSON writes a HAL+JSON response with proper content type and status.
-func writeJSON(w http.ResponseWriter, status int, v any) {
-	w.Header().Set("Content-Type", "application/hal+json")
-	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(v)
-}
-
-// writeError writes a JSON error response with the given status and message.
-func writeError(w http.ResponseWriter, status int, message string) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(map[string]string{"error": message})
-}
-
 // EntryPointResponse is the HATEOAS discovery response.
 type EntryPointResponse struct {
 	Links map[string]string `json:"_links"`
@@ -73,15 +47,20 @@ type EntryPointResponse struct {
 
 // HandleEntryPoint returns HATEOAS discovery links for API navigation.
 // This is the API root - clients start here and follow links.
-func (r SimRegistry) HandleEntryPoint(w http.ResponseWriter, req *http.Request) {
-	response := EntryPointResponse{
-		Links: map[string]string{
-			"self":        "/",
-			"simulations": "/simulations",
-			"comparisons": "/comparisons",
-		},
+func handleEntryPoint(r SimRegistry) web.Handler {
+	_ = r // unused; included for consistency with the routes-table factory pattern
+	return func(req *http.Request) rslt.Result[web.Response] {
+		return rslt.Ok(web.Response{
+			Status: http.StatusOK,
+			Body: EntryPointResponse{
+				Links: map[string]string{
+					"self":        "/",
+					"simulations": "/simulations",
+					"comparisons": "/comparisons",
+				},
+			},
+		})
 	}
-	writeJSON(w, http.StatusOK, response)
 }
 
 // SimulationListItem is a simulation entry in the list response.
@@ -104,19 +83,20 @@ type SimulationListResponse struct {
 	Links       map[string]string    `json:"_links"`
 }
 
-// HandleListSimulations returns all active simulations with their IDs and links.
+// handleListSimulations returns all active simulations with their IDs and links.
 // Per UC10: "API client lists active simulations to discover available IDs"
-func (r SimRegistry) HandleListSimulations(w http.ResponseWriter, req *http.Request) {
-	summaries := r.ListSimulations()
-	items := slice.Map(summaries, toSimulationListItem)
-
-	response := SimulationListResponse{
-		Simulations: items,
-		Links: map[string]string{
-			"self": "/simulations",
-		},
+func handleListSimulations(r SimRegistry) web.Handler {
+	return func(req *http.Request) rslt.Result[web.Response] {
+		summaries := r.ListSimulations()
+		items := slice.Map(summaries, toSimulationListItem)
+		return rslt.Ok(web.Response{
+			Status: http.StatusOK,
+			Body: SimulationListResponse{
+				Simulations: items,
+				Links:       map[string]string{"self": "/simulations"},
+			},
+		})
 	}
-	writeJSON(w, http.StatusOK, response)
 }
 
 // CreateSimulationRequest is the request body for creating a simulation.
@@ -134,86 +114,49 @@ type CreateSimulationRequest struct {
 	ReleaseMode string `json:"releaseMode,omitempty"`
 }
 
-// HandleCreateSimulation creates a new simulation with the given seed and policy.
+// handleCreateSimulation creates a new simulation with the given seed and policy.
 // Returns the initial state with links to start a sprint.
-func (r SimRegistry) HandleCreateSimulation(w http.ResponseWriter, req *http.Request) {
-	var body CreateSimulationRequest
-	if err := decodeJSON(req, &body); err != nil {
-		respondDecodeError(w, err)
-		return
-	}
-
-	// Validate seed (pure calculation)
-	if err := isValidSeed(body.Seed); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-
-	// Default policy
-	policy := model.PolicyDORAStrict
-	switch body.Policy {
-	case "none":
-		policy = model.PolicyNone
-	case "tameflow-cognitive":
-		policy = model.PolicyTameFlowCognitive
-	case "dora-strict", "":
-		policy = model.PolicyDORAStrict
-	default:
-		writeError(w, http.StatusBadRequest, "invalid policy")
-		return
-	}
-
-	// UC38: translate string-keyed PhaseWIPConfig into WorkflowPhase-keyed.
-	// Unknown phase names → HTTP 400 (structural client error; doesn't reach
-	// the domain validator since the key set is unrecognized JSON, not a
-	// well-formed-but-invalid config).
-	phaseWIPConfig, parseErr := parsePhaseWIPConfig(body.PhaseWIPConfig)
-	if parseErr != nil {
-		writeError(w, http.StatusBadRequest, parseErr.Error())
-		return
-	}
-
-	// UC39: translate releaseMode string into ReleaseMode enum.
-	// ErrInvalidReleaseMode → HTTP 422 (domain-rule violation; reuses UC38's
-	// 422 introduction per Go dev §8 Error Translation).
-	releaseMode, modeErr := model.ParseReleaseMode(body.ReleaseMode)
-	if modeErr != nil {
-		writeError(w, http.StatusUnprocessableEntity, modeErr.Error())
-		return
-	}
-
-	// UC37: scenarioName selects the backlog mix profile. Empty → "healthy" (default).
-	// UC38: phaseWIPConfig nil/empty preserves regression-safe defaults.
-	// UC39: releaseMode default is ReleaseModePush (regression-safe).
-	id, err := r.CreateSimulation(body.Seed, policy, body.ScenarioName, phaseWIPConfig, releaseMode)
-	if err != nil {
-		if errors.Is(err, ErrAlreadyExists) {
-			writeError(w, http.StatusConflict, err.Error())
-			return
+// Error mapping: validation/parsing errors return typed *web.Error directly;
+// domain sentinels (ErrAlreadyExists/ErrUnknownScenario/ErrCap*) flow through
+// domainErrorMapper at the Adapt boundary.
+func handleCreateSimulation(r SimRegistry) web.Handler {
+	return func(req *http.Request) rslt.Result[web.Response] {
+		var body CreateSimulationRequest
+		if err := decodeJSON(req, &body); err != nil {
+			return rslt.Err[web.Response](decodeError(err))
 		}
-		// /c absorption (Go dev guide §8 errors-as-values): typed sentinel via
-		// errors.Is rather than string-matching the message; sentinel defined in
-		// registry/registry.go (ErrUnknownScenario).
-		if errors.Is(err, registry.ErrUnknownScenario) {
-			writeError(w, http.StatusBadRequest, err.Error())
-			return
+		if err := isValidSeed(body.Seed); err != nil {
+			return rslt.Err[web.Response](web.BadRequest(err.Error()))
 		}
-		// UC38: per-phase WIP cap validation errors → HTTP 422 Unprocessable
-		// Entity (semantically-valid JSON, domain-rule violation per Go dev
-		// guide §8 Error Translation). 4 sentinel cases all map here.
-		if errors.Is(err, model.ErrCapZero) ||
-			errors.Is(err, model.ErrCapNegative) ||
-			errors.Is(err, model.ErrCapBelowMentorMin) ||
-			errors.Is(err, model.ErrCapConflict) {
-			writeError(w, http.StatusUnprocessableEntity, err.Error())
-			return
+		policy := model.PolicyDORAStrict
+		switch body.Policy {
+		case "none":
+			policy = model.PolicyNone
+		case "tameflow-cognitive":
+			policy = model.PolicyTameFlowCognitive
+		case "dora-strict", "":
+			policy = model.PolicyDORAStrict
+		default:
+			return rslt.Err[web.Response](web.BadRequest("invalid policy"))
 		}
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+		phaseWIPConfig, parseErr := parsePhaseWIPConfig(body.PhaseWIPConfig)
+		if parseErr != nil {
+			return rslt.Err[web.Response](web.BadRequest(parseErr.Error()))
+		}
+		releaseMode, modeErr := model.ParseReleaseMode(body.ReleaseMode)
+		if modeErr != nil {
+			return rslt.Err[web.Response](&web.Error{Status: http.StatusUnprocessableEntity, Message: modeErr.Error(), Code: "INVALID_RELEASE_MODE"})
+		}
+		id, err := r.CreateSimulation(body.Seed, policy, body.ScenarioName, phaseWIPConfig, releaseMode)
+		if err != nil {
+			// Domain sentinels (ErrAlreadyExists / ErrUnknownScenario / ErrCap*)
+			// flow through domainErrorMapper at the Adapt boundary. Other
+			// errors fall through to the 500 default per Adapt's error flow.
+			return rslt.Err[web.Response](err)
+		}
+		inst, _ := r.GetInstanceOption(id).Get()
+		return rslt.Ok(simulationResponse(inst, http.StatusCreated))
 	}
-
-	inst, _ := r.GetInstanceOption(id).Get()
-	respondWithSimulation(w, inst, http.StatusCreated)
 }
 
 // parsePhaseWIPConfig translates a string-keyed PhaseWIPConfig map (REST
@@ -259,91 +202,72 @@ func parsePhaseName(s string) (model.WorkflowPhase, bool) {
 	return 0, false
 }
 
-// HandleGetSimulation returns the current state of a simulation.
+// handleGetSimulation returns the current state of a simulation.
 // Includes context-appropriate links based on whether a sprint is active.
-func (r SimRegistry) HandleGetSimulation(w http.ResponseWriter, req *http.Request) {
-	id := req.PathValue("id")
-
-	inst, ok := r.GetInstanceOption(id).Get()
-	if !ok {
-		writeError(w, http.StatusNotFound, "simulation not found")
-		return
-	}
-
-	respondWithSimulation(w, inst, http.StatusOK)
-}
-
-// HandleStartSprint starts a new sprint for the simulation.
-// Returns 409 Conflict if a sprint is already active.
-func (r SimRegistry) HandleStartSprint(w http.ResponseWriter, req *http.Request) {
-	id := req.PathValue("id")
-
-	const maxRetries = 3
-	for attempt := 0; attempt < maxRetries; attempt++ { // justified:CF
-		inst, ok := r.GetInstanceOption(id).Get()
+func handleGetSimulation(r SimRegistry) web.Handler {
+	return func(req *http.Request) rslt.Result[web.Response] {
+		inst, ok := r.GetInstanceOption(req.PathValue("id")).Get()
 		if !ok {
-			writeError(w, http.StatusNotFound, "simulation not found")
-			return
+			return rslt.Err[web.Response](web.NotFound("simulation not found"))
 		}
-
-		// Check if sprint already active
-		sim := inst.Engine.Sim()
-		if _, active := sim.CurrentSprintOption.Get(); active {
-			writeError(w, http.StatusConflict, "sprint already active")
-			return
-		}
-
-		var err error
-		if inst.Engine, err = inst.Engine.StartSprint(); err != nil {
-			continue // Retry with fresh state
-		}
-		r.SetInstance(id, inst)
-
-		respondWithSimulation(w, inst, http.StatusOK)
-		return
+		return rslt.Ok(simulationResponse(inst, http.StatusOK))
 	}
-	writeError(w, http.StatusConflict, "conflict")
 }
 
-// HandleTick advances the simulation by one tick.
+// handleStartSprint starts a new sprint for the simulation.
+// Returns 409 Conflict if a sprint is already active OR the 3-retry
+// optimistic-concurrency loop is exhausted.
+func handleStartSprint(r SimRegistry) web.Handler {
+	return func(req *http.Request) rslt.Result[web.Response] {
+		id := req.PathValue("id")
+		const maxRetries = 3
+		for attempt := 0; attempt < maxRetries; attempt++ { // justified:CF
+			inst, ok := r.GetInstanceOption(id).Get()
+			if !ok {
+				return rslt.Err[web.Response](web.NotFound("simulation not found"))
+			}
+			sim := inst.Engine.Sim()
+			if _, active := sim.CurrentSprintOption.Get(); active {
+				return rslt.Err[web.Response](web.Conflict("sprint already active"))
+			}
+			var err error
+			if inst.Engine, err = inst.Engine.StartSprint(); err != nil {
+				continue
+			}
+			r.SetInstance(id, inst)
+			return rslt.Ok(simulationResponse(inst, http.StatusOK))
+		}
+		return rslt.Err[web.Response](web.Conflict("conflict"))
+	}
+}
+
+// handleTick advances the simulation by one tick.
 // Returns updated state with context-appropriate links (tick disappears when sprint ends).
-func (r SimRegistry) HandleTick(w http.ResponseWriter, req *http.Request) {
-	id := req.PathValue("id")
-
-	const maxRetries = 3
-	for attempt := 0; attempt < maxRetries; attempt++ { // justified:CF
-		inst, ok := r.GetInstanceOption(id).Get()
-		if !ok {
-			writeError(w, http.StatusNotFound, "simulation not found")
-			return
+func handleTick(r SimRegistry) web.Handler {
+	return func(req *http.Request) rslt.Result[web.Response] {
+		id := req.PathValue("id")
+		const maxRetries = 3
+		for attempt := 0; attempt < maxRetries; attempt++ { // justified:CF
+			inst, ok := r.GetInstanceOption(id).Get()
+			if !ok {
+				return rslt.Err[web.Response](web.NotFound("simulation not found"))
+			}
+			oldSim := inst.Engine.Sim()
+			if _, active := oldSim.CurrentSprintOption.Get(); !active {
+				return rslt.Err[web.Response](web.Conflict("no active sprint"))
+			}
+			var err error
+			if inst.Engine, _, err = inst.Engine.Tick(); err != nil {
+				continue
+			}
+			newSim := inst.Engine.Sim()
+			inst.Tracker = inst.Tracker.Updated(newSim)
+			inst.Office = deriveOfficeEvents(inst.Office, oldSim, newSim)
+			r.SetInstance(id, inst)
+			return rslt.Ok(simulationResponse(inst, http.StatusOK))
 		}
-
-		// Check if sprint is active
-		oldSim := inst.Engine.Sim()
-		if _, active := oldSim.CurrentSprintOption.Get(); !active {
-			writeError(w, http.StatusConflict, "no active sprint")
-			return
-		}
-
-		// Engine emits events and updates projection - capture new Engine
-		var err error
-		if inst.Engine, _, err = inst.Engine.Tick(); err != nil {
-			continue // Retry with fresh state
-		}
-
-		// SprintEnded event clears sprint in projection automatically
-		newSim := inst.Engine.Sim()
-		inst.Tracker = inst.Tracker.Updated(newSim)
-
-		// Update office animation state based on simulation changes
-		inst.Office = deriveOfficeEvents(inst.Office, oldSim, newSim)
-
-		r.SetInstance(id, inst)
-
-		respondWithSimulation(w, inst, http.StatusOK)
-		return
+		return rslt.Err[web.Response](web.Conflict("conflict"))
 	}
-	writeError(w, http.StatusConflict, "conflict")
 }
 
 // AssignTicketRequest is the request body for assigning a ticket.
@@ -352,61 +276,49 @@ type AssignTicketRequest struct {
 	DeveloperID string `json:"developerId"`
 }
 
-// HandleAssignTicket assigns a ticket to a developer.
+// handleAssignTicket assigns a ticket to a developer.
 // If developerId is omitted, auto-assigns to first idle developer.
 // Returns 400 if ticket/developer not found or developer is busy.
-func (r SimRegistry) HandleAssignTicket(w http.ResponseWriter, req *http.Request) {
-	id := req.PathValue("id")
-
-	inst, ok := r.GetInstanceOption(id).Get()
-	if !ok {
-		writeError(w, http.StatusNotFound, "simulation not found")
-		return
-	}
-
-	var body AssignTicketRequest
-	if err := decodeJSON(req, &body); err != nil {
-		respondDecodeError(w, err)
-		return
-	}
-
-	// Auto-assign if no developer specified
-	devID := body.DeveloperID
-	if devID == "" {
-		sim := inst.Engine.Sim()
-		idle := sim.IdleDevelopers()
-		if len(idle) == 0 {
-			writeError(w, http.StatusBadRequest, "no idle developers")
-			return
+func handleAssignTicket(r SimRegistry) web.Handler {
+	return func(req *http.Request) rslt.Result[web.Response] {
+		id := req.PathValue("id")
+		inst, ok := r.GetInstanceOption(id).Get()
+		if !ok {
+			return rslt.Err[web.Response](web.NotFound("simulation not found"))
 		}
-		devID = idle[0].ID
+		var body AssignTicketRequest
+		if err := decodeJSON(req, &body); err != nil {
+			return rslt.Err[web.Response](decodeError(err))
+		}
+		devID := body.DeveloperID
+		if devID == "" {
+			sim := inst.Engine.Sim()
+			idle := sim.IdleDevelopers()
+			if len(idle) == 0 {
+				return rslt.Err[web.Response](web.BadRequest("no idle developers"))
+			}
+			devID = idle[0].ID
+		}
+		var err error
+		inst.Engine, err = inst.Engine.AssignTicket(body.TicketID, devID)
+		if err != nil {
+			return rslt.Err[web.Response](web.BadRequest(err.Error()))
+		}
+		sim := inst.Engine.Sim()
+		devIdx := findDeveloperIndex(sim.Developers, devID)
+		now := time.Now()
+		if devIdx >= 0 {
+			target := office.CubicleLayout(len(sim.Developers))[devIdx]
+			inst.Office = inst.Office.Record(office.DevAssignedToTicket{
+				DevID:    devID,
+				TicketID: body.TicketID,
+				Target:   target,
+			}, sim.CurrentTick, now)
+			inst.Office = inst.Office.Record(office.DevStartedWorking{DevID: devID}, sim.CurrentTick, now)
+		}
+		r.SetInstance(id, inst)
+		return rslt.Ok(simulationResponse(inst, http.StatusOK))
 	}
-
-	var err error
-	inst.Engine, err = inst.Engine.AssignTicket(body.TicketID, devID)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-
-	// Record office event: developer assigned to ticket, starts working
-	sim := inst.Engine.Sim()
-	devIdx := findDeveloperIndex(sim.Developers, devID)
-	now := time.Now()
-	if devIdx >= 0 {
-		target := office.CubicleLayout(len(sim.Developers))[devIdx]
-		inst.Office = inst.Office.Record(office.DevAssignedToTicket{
-			DevID:    devID,
-			TicketID: body.TicketID,
-			Target:   target,
-		}, sim.CurrentTick, now)
-		// Immediately transition to working (API doesn't animate movement)
-		inst.Office = inst.Office.Record(office.DevStartedWorking{DevID: devID}, sim.CurrentTick, now)
-	}
-
-	r.SetInstance(id, inst)
-
-	respondWithSimulation(w, inst, http.StatusOK)
 }
 
 // findDeveloperIndex returns the index of a developer by ID, or -1 if not found.
@@ -419,47 +331,42 @@ func findDeveloperIndex(devs []model.Developer, id string) int {
 	return -1
 }
 
-// HandleCompare runs two simulations with different policies and compares them.
-// Returns DORA metrics and per-metric winners.
-func (r SimRegistry) HandleCompare(w http.ResponseWriter, req *http.Request) {
-	var body CompareRequest
-	if err := decodeJSON(req, &body); err != nil {
-		respondDecodeError(w, err)
-		return
+// handleCompare runs two simulations with different policies and compares them.
+// Returns DORA metrics and per-metric winners. The comparison-orchestration
+// helpers (addStandardTeam, addStandardBacklog, runSprintsWithTracking,
+// runComparison, autoAssignForComparison, decomposeEligibleTickets,
+// buildCompareResponse, buildPolicyResult, buildWinners) live below the
+// handler at file scope per the plan §"Out of scope" decision (not refactored
+// into a separate package; transport-shape migration only).
+func handleCompare(r SimRegistry) web.Handler {
+	_ = r // unused; comparison runs are stateless (no registry interaction)
+	return func(req *http.Request) rslt.Result[web.Response] {
+		var body CompareRequest
+		if err := decodeJSON(req, &body); err != nil {
+			return rslt.Err[web.Response](decodeError(err))
+		}
+		seed := body.Seed
+		if seed == 0 {
+			seed = time.Now().UnixNano()
+		}
+		if err := isValidSeed(seed); err != nil {
+			return rslt.Err[web.Response](web.BadRequest(err.Error()))
+		}
+		sprints := body.Sprints
+		if sprints == 0 {
+			sprints = 3
+		}
+		if sprints < 0 {
+			return rslt.Err[web.Response](web.BadRequest("invalid sprints count"))
+		}
+		resultA := runComparison(model.PolicyDORAStrict, seed, sprints)
+		resultB := runComparison(model.PolicyTameFlowCognitive, seed, sprints)
+		comparison := metrics.Compare(resultA, resultB, seed)
+		return rslt.Ok(web.Response{
+			Status: http.StatusOK,
+			Body:   buildCompareResponse(seed, sprints, comparison),
+		})
 	}
-
-	// Defaults and validation
-	seed := body.Seed
-	if seed == 0 {
-		seed = time.Now().UnixNano()
-	}
-	// Validate seed (pure calculation)
-	if err := isValidSeed(seed); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-
-	sprints := body.Sprints
-	if sprints == 0 {
-		sprints = 3 // Default per design doc
-	}
-	if sprints < 0 {
-		writeError(w, http.StatusBadRequest, "invalid sprints count")
-		return
-	}
-
-	// Run simulation A (DORA-strict)
-	resultA := runComparison(model.PolicyDORAStrict, seed, sprints)
-
-	// Run simulation B (TameFlow-cognitive)
-	resultB := runComparison(model.PolicyTameFlowCognitive, seed, sprints)
-
-	// Compare
-	comparison := metrics.Compare(resultA, resultB, seed)
-
-	// Build response
-	response := buildCompareResponse(seed, sprints, comparison)
-	writeJSON(w, http.StatusOK, response)
 }
 
 // addStandardTeam adds the fixed 3-developer team for comparison runs.
@@ -643,49 +550,41 @@ type UpdateSimulationRequest struct {
 	Policy string `json:"policy,omitempty"`
 }
 
-// HandleUpdateSimulation updates simulation settings (currently just policy).
+// handleUpdateSimulation updates simulation settings (currently just policy).
 // Returns 400 if invalid policy, 404 if simulation not found.
-func (r SimRegistry) HandleUpdateSimulation(w http.ResponseWriter, req *http.Request) {
-	id := req.PathValue("id")
-
-	var body UpdateSimulationRequest
-	if err := decodeJSON(req, &body); err != nil {
-		respondDecodeError(w, err)
-		return
-	}
-
-	// Parse and validate policy
-	var policy model.SizingPolicy
-	switch body.Policy {
-	case "none":
-		policy = model.PolicyNone
-	case "dora-strict":
-		policy = model.PolicyDORAStrict
-	case "tameflow-cognitive":
-		policy = model.PolicyTameFlowCognitive
-	default:
-		writeError(w, http.StatusBadRequest, "invalid policy")
-		return
-	}
-
-	const maxRetries = 3
-	for attempt := 0; attempt < maxRetries; attempt++ { // justified:CF
-		inst, ok := r.GetInstanceOption(id).Get()
-		if !ok {
-			writeError(w, http.StatusNotFound, "simulation not found")
-			return
+func handleUpdateSimulation(r SimRegistry) web.Handler {
+	return func(req *http.Request) rslt.Result[web.Response] {
+		id := req.PathValue("id")
+		var body UpdateSimulationRequest
+		if err := decodeJSON(req, &body); err != nil {
+			return rslt.Err[web.Response](decodeError(err))
 		}
-
-		var err error
-		if inst.Engine, err = inst.Engine.SetPolicy(policy); err != nil {
-			continue // Retry with fresh state
+		var policy model.SizingPolicy
+		switch body.Policy {
+		case "none":
+			policy = model.PolicyNone
+		case "dora-strict":
+			policy = model.PolicyDORAStrict
+		case "tameflow-cognitive":
+			policy = model.PolicyTameFlowCognitive
+		default:
+			return rslt.Err[web.Response](web.BadRequest("invalid policy"))
 		}
-		r.SetInstance(id, inst)
-
-		respondWithSimulation(w, inst, http.StatusOK)
-		return
+		const maxRetries = 3
+		for attempt := 0; attempt < maxRetries; attempt++ { // justified:CF
+			inst, ok := r.GetInstanceOption(id).Get()
+			if !ok {
+				return rslt.Err[web.Response](web.NotFound("simulation not found"))
+			}
+			var err error
+			if inst.Engine, err = inst.Engine.SetPolicy(policy); err != nil {
+				continue
+			}
+			r.SetInstance(id, inst)
+			return rslt.Ok(simulationResponse(inst, http.StatusOK))
+		}
+		return rslt.Err[web.Response](web.Conflict("conflict"))
 	}
-	writeError(w, http.StatusConflict, "conflict")
 }
 
 // DecomposeRequest is the request body for ticket decomposition.
@@ -701,91 +600,83 @@ type DecomposeResponse struct {
 	Links      map[string]string `json:"_links"`
 }
 
-// HandleDecompose attempts to decompose a ticket into smaller tasks.
+// handleDecompose attempts to decompose a ticket into smaller tasks.
 // Returns decomposed=false if ticket not found or policy doesn't allow decomposition.
-func (r SimRegistry) HandleDecompose(w http.ResponseWriter, req *http.Request) {
-	id := req.PathValue("id")
-
-	var body DecomposeRequest
-	if err := decodeJSON(req, &body); err != nil {
-		respondDecodeError(w, err)
-		return
-	}
-
-	// toTicketStates converts model.Ticket slice to TicketState slice.
-	// toTicketStates converts model.Ticket slice to TicketState slice.
+func handleDecompose(r SimRegistry) web.Handler {
 	toTicketStates := func(tickets []model.Ticket) []TicketState {
 		return slice.Map(tickets, ToTicketState)
 	}
-
-	const maxRetries = 3
-	for attempt := 0; attempt < maxRetries; attempt++ { // justified:CF
-		inst, ok := r.GetInstanceOption(id).Get()
-		if !ok {
-			writeError(w, http.StatusNotFound, "simulation not found")
-			return
+	return func(req *http.Request) rslt.Result[web.Response] {
+		id := req.PathValue("id")
+		var body DecomposeRequest
+		if err := decodeJSON(req, &body); err != nil {
+			return rslt.Err[web.Response](decodeError(err))
 		}
-
-		var result either.Either[engine.NotDecomposable, []model.Ticket]
-		var err error
-		if inst.Engine, result, err = inst.Engine.TryDecompose(body.TicketID); err != nil {
-			continue // Retry with fresh state
+		const maxRetries = 3
+		for attempt := 0; attempt < maxRetries; attempt++ { // justified:CF
+			inst, ok := r.GetInstanceOption(id).Get()
+			if !ok {
+				return rslt.Err[web.Response](web.NotFound("simulation not found"))
+			}
+			var result either.Either[engine.NotDecomposable, []model.Ticket]
+			var err error
+			if inst.Engine, result, err = inst.Engine.TryDecompose(body.TicketID); err != nil {
+				continue
+			}
+			r.SetInstance(id, inst)
+			children, decomposed := result.Get()
+			state := ToState(inst.Engine.Sim(), inst.Tracker)
+			return rslt.Ok(web.Response{
+				Status: http.StatusOK,
+				Body: DecomposeResponse{
+					Decomposed: decomposed,
+					Children:   toTicketStates(children),
+					Simulation: state,
+					Links:      LinksFor(state),
+				},
+			})
 		}
-		r.SetInstance(id, inst)
-
-		children, decomposed := result.Get()
-		state := ToState(inst.Engine.Sim(), inst.Tracker)
-		response := DecomposeResponse{
-			Decomposed: decomposed,
-			Children:   toTicketStates(children),
-			Simulation: state,
-			Links:      LinksFor(state),
-		}
-		writeJSON(w, http.StatusOK, response)
-		return
+		return rslt.Err[web.Response](web.Conflict("conflict"))
 	}
-	writeError(w, http.StatusConflict, "conflict")
 }
 
-// HandleGetLessons returns contextual lessons for a simulation.
+// handleGetLessons returns contextual lessons for a simulation.
 // Reuses shared lesson selection logic - API is stateless so always starts fresh.
-func (r SimRegistry) HandleGetLessons(w http.ResponseWriter, req *http.Request) {
-	id := req.PathValue("id")
-	inst, ok := r.GetInstanceOption(id).Get()
-	if !ok {
-		writeError(w, http.StatusNotFound, "simulation not found")
-		return
+func handleGetLessons(r SimRegistry) web.Handler {
+	return func(req *http.Request) rslt.Result[web.Response] {
+		id := req.PathValue("id")
+		inst, ok := r.GetInstanceOption(id).Get()
+		if !ok {
+			return rslt.Err[web.Response](web.NotFound("simulation not found"))
+		}
+		sim := inst.Engine.Sim()
+		_, hasActiveSprint := sim.CurrentSprintOption.Get()
+		var view lessons.ViewContext
+		if hasActiveSprint {
+			view = lessons.ViewExecution
+		} else if len(sim.CompletedTickets) > 0 {
+			view = lessons.ViewMetrics
+		} else {
+			view = lessons.ViewPlanning
+		}
+		lesson := lessons.Select(view, lessons.State{}, hasActiveSprint, false, lessons.TriggerState{}, lessons.ComparisonSummary{})
+		return rslt.Ok(web.Response{
+			Status: http.StatusOK,
+			Body: LessonsResponse{
+				CurrentLesson: LessonResponse{
+					ID:      string(lesson.ID),
+					Title:   lesson.Title,
+					Content: lesson.Content,
+					Tips:    lesson.Tips,
+				},
+				Progress: "0/8 concepts",
+				Links: map[string]string{
+					"self":       "/simulations/" + id + "/lessons",
+					"simulation": "/simulations/" + id,
+				},
+			},
+		})
 	}
-
-	// Determine view context from simulation state
-	sim := inst.Engine.Sim()
-	_, hasActiveSprint := sim.CurrentSprintOption.Get()
-	var view lessons.ViewContext
-	if hasActiveSprint {
-		view = lessons.ViewExecution
-	} else if len(sim.CompletedTickets) > 0 {
-		view = lessons.ViewMetrics
-	} else {
-		view = lessons.ViewPlanning
-	}
-
-	// API is stateless - always show orientation for fresh consumers
-	// ComparisonSummary{} passed for backwards compatibility (API doesn't track session state)
-	lesson := lessons.Select(view, lessons.State{}, hasActiveSprint, false, lessons.TriggerState{}, lessons.ComparisonSummary{})
-
-	writeJSON(w, http.StatusOK, LessonsResponse{
-		CurrentLesson: LessonResponse{
-			ID:      string(lesson.ID),
-			Title:   lesson.Title,
-			Content: lesson.Content,
-			Tips:    lesson.Tips,
-		},
-		Progress: "0/8 concepts",
-		Links: map[string]string{
-			"self":       "/simulations/" + id + "/lessons",
-			"simulation": "/simulations/" + id,
-		},
-	})
 }
 
 // deriveOfficeEvents compares old and new simulation states to derive office animation events.
@@ -857,77 +748,69 @@ func findActiveTicket(tickets []model.Ticket, id string) option.Option[model.Tic
 	return slice.From(tickets).Find(hasID)
 }
 
-// HandleGetOffice returns the office animation state for programmatic assertions.
-func (r SimRegistry) HandleGetOffice(w http.ResponseWriter, req *http.Request) {
-	id := req.PathValue("id")
-
-	inst, ok := r.GetInstanceOption(id).Get()
-	if !ok {
-		writeError(w, http.StatusNotFound, "simulation not found")
-		return
-	}
-
-	sim := inst.Engine.Sim()
-	state := inst.Office.State()
-
-	// Get developer names
-	names := slice.From(sim.Developers).ToString(model.Developer.GetName)
-
-	// Build developer animation states
-	devStates := make([]DeveloperAnimationState, 0, len(state.Animations))
-	for i, anim := range state.Animations { // justified:IX
-		name := ""
-		if i < len(names) {
-			name = names[i]
+// handleGetOffice returns the office animation state for programmatic assertions.
+func handleGetOffice(r SimRegistry) web.Handler {
+	return func(req *http.Request) rslt.Result[web.Response] {
+		id := req.PathValue("id")
+		inst, ok := r.GetInstanceOption(id).Get()
+		if !ok {
+			return rslt.Err[web.Response](web.NotFound("simulation not found"))
 		}
-		colorName := ""
-		if anim.ColorIndex < len(office.DeveloperColorNames) {
-			colorName = office.DeveloperColorNames[anim.ColorIndex]
+		sim := inst.Engine.Sim()
+		state := inst.Office.State()
+		names := slice.From(sim.Developers).ToString(model.Developer.GetName)
+		devStates := make([]DeveloperAnimationState, 0, len(state.Animations))
+		for i, anim := range state.Animations { // justified:IX
+			name := ""
+			if i < len(names) {
+				name = names[i]
+			}
+			colorName := ""
+			if anim.ColorIndex < len(office.DeveloperColorNames) {
+				colorName = office.DeveloperColorNames[anim.ColorIndex]
+			}
+			ticketID := ""
+			if dev, ok := findDeveloper(sim.Developers, anim.DevID).Get(); ok {
+				ticketID = dev.CurrentTicket
+			}
+			devStates = append(devStates, DeveloperAnimationState{
+				DevID:     anim.DevID,
+				DevName:   name,
+				State:     anim.State.String(),
+				ColorName: colorName,
+				TicketID:  ticketID,
+			})
 		}
-		// Find current ticket if working
-		ticketID := ""
-		if dev, ok := findDeveloper(sim.Developers, anim.DevID).Get(); ok {
-			ticketID = dev.CurrentTicket
+		transitions := inst.Office.Transitions()
+		recentCount := 10
+		if len(transitions) < recentCount {
+			recentCount = len(transitions)
 		}
-		devStates = append(devStates, DeveloperAnimationState{
-			DevID:     anim.DevID,
-			DevName:   name,
-			State:     anim.State.String(),
-			ColorName: colorName,
-			TicketID:  ticketID,
+		recentTransitions := make([]StateTransitionResponse, recentCount)
+		for i := 0; i < recentCount; i++ { // justified:IX
+			t := transitions[len(transitions)-recentCount+i]
+			recentTransitions[i] = StateTransitionResponse{
+				DevID:     t.DevID,
+				FromState: t.FromState,
+				ToState:   t.ToState,
+				Tick:      t.Tick,
+				Timestamp: t.Timestamp.Format("2006-01-02T15:04:05Z07:00"),
+				Reason:    t.Reason,
+			}
+		}
+		return rslt.Ok(web.Response{
+			Status: http.StatusOK,
+			Body: OfficeResponse{
+				Developers:  devStates,
+				Transitions: recentTransitions,
+				CurrentTick: inst.Office.CurrentTick(),
+				Links: map[string]string{
+					"self":       "/simulations/" + id + "/office",
+					"simulation": "/simulations/" + id,
+				},
+			},
 		})
 	}
-
-	// Build recent transitions (last 10)
-	transitions := inst.Office.Transitions()
-	recentCount := 10
-	if len(transitions) < recentCount {
-		recentCount = len(transitions)
-	}
-	recentTransitions := make([]StateTransitionResponse, recentCount)
-	for i := 0; i < recentCount; i++ { // justified:IX
-		t := transitions[len(transitions)-recentCount+i]
-		recentTransitions[i] = StateTransitionResponse{
-			DevID:     t.DevID,
-			FromState: t.FromState,
-			ToState:   t.ToState,
-			Tick:      t.Tick,
-			Timestamp: t.Timestamp.Format("2006-01-02T15:04:05Z07:00"),
-			Reason:    t.Reason,
-		}
-	}
-
-	response := OfficeResponse{
-		Developers:  devStates,
-		Transitions: recentTransitions,
-		CurrentTick: inst.Office.CurrentTick(),
-		Links: map[string]string{
-			"self":       "/simulations/" + id + "/office",
-			"simulation": "/simulations/" + id,
-		},
-	}
-
-	writeJSON(w, http.StatusOK, response)
 }
 
 // SpendInvestmentRequest is the request body for POST /simulations/{id}/investments.
@@ -943,44 +826,31 @@ type SpendInvestmentRequest struct {
 // Returns 201 on success, 422 for ErrInsufficientBudget + ErrInvalidInvestment,
 // 409 for ErrInvestmentWindowClosed (state conflict), 404 if simulation doesn't
 // exist. UC40 #15446.
-func (r SimRegistry) HandleSpendInvestment(w http.ResponseWriter, req *http.Request) {
-	id := req.PathValue("id")
-
-	if _, ok := r.GetInstanceOption(id).Get(); !ok {
-		writeError(w, http.StatusNotFound, "simulation not found")
-		return
-	}
-
-	var body SpendInvestmentRequest
-	if err := decodeJSON(req, &body); err != nil {
-		respondDecodeError(w, err)
-		return
-	}
-
-	option, parseErr := model.ParseInvestmentOption(body.Option)
-	if parseErr != nil {
-		// ErrInvalidInvestment → HTTP 422 per Go dev §8 (domain-rule
-		// violation; reuses UC38's 422 introduction)
-		writeError(w, http.StatusUnprocessableEntity, parseErr.Error())
-		return
-	}
-
-	if err := r.SpendInvestment(id, option); err != nil {
-		// Sentinel-differentiated mapping per UC40 plan §HTTP surface:
-		if errors.Is(err, model.ErrInsufficientBudget) {
-			writeError(w, http.StatusUnprocessableEntity, err.Error())
-			return
+// handleSpendInvestment dispatches a between-sprint investment per UC40 #15446.
+// Sentinel-mapped errors (ErrInsufficientBudget/ErrInvestmentWindowClosed/
+// ErrInvalidInvestment) flow through domainErrorMapper at the Adapt boundary.
+// ParseInvestmentOption errors return typed *web.Error directly (bypass mapper).
+func handleSpendInvestment(r SimRegistry) web.Handler {
+	return func(req *http.Request) rslt.Result[web.Response] {
+		id := req.PathValue("id")
+		if _, ok := r.GetInstanceOption(id).Get(); !ok {
+			return rslt.Err[web.Response](web.NotFound("simulation not found"))
 		}
-		if errors.Is(err, model.ErrInvestmentWindowClosed) {
-			// 409 conflict: sim state doesn't permit the action (vs 422 which
-			// means the request itself is semantically invalid)
-			writeError(w, http.StatusConflict, err.Error())
-			return
+		var body SpendInvestmentRequest
+		if err := decodeJSON(req, &body); err != nil {
+			return rslt.Err[web.Response](decodeError(err))
 		}
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+		option, parseErr := model.ParseInvestmentOption(body.Option)
+		if parseErr != nil {
+			return rslt.Err[web.Response](&web.Error{Status: http.StatusUnprocessableEntity, Message: parseErr.Error(), Code: "INVALID_INVESTMENT"})
+		}
+		if err := r.SpendInvestment(id, option); err != nil {
+			// Sentinels flow through domainErrorMapper at Adapt boundary
+			// (ErrInsufficientBudget → 422, ErrInvestmentWindowClosed → 409,
+			// ErrInvalidInvestment → 422). Unmapped errors fall to 500 default.
+			return rslt.Err[web.Response](err)
+		}
+		inst, _ := r.GetInstanceOption(id).Get()
+		return rslt.Ok(simulationResponse(inst, http.StatusCreated))
 	}
-
-	inst, _ := r.GetInstanceOption(id).Get()
-	respondWithSimulation(w, inst, http.StatusCreated)
 }

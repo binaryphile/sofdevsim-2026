@@ -24,12 +24,7 @@ func decodeJSON[T any](r *http.Request, dest *T) error {
 	return nil
 }
 
-// respondDecodeError writes appropriate HTTP error for decode failures.
-func respondDecodeError(w http.ResponseWriter, err error) {
-	switch {
-	case errors.Is(err, ErrBodyTooLarge):
-		writeError(w, http.StatusRequestEntityTooLarge, err.Error())
-	default:
-		writeError(w, http.StatusBadRequest, err.Error())
-	}
-}
+// respondDecodeError was removed in the #18915 fluentfp/web migration.
+// Use decodeError(err) in adapt.go, which returns a typed *web.Error that
+// callers wrap with rslt.Err[web.Response](...). The body-too-large/invalid-JSON
+// distinction (413 vs 400) is preserved in the new helper.
