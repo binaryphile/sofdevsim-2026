@@ -1196,6 +1196,16 @@ For API details and keybindings, see CLAUDE.md § Persistence.
 
 Enables programmatic simulation testing without TUI interaction. Supports UC9 (Test Simulation Behavior Programmatically).
 
+### Implementation: fluentfp/web closure-based handlers (#18915)
+
+Post-#18915, the 13 simulation/comparison endpoints use `fluentfp/web.Handler` closures (`func(*http.Request) rslt.Result[web.Response]`) instead of imperative receiver methods on `SimRegistry`. Each handler is built by a free factory function `handle<X>(r SimRegistry) web.Handler` that captures the registry in a closure. The routing table in `internal/api/server.go::routes` iterates these factories and registers each via `mux.HandleFunc(pattern, web.Adapt(handler, web.WithErrorMapper(domainErrorMapper)))`.
+
+**Consolidated error mapping**: `internal/api/adapt.go::domainErrorMapper` is the single source of truth for domain-sentinel → HTTP-status mapping (8 sentinels: `ErrAlreadyExists`→409, `ErrUnknownScenario`→400, `ErrCap*` family→422, `ErrInsufficientBudget`→422, `ErrInvalidInvestment`→422, `ErrInvestmentWindowClosed`→409, `ErrSimNotFound`→404). New sentinels added in future cycles register here — one diff, one anchor.
+
+**Content-Type normalization**: All success responses emit `application/json` (Adapt's default). HAL body shape (`_links`, `_embedded`) preserved. Previously `application/hal+json`; the wire-level header changed in #18915 (Decision C — operator waived byte-identical guarantee, no installed base).
+
+**Upstream dependency**: This migration was blocked until fluentfp v0.61.0 shipped `Adapt`'s caller-set-Content-Type honoring (commit `ab5c8e6` + tests `5c59472`). The local `replace ../fluentfp` directive in `go.mod` means the new behavior is immediately accessible without a version bump in sofdevsim's go.mod.
+
 ### Design: HATEOAS
 
 The API follows REST with hypermedia (HATEOAS). Each response includes `_links` that tell the client what actions are available based on current state.
