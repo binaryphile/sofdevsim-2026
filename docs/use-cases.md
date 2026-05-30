@@ -564,6 +564,7 @@ None (self-contained simulation, no external services)
 - API: GET /simulations/{id} returns full state with HATEOAS links
 - Deployment: TUI auto-discovers running server via GET /health; connects as client if found, starts embedded server otherwise
 - Headless: `sofdevsim-server [--idle-timeout 60s]` — standalone API for CI or remote testing
+- Response Content-Type is `application/json` (post-#18915 fluentfp/web migration; previously `application/hal+json`). The HAL body shape (`_links`, `_embedded`) is preserved — only the wire-level header changed
 
 **Technical Notes:**
 
@@ -619,6 +620,7 @@ This use case requires event sourcing architecture:
 
 - POST /simulations/{id}/assignments with `{"ticketId": "TKT-001", "developerId": "dev-1"}`
 - POST /simulations/{id}/sprints to start sprint
+- Response Content-Type is `application/json` post-#18915 (see UC10 Tech Variations for the migration note)
 
 ---
 
@@ -1690,6 +1692,12 @@ This use case requires event sourcing architecture:
 - 3b. *Manager pays down Verify tech debt but Verify isn't the constraint:* Allowed; variance reduction may pre-empt a future constraint shift after UC37 mix changes
 - 4a. *Investment event would create an impossible state* (e.g., upgrade Review tooling when no Review capacity exists): Rejected with diagnostic
 - 5a. *Batch/LLM mode (deferred to follow-up cycle per UC40 plan §Out of scope):* Investment chosen by future `InvestmentPolicy` interface; same event log, same postconditions. UC40 cycle ships only the human-operator TUI + REST POST endpoint surfaces; the `InvestmentPolicy` interface is acknowledged but scope-bounded to a tracked follow-up task
+
+**Technology & Data Variations:**
+
+- POST /simulations/{id}/investments with `{"option": "hire"|"cicd-slot"|"review-tool"|"verify-paydown"}`
+- Response Content-Type is `application/json` post-#18915 (see UC10 Tech Variations for the migration note)
+- Domain-sentinel error mapping: `ErrInsufficientBudget` → 422, `ErrInvestmentWindowClosed` → 409, `ErrInvalidInvestment` → 422 (consolidated in `internal/api/adapt.go::domainErrorMapper` post-#18915)
 
 ---
 
