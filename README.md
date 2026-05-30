@@ -33,6 +33,7 @@ Run the same scenario under each policy. Compare DORA metrics. See which approac
 - **DORA metrics dashboard** with ntcharts sparklines
 - **Fever chart** (buffer consumption: Green/Yellow/Red)
 - **A/B policy comparison** with identical seeds for reproducibility
+- **Batch experiments** — declarative JSON config + N-seed sweeps + R/Python-ready per-run CSV bundles (see [Batch Experiments](#batch-experiments) below)
 
 ## How It Works
 
@@ -143,6 +144,8 @@ go run cmd/sofdevsim/main.go
 ```bash
 go run cmd/sofdevsim/main.go --seed 42
 ```
+
+The above flags belong to the interactive `sofdevsim` TUI binary. For batch / headless experiments, see [Batch Experiments](#batch-experiments) below — the `sofdevsim-batch` binary takes `-config <path>` and `-out <dir>` instead.
 
 ## Backlog Mix Profiles
 

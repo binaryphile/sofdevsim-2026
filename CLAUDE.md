@@ -7,6 +7,11 @@
 Reference implementation for scaling. Prioritize correctness over expediency.
 Two paths: video game / LLM laboratory for automated experimentation.
 
+Phase-2 LLM laboratory work begins with the `cmd/sofdevsim-batch` headless
+binary (UC41 / cycle #21831) — declarative JSON config, N-seed sweeps,
+per-run CSV bundles + `runs.csv` index + `experiment.json` provenance.
+See `docs/use-cases.md` §UC41 and `docs/design.md` §"Batch CLI (UC41)".
+
 ## Architecture Decisions
 
 ### Immutable Engine Pattern
