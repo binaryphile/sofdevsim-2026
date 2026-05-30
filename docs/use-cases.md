@@ -1701,6 +1701,68 @@ This use case requires event sourcing architecture:
 
 ---
 
+### UC41: Run Batch Experiment
+
+> **Phase 2 shipped in cycle #21831** (contract #21828). First Phase-2 capability per `docs/roadmap.md` (LLM Laboratory Infrastructure). Mechanism details (config schema, run-loop topology, per-CSV determinism contract, per-run registry isolation, git-SHA reproducibility wiring) live in `docs/design.md` §"Batch CLI (UC41)".
+
+**Primary Actor:** Researcher / Analyst (or LLM-driven experiment orchestrator)
+
+**Goal in Context:** Run N independent simulations unattended from a declarative JSON config, producing per-run CSV bundles + a `runs.csv` index + an `experiment.json` provenance file suitable for downstream R/Python analysis.
+
+**Scope:** Software Development Simulation
+
+**Level:** User Goal (Blue)
+
+**Stakeholders and Interests:**
+
+- *Researcher:* Wants reproducible, parametric experiments without manual TUI interaction; needs per-run data for statistical analysis
+- *LLM experiment orchestrator:* Wants a deterministic, scriptable surface for AB-comparison sweeps; needs machine-parseable stdout for piping into harness scripts
+- *Reviewer / future-self:* Wants provenance metadata (config used + git SHA + tool version + timestamp) captured alongside outputs to reproduce or audit any past experiment
+- *CI pipeline:* Wants exit codes that distinguish config errors (exit 1) from successful runs with per-run failures (exit 0 + runs.csv `status=failed` rows)
+
+**Trigger:** Researcher authors a JSON config (or LLM orchestrator generates one) and invokes `sofdevsim-batch -config <path> -out <dir>`.
+
+**Preconditions:**
+
+- `sofdevsim-batch` binary has been built (`go build ./cmd/sofdevsim-batch`)
+- A JSON config file exists at the path passed via `-config`; the file conforms to the schema in `docs/design.md` §"Batch CLI (UC41)"
+- The output directory at `-out` is writable (or does not yet exist — batch will create it)
+- The CWD does not need to be inside the source tree (git SHA capture is best-effort with `"unknown"` fallback for installed-binary use)
+
+**Postconditions (Guarantees):**
+
+- *Success:* The output directory contains an `experiment.json` (config used, git SHA, tool version, ISO8601 start timestamp, `schema_version: 1`), a `runs.csv` index (one row per attempted run with seed/policy/scenario/status/output_dir/sprints_run/error_message), and one per-run subdirectory named `run-<index>-seed-<N>/` per seed in the config — each containing a nested `sofdevsim-export-<timestamp>/` directory with the existing exporter's 6-CSV bundle (metadata, tickets, sprints, incidents, metrics). Determinism contract: re-running the same config produces byte-identical `tickets.csv` + `sprints.csv` + `metrics.csv`; `metadata.csv` and `incidents.csv` differ only in documented wall-clock columns. Exit code 0. STDOUT carries a machine-parseable summary line of the form `OK runs=N succeeded=M failed=K outDir=<path>`.
+- *Failure:* Either (a) config validation fails (invalid policy/scenario/release_mode enum, missing required fields, mutually-exclusive `seed_range`+`seeds`, bad bounds), or (b) output directory cannot be created/written. Clean diagnostic to STDERR, no partial output emitted, exit code 1.
+- *Minimal:* Per-run failures (e.g., simulation panic mid-tick) do NOT abort the batch — affected runs are recorded with `status=failed` + `error_message` populated in `runs.csv`, subsequent runs continue, exit code remains 0 if Run() itself returned nil. Caller decides whether to treat all-runs-failed as success or surface separately.
+
+**Main Success Scenario:**
+
+1. Researcher authors a JSON config file specifying experiment name, policy, scenario, sprints, team_size, optional phase_wip_caps, release_mode, and one of `seed_range` (sweep) or `seeds` (hand-picked list)
+2. Researcher invokes `sofdevsim-batch -config <path> -out <dir>`
+3. Batch loads and validates the config (rejects with exit 1 + clean STDERR diagnostic if invalid)
+4. Batch creates the output directory and writes `experiment.json` with provenance metadata (config + git SHA via best-effort `git rev-parse HEAD` + tool version + start timestamp + schema_version)
+5. Batch runs the N simulations sequentially: for each seed, construct a fresh `*registry.SimRegistry` (per-run isolation), call `registry.CreateSimulation(seed, policy, scenario, phaseWIPConfig, releaseMode)`, emit TeamSize developer-added events with uniform velocity 1.0, run cfg.Sprints sprints (StartSprint → decompose-eligible → auto-assign → tick-to-sprint-end), then call the existing `internal/export` package to write the per-run 6-CSV bundle to `<outDir>/run-<index>-seed-<N>/`
+6. Batch writes the `runs.csv` index summarizing all attempted runs, then prints the machine-parseable summary line to STDOUT; researcher analyzes per-run CSVs in R/Python or pipes the STDOUT summary into a CI harness
+
+**Extensions:**
+
+- 1a. *Invalid config (any validation rule fails):* Batch exits 1 with a clean STDERR diagnostic naming the offending field; no output directory side effects beyond what may have been created during pre-validation setup
+- 1b. *Seed conflict (`seed_range` AND `seeds` both set, OR neither set):* Rejected at config-validation step; same Extension-1a handling
+- 3a. *Output directory setup fails (permission denied, disk full):* Batch exits 1 with STDERR diagnostic; no partial outputs
+- 5a. *Per-run failure (simulation panic, engine error, etc.):* Run is recorded with `status=failed` + populated `error_message` in `runs.csv`; subsequent runs continue; the per-run subdirectory may be empty or partial — operator inspects via the `error_message` diagnostic
+- 6a. *Output-write failure for `runs.csv` or `experiment.json` after runs complete:* Batch exits 1 (Run-level error); per-run subdirectories remain on disk for forensic inspection
+- 6b. *Aggregate analysis (mean / stddev / win-rate across runs):* Deferred to follow-up cycle #21832 (fu1 batch-cli-fu1-aggregation); cycle 1 ships data-emission only — researcher writes their own aggregation script over the per-run CSVs in the interim
+
+**Technology & Data Variations:**
+
+- Config format: JSON only in cycle 1 (YAML deferred as fu2 task #21833)
+- Team configuration: `team_size: N` with uniform velocity 1.0 in cycle 1 (heterogeneous `team: [{name, velocity}]` deferred as fu3 task #21834)
+- Investment configuration: NOT in cycle 1 config schema; UC40 investment-spending remains operator-driven via TUI / REST (sibling task #18516 InvestmentPolicy interface stays deferred until a future cycle requests batch+investment)
+- Scenario customization: each scenario uses its built-in default ticket count; per-scenario `tickets_per_sprint` override deferred as fu5 task #21836
+- Aggregation output: per-run CSVs only in cycle 1; wide-format `aggregate.csv` deferred as fu1 task #21832; long-format (tidyverse/pandas) deferred as fu4 task #21835
+
+---
+
 ## Goal Level Reference
 
 | Level | Name | Duration | Test |
