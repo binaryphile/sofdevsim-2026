@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/binaryphile/sofdevsim-2026/internal/engine"
 	"github.com/binaryphile/sofdevsim-2026/internal/model"
@@ -177,7 +178,7 @@ func (c Config) ResolvePhaseWIPCaps() (map[model.WorkflowPhase]int, error) {
 // parsePhaseName accepts canonical uppercase phase names; case-insensitive
 // via the caller. Mirror of internal/api::parsePhaseName.
 func parsePhaseName(s string) (model.WorkflowPhase, bool) {
-	switch toUpper(s) {
+	switch strings.ToUpper(s) {
 	case "RESEARCH":
 		return model.PhaseResearch, true
 	case "SIZING":
@@ -194,18 +195,4 @@ func parsePhaseName(s string) (model.WorkflowPhase, bool) {
 		return model.PhaseReview, true
 	}
 	return 0, false
-}
-
-// toUpper is a stdlib-only ASCII uppercase (avoids importing strings just
-// for ToUpper in this single call site).
-func toUpper(s string) string {
-	b := make([]byte, len(s))
-	for i := 0; i < len(s); i++ {
-		c := s[i]
-		if c >= 'a' && c <= 'z' {
-			c -= 'a' - 'A'
-		}
-		b[i] = c
-	}
-	return string(b)
 }
