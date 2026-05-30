@@ -553,6 +553,77 @@ UC40 closes the **Factorio dynamics program** (parent epic #15441): UC37 + UC38 
 
 ---
 
+### Batch CLI (UC41)
+
+**Status**: implemented in cycle #21831 (contract #21828). First Phase-2 capability per `docs/roadmap.md` (LLM Laboratory Infrastructure). UC41 ships a new `cmd/sofdevsim-batch` headless binary that reads a declarative JSON config and runs N independent simulations unattended, emitting per-run CSV bundles via the existing `internal/export` package plus a top-level `runs.csv` index and `experiment.json` provenance file. The UC body (WHAT) lives in `docs/use-cases.md` §UC41; this section documents HOW.
+
+**Config JSON schema** (v1; `internal/batch/config.go`):
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `name` | string | yes | Experiment label; surfaced in experiment.json |
+| `policy` | string | yes | Validated against `model.SizingPolicy` enum (`dora-strict`, `tameflow-cognitive`, `none`) |
+| `scenario` | string | yes | Validated against `engine.Scenarios` map keys |
+| `sprints` | int | yes | Must be >0 |
+| `team_size` | int | yes | Must be >0; per-dev velocity uniformly 1.0 (heterogeneous deferred to fu3 #21834) |
+| `phase_wip_caps` | map[string]int | no | Optional UC38 phase WIP caps; nil ⇒ unlimited |
+| `release_mode` | string | yes | `push` (UC39 default) or `demand` |
+| `seed_range` | [2]int64 | xor | Inclusive seed range `[lo, hi]`; mutually exclusive with `seeds` |
+| `seeds` | []int64 | xor | Explicit seed list; mutually exclusive with `seed_range` |
+
+Exactly one of `seed_range` / `seeds` must be set; `Validate()` rejects both-set and neither-set. Per-scenario ticket-count override is NOT in v1 (each scenario uses its built-in default count via `engine.Scenarios[name].Generate(rng, defaultCount)`); deferred to fu5 #21836. Investment configuration is NOT in v1 (#18516 InvestmentPolicy interface trigger remains intact pending future cycles that actually require autonomous investment-spending in batch context).
+
+**Run-loop topology** (`internal/batch/runner.go`, `Runner.Run`):
+
+```
+for each seed in resolved-seed-set:
+  registry  ← RegistryFactory()                              # fresh per-run (CQRS guide §11)
+  sim       ← registry.CreateSimulation(seed, policy,
+                                        scenario,
+                                        phaseWIPConfig,
+                                        releaseMode)
+  for d in 1..team_size:
+    engine.AddDeveloper("dev-d", "dev-d", 1.0)               # uniform velocity
+  for s in 1..sprints:
+    engine.StartSprint()
+    decompose-eligible loop
+    auto-assign-for-comparison loop
+    tick-to-sprint-end loop
+  export.New(sim, tracker, nil).ExportTo(<outDir>/run-i-seed-N/)
+write runs.csv (one row per run)
+write experiment.json (config + git SHA + tool version + ISO8601 + schema_version=1)
+```
+
+The inner sprint loop mirrors `runComparison`'s `runSprintsWithTracking` at `internal/api/handlers.go:394` (the canonical precedent for headless multi-sprint execution). No direct `model.Simulation` field mutation in batch code — all state mutations flow through `engine.*()` commands (aggregate-boundary invariant per Khorikov classical school + CQRS aggregate-root discipline).
+
+**Per-run registry isolation**: each iteration constructs a fresh `*registry.SimRegistry` via `Runner.RegistryFactory` (default `registry.NewSimRegistry`; exposed for test injection). This prevents shared `events.Store` accumulation across N runs per CQRS/ES guide §11 (event-store-per-aggregate-lifetime). Without this discipline, sequential runs would share the registry's in-memory `MemoryStore`, leaking events across runs and growing memory unbounded for large N. The runner_test isolation subtest enforces this directly: post-run assertion that all N captured `*SimRegistry` pointers AND their `.Store()` interface values are pairwise distinct.
+
+**Reproducibility wiring**: `experiment.json` captures the full config + git SHA (best-effort via `os/exec` `git rev-parse HEAD` with 2s timeout; fall back to `"unknown"` if git absent / not in a repo / command fails — installed-binary use cases must remain operational) + tool version + ISO8601 start timestamp + `schema_version: 1` (forward-compat identifier for downstream R/Python tooling; bumped on breaking shape changes).
+
+**Per-CSV determinism contract** (verified against `internal/export` at impl time):
+
+| CSV | Determinism profile |
+|---|---|
+| `tickets.csv` | byte-identical across same-config runs (slice iteration over `CompletedTickets`; all fields deterministic numerics/strings) |
+| `sprints.csv` | byte-identical (single row, no wall-clock; `serializePhaseWIPConfig` at schema.go:178 uses `json.Marshal` which sorts map keys alphabetically) |
+| `metrics.csv` | byte-identical (numeric DORA values from tracker) |
+| `metadata.csv` | differs only in `export_timestamp` column per writers.go:57 (`time.Now()`) |
+| `incidents.csv` | differs in `CreatedAt` + `ResolvedAt` + `mttr_days` columns per `model.Incident` wall-clock usage (model/incident.go:20+:32) AND the transitive derived-column (mttr_days = ResolvedAt - CreatedAt at schema.go:191) |
+
+**Nested-export-dir structure**: the existing `export.Exporter.ExportTo(path)` creates a `path/sofdevsim-export-<timestamp>/` subdirectory (writers.go:64) inside the path it's given. Batch reads the actual subdir path via the returned `ExportResult.Path`; per-run output is therefore `<outDir>/run-N-seed-M/sofdevsim-export-<wall-timestamp>/{metadata,tickets,sprints,incidents,metrics}.csv`. The wall-clock timestamp in the nested dir name is the only source of cross-run output-path divergence; the seed-bearing parent dir (`run-N-seed-M/`) is stable and unique per run.
+
+**Deferred architectural debt** (surfaced by this cycle's CQRS/ES `/c` grading; not addressed in cycle 1):
+- **#21527** (cqrs-metrics-as-projection) — Refactor `metrics.Tracker` to consume events as true CQRS projection per guide §1/§8. Triggered: next cycle requiring metrics-from-events (replay, temporal queries, metric reconstruction during gob restore).
+- **#21528** (cqrs-persistent-event-store) — Add persistent event-store + replay support per guide §6/§11. Currently gob persists state-snapshot only. Triggered: next cycle requiring event replay, audit trail, temporal queries, or fully-CQRS-compliant batch reproducibility.
+
+**Minor architectural-debt notes** (NOT tracked as separate tasks):
+- `events.Projection.Apply()` lacks invariant-violation panics per CQRS/ES guide §15 ("Projection State Corruption"); a malformed event referencing a non-existent entity currently produces silent state divergence rather than fail-loud.
+- `DetectionTime` event field is captured from `time.Now()` (not seeded). Documented as metadata-only — not used for state ordering (state ordering uses `OccurrenceTime` derived from sim-tick).
+- `Engine.Tick() (Engine, []Event, error)` returns both new state AND emitted events — technically a CQS violation per Meyer §1, but justified by the immutable-monadic pattern (returns *new* state, not a query on original; emitted events are causal metadata).
+- `incidents.csv` wall-clock fields (`CreatedAt`, `ResolvedAt`, and transitively `mttr_days`) would ideally use sim-tick rather than `time.Now()` for full determinism. Deferred — would require `model.Incident` refactor + projection-handler updates; out of batch v1 scope.
+
+---
+
 ## Key Algorithms
 
 ### Variance Model (Core Hypothesis)
