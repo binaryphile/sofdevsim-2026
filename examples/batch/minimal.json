@@ -1,0 +1,9 @@
+{
+  "name": "example",
+  "policy": "dora-strict",
+  "scenario": "healthy",
+  "sprints": 3,
+  "team_size": 3,
+  "release_mode": "push",
+  "seeds": [42, 99, 123]
+}
