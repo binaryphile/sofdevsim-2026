@@ -86,7 +86,10 @@ func TestLimitBody_IntegrationWithDecodeJSON(t *testing.T) {
 	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var p payload
 		if err := decodeJSON(r, &p); err != nil {
-			respondDecodeError(w, err)
+			// #18915 migration: replaced respondDecodeError with the
+			// adapt.go decodeError helper. Test inner-handler shape preserved.
+			we := decodeError(err)
+			w.WriteHeader(we.Status)
 			return
 		}
 		w.WriteHeader(http.StatusOK)

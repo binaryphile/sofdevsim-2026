@@ -120,11 +120,15 @@ func TestRespondDecodeError(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			w := httptest.NewRecorder()
-			respondDecodeError(w, tt.err)
-
-			if w.Code != tt.wantStatus {
-				t.Errorf("respondDecodeError() status = %d, want %d", w.Code, tt.wantStatus)
+			// #18915 migration: respondDecodeError replaced by adapt.go
+			// decodeError helper that returns *web.Error. Test asserts on
+			// the typed Error's Status field rather than HTTP recorder.
+			we := decodeError(tt.err)
+			if we == nil {
+				t.Fatal("decodeError returned nil")
+			}
+			if we.Status != tt.wantStatus {
+				t.Errorf("decodeError() status = %d, want %d", we.Status, tt.wantStatus)
 			}
 		})
 	}
