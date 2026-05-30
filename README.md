@@ -317,6 +317,28 @@ When the TUI and REST API run in the same process (default mode), the TUI auto-t
 
 **Resize artifacts**: If the TUI's rendering appears corrupted after an interactive `tmux split-window` mid-session (partial redraw, blank rows), press **Ctrl+L** to force a full redraw (UC34 workaround). The root cause is environmental (tmux + alt-screen + SIGWINCH interaction); scripted `tmux resize-window` does NOT reproduce the symptom.
 
+## Batch Experiments
+
+Run N independent simulations unattended from a declarative JSON config, producing per-run CSV bundles + a `runs.csv` index + an `experiment.json` provenance file suitable for downstream R/Python analysis. The `sofdevsim-batch` binary is headless (no TUI, no REST server) and intended for scripted parameter sweeps and future LLM-driven AB-comparison harnesses.
+
+```bash
+# Build
+go build ./cmd/sofdevsim-batch
+
+# Run an example experiment (3 seeds × healthy scenario × 3 sprints each)
+./sofdevsim-batch -config examples/batch/minimal.json -out ./out
+
+# Output structure:
+#   out/
+#     experiment.json        (config + git SHA + tool version + timestamp + schema_version)
+#     runs.csv               (one row per attempted run)
+#     run-0-seed-42/sofdevsim-export-<timestamp>/{metadata,tickets,sprints,incidents,metrics}.csv
+#     run-1-seed-99/sofdevsim-export-<timestamp>/...
+#     run-2-seed-123/sofdevsim-export-<timestamp>/...
+```
+
+See [docs/use-cases.md §UC41](docs/use-cases.md) for the behavioral contract (Cockburn shape) and [docs/design.md §Batch CLI (UC41)](docs/design.md) for the config schema, run-loop topology, per-CSV determinism contract, and per-run registry isolation rationale. Aggregation primitives (mean / stddev across runs) are deferred to a follow-up cycle; cycle 1 ships data-emission only.
+
 ## Tutorial
 
 For a hands-on walkthrough with checkpoints, see [docs/tutorial.md](docs/tutorial.md).

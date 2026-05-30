@@ -18,9 +18,9 @@
 
 ### Remaining Work (Priority Order)
 1. [x] **Persistence** - Save/load simulation state for research workflows
-2. [ ] **Batch mode** - Headless runs for Monte Carlo analysis
-3. [ ] **Multi-seed runs** - Automated N-seed comparison with aggregate statistics
-4. [ ] **Parameter configuration** - Externalize variance bounds, phase distribution, incident rates (TOML or JSON)
+2. [~] **Batch mode** - Headless runs for Monte Carlo analysis (Phase-2 cycle #21831 shipped `cmd/sofdevsim-batch` data-emission CLI; Monte Carlo aggregation still pending — see Phase 2 below)
+3. [~] **Multi-seed runs** - Automated N-seed comparison with aggregate statistics (multi-seed support shipped via UC41 `seed_range`/`seeds` in cycle #21831; aggregate-statistics deferred to fu1 #21832)
+4. [x] **Parameter configuration** - Externalize variance bounds, phase distribution, incident rates (TOML or JSON) (cycle #21831 ships JSON config schema for batch experiments; live-sim parameter config still TUI-driven)
 5. [ ] **Statistical summary** - Mean, stddev, confidence intervals across runs
 
 ---
@@ -30,15 +30,15 @@
 **Goal:** Platform for running controlled LLM experiments
 
 ### Capabilities Needed
-- [ ] **Programmatic API** - Library interface, not just TUI
-- [ ] **Experiment definition** - Declarative config for experiment parameters
-- [ ] **Results aggregation** - Combine results across experiment runs
+- [~] **Programmatic API** - Library interface, not just TUI (REST API in `internal/api` shipped; full Go-library entry point separate from binaries not yet shipped)
+- [x] **Experiment definition** - Declarative config for experiment parameters (UC41 / cycle #21831 — JSON config schema in `internal/batch/config.go`)
+- [ ] **Results aggregation** - Combine results across experiment runs (cycle 1 ships per-run CSVs only; aggregation deferred to fu1 #21832; tidy-format deferred to fu4 #21835)
 - [ ] **Calibration workflow** - Import observed data, fit parameters, export refined model
 
 ### Integration Points
-- [ ] CLI for scripted experiments
-- [ ] JSON/YAML experiment configs
-- [ ] Output formats for R/Python analysis
+- [x] CLI for scripted experiments (`cmd/sofdevsim-batch` — UC41 / cycle #21831)
+- [~] JSON/YAML experiment configs (JSON shipped via UC41 / cycle #21831; YAML deferred fu2 #21833 — needs `sigs.k8s.io/yaml` dep)
+- [x] Output formats for R/Python analysis (per-run CSVs via existing `internal/export` reused by batch; wide-format aggregate deferred fu1 #21832; long-format/tidyverse deferred fu4 #21835)
 
 ---
 
