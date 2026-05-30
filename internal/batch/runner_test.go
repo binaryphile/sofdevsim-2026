@@ -137,6 +137,71 @@ func TestRunner_Run_Isolation_PerRunStoresPairwiseDistinct(t *testing.T) {
 	}
 }
 
+// panickyStore wraps a real MemoryStore but panics on Append so we can
+// verify runOne's defer-recover captures the panic into RunResult.
+// Per /i pass-1-I1 regression test.
+type panickyStore struct{ events.Store }
+
+func (panickyStore) Append(stream string, expectedVersion int, evts ...events.Event) error {
+	panic("injected store panic for /i pass-1-I1 regression test")
+}
+
+func TestRunner_Run_PerRunPanic_CapturedInResult(t *testing.T) {
+	// Regression test for /i pass-1-I1: defer-recover in runOne must
+	// propagate via named return. With unnamed return (the bug),
+	// Results.Runs[0] would be zero-valued (Status=""), not failed.
+	r := NewRunner()
+	r.StoreFactory = func() events.Store {
+		return panickyStore{Store: events.NewMemoryStore()}
+	}
+	dir := t.TempDir()
+	cfg := runnerTestConfig()
+	cfg.Seeds = []int64{42}
+	results, err := r.Run(cfg, dir)
+	if err != nil {
+		t.Fatalf("Run should swallow per-run panic: %v", err)
+	}
+	if len(results.Runs) != 1 {
+		t.Fatalf("Runs count=%d, want 1", len(results.Runs))
+	}
+	if results.Runs[0].Status != "failed" {
+		t.Errorf("Status=%q, want failed (defer-recover must mutate named return)", results.Runs[0].Status)
+	}
+	if !strings.Contains(results.Runs[0].Error, "panic:") {
+		t.Errorf("Error=%q, want to contain 'panic:'", results.Runs[0].Error)
+	}
+}
+
+func TestRunner_Run_AllSeedsFailedStillReturnsNilErr(t *testing.T) {
+	// Multi-seed all-fail contract per criterion 3: per-run failures must
+	// NOT propagate as Run-level errors; caller decides whether to treat
+	// all-failed as success. Complements TestRunner_Run_PerRunPanic
+	// (single-seed) by exercising the N-seed batch-continues path.
+	r := NewRunner()
+	r.StoreFactory = func() events.Store {
+		return panickyStore{Store: events.NewMemoryStore()}
+	}
+	cfg := runnerTestConfig()
+	cfg.Seeds = []int64{1, 2, 3}
+	dir := t.TempDir()
+	results, err := r.Run(cfg, dir)
+	if err != nil {
+		t.Fatalf("Run should swallow per-run panics; got err: %v", err)
+	}
+	if len(results.Runs) != 3 {
+		t.Fatalf("Runs count=%d, want 3 (batch continues past each failure)", len(results.Runs))
+	}
+	for i, run := range results.Runs {
+		if run.Status != "failed" {
+			t.Errorf("run-%d Status=%q, want failed", i, run.Status)
+		}
+	}
+	// runs.csv still gets written even when all runs failed
+	if _, err := os.Stat(filepath.Join(dir, "runs.csv")); err != nil {
+		t.Errorf("runs.csv missing on all-failed batch: %v", err)
+	}
+}
+
 func TestRunner_Run_Determinism_RerunYieldsByteIdenticalDeterministicCSVs(t *testing.T) {
 	// F1 determinism contract per /grade R2 absorption (3 CSVs byte-identical
 	// + 2 wall-clock-bearing). Uses Go csv.Reader column-extraction (NOT shell

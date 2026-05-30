@@ -31,6 +31,7 @@ import (
 // the team_size + scenario contract.
 type Runner struct {
 	StoreFactory    func() events.Store
+	EngineFactory   func(seed int64, store events.Store) engine.Engine
 	RegistryFactory func() *registry.SimRegistry
 }
 
@@ -38,6 +39,7 @@ type Runner struct {
 func NewRunner() *Runner {
 	return &Runner{
 		StoreFactory:    func() events.Store { return events.NewMemoryStore() },
+		EngineFactory:   engine.NewEngineWithStore,
 		RegistryFactory: registry.NewSimRegistry,
 	}
 }
@@ -90,6 +92,12 @@ func (r *Runner) Run(cfg Config, outDir string) (Results, error) {
 // returns a RunResult capturing the outcome. Per-run failures are
 // recorded in the RunResult — they do NOT propagate as errors so the
 // batch can continue past them.
+//
+// Returns NAMED (rr RunResult) per /i pass-1-I1: the defer-recover
+// below mutates rr to capture panic state; with an unnamed return,
+// Go would return the zero RunResult on panic-recover-unwind because
+// the value-to-return is not yet bound. Named return binds rr as the
+// result variable so defer's mutation propagates to the caller.
 func (r *Runner) runOne(
 	i int,
 	seed int64,
@@ -98,8 +106,8 @@ func (r *Runner) runOne(
 	phaseWIPConfig map[model.WorkflowPhase]int,
 	releaseMode model.ReleaseMode,
 	baseOutDir string,
-) RunResult {
-	rr := RunResult{
+) (rr RunResult) {
+	rr = RunResult{
 		Index:    i,
 		Seed:     seed,
 		Policy:   cfg.Policy,
@@ -129,7 +137,7 @@ func (r *Runner) runOne(
 	// Engine-direct construction per 3a→1c supersedes. Per-run isolation
 	// (P3) via fresh StoreFactory() call — captured by isolation test.
 	store := r.StoreFactory()
-	eng := engine.NewEngineWithStore(seed, store)
+	eng := r.EngineFactory(seed, store)
 
 	simID := fmt.Sprintf("sim-%d", seed)
 	const sprintLength = 10 // model.NewSimulation default — kept here so we
