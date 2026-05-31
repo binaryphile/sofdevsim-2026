@@ -322,7 +322,7 @@ When the TUI and REST API run in the same process (default mode), the TUI auto-t
 
 ## Batch Experiments
 
-Run N independent simulations unattended from a declarative JSON config, producing per-run CSV bundles + a `runs.csv` index + an `experiment.json` provenance file suitable for downstream R/Python analysis. The `sofdevsim-batch` binary is headless (no TUI, no REST server) and intended for scripted parameter sweeps and future LLM-driven AB-comparison harnesses.
+Run N independent simulations unattended from a declarative JSON config, producing per-run CSV bundles + a `runs.csv` index + an `experiment.json` provenance file + an `aggregate.csv` wide-format summary (mean / stddev / min / max / n across succeeded runs) suitable for downstream R/Python analysis. The `sofdevsim-batch` binary is headless (no TUI, no REST server) and intended for scripted parameter sweeps and future LLM-driven AB-comparison harnesses.
 
 ```bash
 # Build
@@ -335,12 +335,13 @@ go build ./cmd/sofdevsim-batch
 #   out/
 #     experiment.json        (config + git SHA + tool version + timestamp + schema_version)
 #     runs.csv               (one row per attempted run)
+#     aggregate.csv          (fu1 — metric-per-row mean/stddev/min/max/n across succeeded runs)
 #     run-0-seed-42/sofdevsim-export-<timestamp>/{metadata,tickets,sprints,incidents,metrics}.csv
 #     run-1-seed-99/sofdevsim-export-<timestamp>/...
 #     run-2-seed-123/sofdevsim-export-<timestamp>/...
 ```
 
-See [docs/use-cases.md §UC41](docs/use-cases.md) for the behavioral contract (Cockburn shape) and [docs/design.md §Batch CLI (UC41)](docs/design.md) for the config schema, run-loop topology, per-CSV determinism contract, and per-run registry isolation rationale. Aggregation primitives (mean / stddev across runs) are deferred to a follow-up cycle; cycle 1 ships data-emission only.
+See [docs/use-cases.md §UC41](docs/use-cases.md) for the behavioral contract (Cockburn shape) and [docs/design.md §Batch CLI (UC41)](docs/design.md) for the config schema, run-loop topology, per-CSV determinism contract, per-run registry isolation rationale, and aggregation primitives (population stddev ÷N; 6-metric scope; lead_time_stddev excluded as vestigial). Long-format / tidyverse-style aggregate output deferred to a follow-up cycle (fu4); median/percentile stats deferred to fu-of-fu1.
 
 ## Tutorial
 

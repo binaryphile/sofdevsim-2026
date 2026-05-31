@@ -32,7 +32,7 @@
 ### Capabilities Needed
 - [~] **Programmatic API** - Library interface, not just TUI (REST API in `internal/api` shipped; full Go-library entry point separate from binaries not yet shipped)
 - [x] **Experiment definition** - Declarative config for experiment parameters (UC41 / cycle #21831 — JSON config schema in `internal/batch/config.go`)
-- [ ] **Results aggregation** - Combine results across experiment runs (cycle 1 ships per-run CSVs only; aggregation deferred to fu1 #21832; tidy-format deferred to fu4 #21835)
+- [~] **Results aggregation** - Combine results across experiment runs (wide-format aggregate.csv with mean/stddev/min/max/n shipped via UC41 fu1 #21832; long-format/tidyverse output still deferred to fu4 #21835; median/percentile stats deferred to fu-of-fu1 #22230)
 - [ ] **Calibration workflow** - Import observed data, fit parameters, export refined model
 
 ### Integration Points
