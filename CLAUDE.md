@@ -9,8 +9,10 @@ Two paths: video game / LLM laboratory for automated experimentation.
 
 Phase-2 LLM laboratory work begins with the `cmd/sofdevsim-batch` headless
 binary (UC41 / cycle #21831) — declarative JSON config, N-seed sweeps,
-per-run CSV bundles + `runs.csv` index + `experiment.json` provenance.
-See `docs/use-cases.md` §UC41 and `docs/design.md` §"Batch CLI (UC41)".
+per-run CSV bundles + `runs.csv` index + `experiment.json` provenance +
+wide-format `aggregate.csv` (mean/stddev/min/max/n across succeeded runs;
+fu1 #21832). See `docs/use-cases.md` §UC41 and `docs/design.md` §"Batch
+CLI (UC41)" + §"Aggregation primitives (fu1 #21832)".
 
 ## Architecture Decisions
 

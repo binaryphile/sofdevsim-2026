@@ -19,7 +19,7 @@
 ### Remaining Work (Priority Order)
 1. [x] **Persistence** - Save/load simulation state for research workflows
 2. [~] **Batch mode** - Headless runs for Monte Carlo analysis (Phase-2 cycle #21831 shipped `cmd/sofdevsim-batch` data-emission CLI; Monte Carlo aggregation still pending — see Phase 2 below)
-3. [~] **Multi-seed runs** - Automated N-seed comparison with aggregate statistics (multi-seed support shipped via UC41 `seed_range`/`seeds` in cycle #21831; aggregate-statistics deferred to fu1 #21832)
+3. [x] **Multi-seed runs** - Automated N-seed comparison with aggregate statistics (multi-seed support shipped via UC41 `seed_range`/`seeds` in cycle #21831; aggregate statistics shipped via UC41 fu1 #21832 — wide-format `aggregate.csv` with mean/stddev/min/max/n)
 4. [x] **Parameter configuration** - Externalize variance bounds, phase distribution, incident rates (TOML or JSON) (cycle #21831 ships JSON config schema for batch experiments; live-sim parameter config still TUI-driven)
 5. [ ] **Statistical summary** - Mean, stddev, confidence intervals across runs
 
