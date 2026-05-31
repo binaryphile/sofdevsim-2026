@@ -622,6 +622,74 @@ The inner sprint loop mirrors `runComparison`'s `runSprintsWithTracking` at `int
 - `Engine.Tick() (Engine, []Event, error)` returns both new state AND emitted events — technically a CQS violation per Meyer §1, but justified by the immutable-monadic pattern (returns *new* state, not a query on original; emitted events are causal metadata).
 - `incidents.csv` wall-clock fields (`CreatedAt`, `ResolvedAt`, and transitively `mttr_days`) would ideally use sim-tick rather than `time.Now()` for full determinism. Deferred — would require `model.Incident` refactor + projection-handler updates; out of batch v1 scope.
 
+#### Aggregation primitives (fu1 #21832)
+
+Batch fu1 shipped a top-level `<outDir>/aggregate.csv` alongside `experiment.json` + `runs.csv` that summarizes per-run metrics across the succeeded subset of a batch run. Wire-visible surface; downstream R/Python tooling parses the file by stable column schema.
+
+**`aggregate.csv` schema:**
+
+| Column | Type | Notes |
+|---|---|---|
+| `metric` | string | One of the 6 enum names (see below); stable ordering |
+| `mean` | float (%.2f) | Population mean across succeeded runs |
+| `stddev` | float (%.2f) | Population standard deviation ÷N (NOT sample ÷N-1; see Decisions below) |
+| `min` | float (%.2f) | Minimum across succeeded runs |
+| `max` | float (%.2f) | Maximum across succeeded runs |
+| `n` | int | Number of succeeded runs aggregated (failed runs skipped per Q4-i) |
+
+**Metric set** (6 metrics from cycle-1 `metrics.csv` numerics; stable iteration order):
+
+1. `lead_time_avg` — DORA lead time average
+2. `deploy_frequency` — DORA deploys per unit time
+3. `mttr_avg` — DORA mean-time-to-recovery
+4. `change_fail_rate` — DORA change-failure-rate percentage
+5. `total_tickets` — count of CompletedTickets across the run
+6. `total_incidents` — count of ResolvedIncidents + OpenIncidents
+
+**Scope-choice: `lead_time_stddev` is intentionally EXCLUDED** from aggregation. `internal/export/writers.go:218` hardcodes the per-run `lead_time_stddev` value to `"0.00"` with the comment `stddev - not tracked` — the column is vestigial all-zero in cycle-1 `metrics.csv`. Meta-aggregating an all-zero column would add zero information AND mislead readers into thinking lead-time variance was measured. If a future cycle adds true intra-run lead-time variance tracking, fu-of-fu1 #22230 (or a successor) can revisit.
+
+**Stat semantics:**
+
+- **Population stddev formula ÷N** (NOT sample ÷N-1). `aggregate.csv` is descriptive statistics across the closed batch — not inference about a larger population the batch is sampled from. For a known input `[1.0, 2.0, 3.0]`, the population stddev is `sqrt(2/3) ≈ 0.82` (NOT `1.0` which would be the sample stddev). Golden tests pin this exact value.
+- **n=0** (all runs failed OR runs empty): `AggregateMetrics` returns nil/empty slice; `WriteAggregateCSV` writes header-only file (no special-case logic in the writer — composition over conditionals).
+- **n=1** (single succeeded run): `MetricStats.Stddev = 0` (single value has zero variance).
+- **Failed-run handling**: `runs.csv` `status=failed` rows are skipped from aggregation per user-locked Q4-i. The `n` column documents the actual count aggregated.
+
+**Pipeline:**
+
+```
+for each seed:
+  runner.runOne(...)
+    → populates rr.Metrics map[string]float64 with the 6 values
+       (mirror of internal/export/writers.go:210-223 metric-extraction)
+  runs ← append(runs, rr)
+runner.Run, after the per-seed loop:
+  WriteRunsCSV(outDir, runs)                     # cycle-1 unchanged
+  stats ← AggregateMetrics(runs)                 # fu1 NEW; pure function
+  WriteAggregateCSV(outDir, stats)               # fu1 NEW; writer
+```
+
+**Write order** (per /i pass-fresh — fail-fast on first error; operator gets best-effort partial outputs in upstream order):
+
+1. `experiment.json` (pre-loop; cycle 1)
+2. per-seed loop runs (each writes its own per-run subdir)
+3. `runs.csv` (post-loop; cycle 1)
+4. `aggregate.csv` (post-loop; fu1 — most-derived/least-critical output, written last)
+
+**Decision rationales** (locked via /grade R1 absorption):
+
+- **Population stddev** (F1): descriptive over closed run set, not inference.
+- **`%.2f` fixed-precision float format** (F2): matches `internal/export/writers.go:217` precedent; locks deterministic golden tests.
+- **`RunResult.Metrics map[string]float64`** (F3): extensibility for fu-of-fu1 percentile fields + future metric additions without forcing schema changes; loses Go static-type-safety vs a struct alternative but acceptable for v1 because the 6 keys are documented constants in `aggregate.go` with stable iteration order; struct alternative would force re-touching this file for every new metric.
+
+**Determinism**: `aggregate.csv` is a pure function of per-run `Metrics` values, which are deterministic per seed (count/rate/average values; no wall-clock dependencies). Re-running the same config to two outDirs produces byte-identical `aggregate.csv`. Verified by integration test extension to cycle-1's determinism subtest.
+
+**Deferred from fu1**:
+- Long-format / tidyverse-style aggregate output → fu4 #21835
+- Median + P50/P95 percentile fields on MetricStats → fu-of-fu1 #22230 (filed at impl-gate)
+- Per-sprint aggregates from `sprints.csv` → not filed; surface if user demand appears
+- Read-back-from-CSV standalone `Aggregate(outDir)` helper → can be added with fu4 if needed
+
 ---
 
 ## Key Algorithms
