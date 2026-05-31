@@ -26,7 +26,15 @@ var runsCSVHeader = []string{
 }
 
 // RunResult captures the outcome of a single batch run. Populated by
-// Runner.Run; consumed by WriteRunsCSV.
+// Runner.Run; consumed by WriteRunsCSV (which serializes only the 8
+// explicit columns) and AggregateMetrics (which reads .Metrics).
+//
+// The Metrics field is populated by runner.runOne after a successful
+// sprint loop; failed runs leave it nil. Map shape chosen per /grade
+// R1 F3 — extensibility (fu-of-fu1 percentile fields + future metrics)
+// at the cost of static-type-safety; acceptable because the 6 documented
+// keys are constants in aggregate.go (metricKeys) with stable iteration
+// order. See docs/design.md §"Aggregation primitives (fu1 #21832)".
 type RunResult struct {
 	Index      int
 	Seed       int64
@@ -36,6 +44,7 @@ type RunResult struct {
 	OutputDir  string
 	SprintsRun int
 	Error      string // empty when Status == "succeeded"
+	Metrics    map[string]float64
 }
 
 // Results bundles all per-run outcomes from a Runner.Run invocation.
