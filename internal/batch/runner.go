@@ -85,6 +85,11 @@ func (r *Runner) Run(cfg Config, outDir string) (Results, error) {
 	if err := WriteRunsCSV(outDir, runs); err != nil {
 		return Results{Runs: runs}, err
 	}
+	// fu1 aggregation per /i pass-fresh P-fresh-6 write-order: runs.csv first,
+	// aggregate.csv last (fail-fast; aggregate.csv is most-derived/least-critical).
+	if err := WriteAggregateCSV(outDir, AggregateMetrics(runs)); err != nil {
+		return Results{Runs: runs}, err
+	}
 	return Results{Runs: runs}, nil
 }
 
@@ -213,6 +218,21 @@ func (r *Runner) runOne(
 		}
 		tracker = tracker.Updated(eng.Sim())
 		rr.SprintsRun++
+	}
+
+	// fu1 aggregation: capture the 6 per-run numerics into rr.Metrics so
+	// post-loop AggregateMetrics can compute cross-run stats. Mirrors
+	// internal/export/writers.go:210-223 metric-extraction. Keys must
+	// match aggregate.go::metricKeys exactly.
+	sim := eng.Sim()
+	totalIncidents := len(sim.ResolvedIncidents) + len(sim.OpenIncidents)
+	rr.Metrics = map[string]float64{
+		"lead_time_avg":    tracker.DORA.LeadTimeAvgDays(),
+		"deploy_frequency": tracker.DORA.DeployFrequency,
+		"mttr_avg":         tracker.DORA.MTTRAvgDays(),
+		"change_fail_rate": tracker.DORA.ChangeFailRatePct(),
+		"total_tickets":    float64(len(sim.CompletedTickets)),
+		"total_incidents":  float64(totalIncidents),
 	}
 
 	// Per-run export to runDir; the export package creates a nested

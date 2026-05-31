@@ -47,9 +47,28 @@ func TestRunner_Run_ProducesPerSeedSubdirs(t *testing.T) {
 			t.Errorf("run-%d output dir %q missing: %v", run.Index, run.OutputDir, statErr)
 		}
 	}
-	// experiment.json + runs.csv at outDir root
+	// experiment.json + runs.csv + aggregate.csv at outDir root (fu1 #21832 adds aggregate.csv)
 	if _, err := os.Stat(filepath.Join(dir, "experiment.json")); err != nil {
 		t.Errorf("experiment.json missing: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "aggregate.csv")); err != nil {
+		t.Errorf("aggregate.csv missing (fu1): %v", err)
+	}
+	// aggregate.csv shape: 7 rows (header + 6 metrics); mean within [min, max]
+	aggFile, err := os.Open(filepath.Join(dir, "aggregate.csv"))
+	if err == nil {
+		defer aggFile.Close()
+		aggRows, _ := csv.NewReader(aggFile).ReadAll()
+		if len(aggRows) != 7 {
+			t.Errorf("aggregate.csv row count=%d, want 7 (header + 6 metric rows)", len(aggRows))
+		}
+		// Header check
+		wantAggHeader := []string{"metric", "mean", "stddev", "min", "max", "n"}
+		for i, c := range wantAggHeader {
+			if i < len(aggRows[0]) && aggRows[0][i] != c {
+				t.Errorf("aggregate header[%d]=%q want %q", i, aggRows[0][i], c)
+			}
+		}
 	}
 	if _, err := os.Stat(filepath.Join(dir, "runs.csv")); err != nil {
 		t.Errorf("runs.csv missing: %v", err)
@@ -172,6 +191,79 @@ func TestRunner_Run_PerRunPanic_CapturedInResult(t *testing.T) {
 	}
 }
 
+// aggregateTestConfig is a separate 3-seed config helper per /i pass-2
+// P2-I2 — existing TestRunner_Run_RunsCsvHasTwoDataRows has a literal
+// 2-row assertion; bumping runnerTestConfig to 3 seeds would break it,
+// so the StddevNonZero subtest gets its own config.
+func aggregateTestConfig() Config {
+	return Config{
+		Name: "aggregate-test", Policy: "dora-strict", Scenario: "healthy",
+		Sprints: 1, TeamSize: 3, ReleaseMode: "push",
+		Seeds: []int64{42, 99, 123},
+	}
+}
+
+func TestRunner_Run_Aggregate_StddevNonZero(t *testing.T) {
+	// Semantic-plausibility check per /i pass-2 P2-I2: with 3 seeds (3 distinct
+	// per-run metric values are likely), Stddev > 0 for at least one of the 6
+	// metrics. With 2 seeds Stddev>0 only if a≠b which is fragile; 3 seeds
+	// makes the check robust.
+	dir := t.TempDir()
+	if _, err := NewRunner().Run(aggregateTestConfig(), dir); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	file, err := os.Open(filepath.Join(dir, "aggregate.csv"))
+	if err != nil {
+		t.Fatalf("read aggregate.csv: %v", err)
+	}
+	defer file.Close()
+	rows, _ := csv.NewReader(file).ReadAll()
+	if len(rows) != 7 {
+		t.Fatalf("aggregate.csv row count=%d, want 7", len(rows))
+	}
+	anyNonZero := false
+	for i := 1; i < len(rows); i++ {
+		// Column 2 is stddev (%.2f); parse and check > 0
+		if rows[i][2] != "0.00" {
+			anyNonZero = true
+			break
+		}
+	}
+	if !anyNonZero {
+		t.Errorf("expected Stddev>0 for at least one of 6 metrics across 3 seeds; got all-zero: %v", rows[1:])
+	}
+}
+
+func TestRunner_Run_Aggregate_AllRunsFailed_HeaderOnly(t *testing.T) {
+	// n=0 case per Q6 — all runs panic, AggregateMetrics returns nil,
+	// WriteAggregateCSV writes header-only file. Reuses panickyStore
+	// from #21831 /i-pass-1 regression test.
+	r := NewRunner()
+	r.StoreFactory = func() events.Store {
+		return panickyStore{Store: events.NewMemoryStore()}
+	}
+	dir := t.TempDir()
+	cfg := runnerTestConfig()
+	cfg.Seeds = []int64{1, 2, 3}
+	if _, err := r.Run(cfg, dir); err != nil {
+		t.Fatalf("Run: %v (should swallow per-run panics)", err)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "aggregate.csv"))
+	if err != nil {
+		t.Fatalf("read aggregate.csv: %v", err)
+	}
+	// Header-only: single non-empty line
+	lines := []string{}
+	for _, l := range strings.Split(strings.TrimRight(string(data), "\n"), "\n") {
+		if l != "" {
+			lines = append(lines, l)
+		}
+	}
+	if len(lines) != 1 {
+		t.Errorf("all-failed aggregate.csv has %d lines, want 1 (header only); got: %q", len(lines), data)
+	}
+}
+
 func TestRunner_Run_AllSeedsFailedStillReturnsNilErr(t *testing.T) {
 	// Multi-seed all-fail contract per criterion 3: per-run failures must
 	// NOT propagate as Run-level errors; caller decides whether to treat
@@ -234,6 +326,11 @@ func TestRunner_Run_Determinism_RerunYieldsByteIdenticalDeterministicCSVs(t *tes
 	// columns (indices 3, 4, 5 per schema). If both runs produced zero
 	// incidents the comparison is trivially equal (header-only).
 	assertCSVColsEqualExcept(t, filepath.Join(nestedA, "incidents.csv"), filepath.Join(nestedB, "incidents.csv"), []int{3, 4, 5})
+
+	// fu1 #21832 P-fresh-1: aggregate.csv is a pure function of deterministic
+	// per-run metrics, so it MUST be byte-identical across the two outDirs.
+	// Verifies the /grade R1 P3 in-principle claim with an actual assertion.
+	assertByteIdentical(t, filepath.Join(dirA, "aggregate.csv"), filepath.Join(dirB, "aggregate.csv"))
 }
 
 // findNestedExportDir locates the single sofdevsim-export-<timestamp>/
